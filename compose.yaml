@@ -11,6 +11,9 @@ services:
       WORKSPACE_ROOT: /runtime/workspaces
       STATE_PATH: /runtime/data/state.json
       DISCORD_AVATAR_PATH: /app/assets/developer-avatar.png
+      DISCORD_ARCHITECT_AVATAR_PATH: /app/assets/personas/aki-architect.png
+      DISCORD_BUILDER_AVATAR_PATH: /app/assets/personas/bolt-builder.png
+      DISCORD_REVIEWER_AVATAR_PATH: /app/assets/personas/sentinel-reviewer.png
     volumes:
       - ./:/repository:ro
       - orchestrator-runtime:/runtime

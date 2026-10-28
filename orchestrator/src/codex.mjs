@@ -15,7 +15,13 @@ export class CodexAppServer {
     return new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }); this.send({ jsonrpc: "2.0", id, method, params }); });
   }
 
-  async start(prompt) {
+  async start(prompt, options = {}) {
+    const sandboxMode = options.sandboxMode ?? "workspace-write";
+    const networkAccess = options.networkAccess ?? sandboxMode === "workspace-write";
+    const developerInstructions = options.developerInstructions ?? "Follow AGENTS.md and WORKFLOW.md. Never push, merge, deploy, or seek credentials. Work autonomously inside this workspace and commit the completed change locally.";
+    const sandboxPolicy = sandboxMode === "read-only"
+      ? { type: "readOnly", networkAccess }
+      : { type: "workspaceWrite", writableRoots: [this.workspace], networkAccess, excludeTmpdirEnvVar: false, excludeSlashTmp: false };
     this.child = spawn("bash", ["-lc", this.config.codexCommand], { cwd: this.workspace, env: safeWorkerEnvironment(), stdio: ["pipe", "pipe", "pipe"] });
     this.child.stderr.on("data", (chunk) => this.onEvent({ event: "stderr", text: String(chunk) }));
     readline.createInterface({ input: this.child.stdout }).on("line", (line) => this.handleLine(line));
@@ -27,9 +33,9 @@ export class CodexAppServer {
       cwd: this.workspace,
       model: this.config.codexModel,
       approvalPolicy: "never",
-      sandbox: "workspace-write",
+      sandbox: sandboxMode,
       serviceName: "social-drive-orchestrator",
-      developerInstructions: "Follow AGENTS.md and WORKFLOW.md. Never push, merge, deploy, or seek credentials. Work autonomously inside this workspace and commit the completed change locally.",
+      developerInstructions,
     });
     const threadId = thread.thread.id;
     const completion = new Promise((resolve, reject) => { this.completed = { resolve, reject, threadId }; });
@@ -37,7 +43,7 @@ export class CodexAppServer {
       threadId,
       cwd: this.workspace,
       approvalPolicy: "never",
-      sandboxPolicy: { type: "workspaceWrite", writableRoots: [this.workspace], networkAccess: true, excludeTmpdirEnvVar: false, excludeSlashTmp: false },
+      sandboxPolicy,
       input: [{ type: "text", text: prompt, text_elements: [] }],
     });
     const timeout = setTimeout(() => this.completed?.reject(new Error("Codex turn timed out")), this.config.turnTimeoutMs);
@@ -70,5 +76,9 @@ export class CodexAppServer {
   failAll(error) {
     for (const pending of this.pending.values()) pending.reject(error); this.pending.clear(); this.completed?.reject(error);
   }
+}
+
+export function agentText(turn) {
+  return (turn?.items ?? []).filter((item) => item.type === "agentMessage").map((item) => item.text).filter(Boolean).join("\n\n").trim();
 }
 

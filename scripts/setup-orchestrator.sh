@@ -69,9 +69,13 @@ umask 077
   printf 'DISCORD_BOOTSTRAP_CODE=%s\n' "$bootstrap_code"
   printf 'DISCORD_DISPLAY_NAME=개발자\n'
   printf 'DISCORD_AVATAR_PATH=%s/orchestrator/assets/developer-avatar.png\n' "$repo_root"
+  printf 'DISCORD_ARCHITECT_AVATAR_PATH=%s/orchestrator/assets/personas/aki-architect.png\n' "$repo_root"
+  printf 'DISCORD_BUILDER_AVATAR_PATH=%s/orchestrator/assets/personas/bolt-builder.png\n' "$repo_root"
+  printf 'DISCORD_REVIEWER_AVATAR_PATH=%s/orchestrator/assets/personas/sentinel-reviewer.png\n' "$repo_root"
   printf 'CODEX_COMMAND=codex app-server --listen stdio://\n'
   printf 'CODEX_MODEL=\n'
   printf 'MAX_PARALLEL_AGENTS=3\n'
+  printf 'MAX_REVIEW_ROUNDS=2\n'
   printf 'POLL_INTERVAL_SECONDS=30\n'
   printf 'TURN_TIMEOUT_MINUTES=90\n'
   printf 'MAX_RETRIES=3\n'

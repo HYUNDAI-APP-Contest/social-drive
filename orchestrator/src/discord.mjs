@@ -72,6 +72,33 @@ export class Discord extends EventEmitter {
     });
   }
 
+  persona(role) {
+    const personas = {
+      architect: { name: "아키 · 설계자", color: 0x3b82f6, avatarPath: this.config.discordArchitectAvatarPath },
+      builder: { name: "볼트 · 구현자", color: 0x35d0ba, avatarPath: this.config.discordBuilderAvatarPath },
+      reviewer: { name: "센티넬 · 검토자", color: 0xffb547, avatarPath: this.config.discordReviewerAvatarPath },
+    };
+    return personas[role];
+  }
+
+  async personaReport(role, title, content) {
+    const persona = this.persona(role);
+    if (!persona) throw new Error(`Unknown Discord persona: ${role}`);
+    const avatar = await fs.readFile(persona.avatarPath);
+    const filename = `${role}.png`;
+    const form = new FormData();
+    form.set("payload_json", JSON.stringify({
+      embeds: [{ author: { name: persona.name, icon_url: `attachment://${filename}` }, title, description: String(content).slice(0, 3800), color: persona.color }],
+      attachments: [{ id: 0, filename }],
+      allowed_mentions: { parse: [] },
+    }));
+    form.set("files[0]", new Blob([avatar], { type: "image/png" }), filename);
+    const response = await fetch(`https://discord.com/api/v10/channels/${this.config.discordChannelId}/messages`, {
+      method: "POST", headers: { Authorization: `Bot ${this.config.discordBotToken}` }, body: form, signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) throw new Error(`Discord persona report: ${response.status} ${await response.text()}`);
+  }
+
   async disableApprovalButtons(interaction) {
     const components = (interaction.message?.components ?? []).map((row) => ({ ...row, components: row.components.map((component) => ({ ...component, disabled: true })) }));
     if (interaction.message?.id) await this.api("PATCH", `/channels/${interaction.channel_id}/messages/${interaction.message.id}`, { components });
