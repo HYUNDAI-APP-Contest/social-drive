@@ -8,12 +8,12 @@ This service implements the Symphony control-loop pattern for GitHub Issues, Cod
 2. The orchestrator starts up to three isolated issue workspaces.
 3. Codex edits, tests, and commits inside its workspace with GitHub and Discord secrets removed from its environment.
 4. The host pushes the branch and opens a pull request.
-5. An authorized Discord user runs `!approve pr-<number>` or `!reject pr-<number>`.
+5. An authorized Discord user runs `/agent-approve` or `/agent-reject`.
 6. Only the host performs the squash merge.
 
 ## Local setup
 
-Copy `.env.example` to `.env` and fill the secrets. Use a fine-grained GitHub token limited to this repository with Issues read/write, Pull requests read/write, Contents read/write, and Metadata read. The Discord bot needs View Channel, Read Message History, and Message Content intent; it does not need administrator permissions.
+Copy `.env.example` to `.env` and fill the secrets. Use a fine-grained GitHub token limited to this repository with Issues read/write, Pull requests read/write, Contents read/write, and Metadata read. The Discord bot needs only View Channel and Use Application Commands. It uses slash commands and does not require the privileged Message Content intent or administrator permissions.
 
 Git operations use a short-lived `GIT_ASKPASS` process environment. The token is never placed in the repository remote URL, command arguments, worker environment, or persistent Git configuration.
 
@@ -22,6 +22,8 @@ Run:
 ```bash
 node --env-file=.env orchestrator/src/index.mjs
 ```
+
+For first-time setup, run `bash scripts/setup-orchestrator.sh`. It validates the webhook and bot locally, creates `.env` with mode `0600`, and prints a one-time Discord claim code. In the configured channel run `/agent-claim code:<code>` once. The claimed Discord user is persisted in runtime state.
 
 Local execution is preferred on macOS because it can reuse the existing Codex login. Docker Compose is provided for an always-on Linux host; it mounts Codex authentication read-only and stores runtime state in a named volume.
 

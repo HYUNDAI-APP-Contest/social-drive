@@ -22,7 +22,10 @@ export function loadConfig({ requireSecrets = true } = {}) {
     discordWebhookUrl: process.env.DISCORD_WEBHOOK_URL ?? "",
     discordBotToken: process.env.DISCORD_BOT_TOKEN ?? "",
     discordChannelId: process.env.DISCORD_CHANNEL_ID ?? "",
+    discordGuildId: process.env.DISCORD_GUILD_ID ?? "",
+    discordApplicationId: process.env.DISCORD_APPLICATION_ID ?? "",
     discordApprovers: new Set((process.env.DISCORD_APPROVER_USER_IDS ?? "").split(",").map((v) => v.trim()).filter(Boolean)),
+    discordBootstrapCode: process.env.DISCORD_BOOTSTRAP_CODE ?? "",
     codexCommand: process.env.CODEX_COMMAND ?? "codex app-server --listen stdio://",
     codexModel: process.env.CODEX_MODEL || null,
     maxParallel: integer("MAX_PARALLEL_AGENTS", 3, 1),
@@ -39,10 +42,10 @@ export function loadConfig({ requireSecrets = true } = {}) {
   };
 
   if (requireSecrets) {
-    for (const [name, value] of [["GITHUB_TOKEN", config.githubToken], ["DISCORD_WEBHOOK_URL", config.discordWebhookUrl], ["DISCORD_BOT_TOKEN", config.discordBotToken], ["DISCORD_CHANNEL_ID", config.discordChannelId]]) {
+    for (const [name, value] of [["GITHUB_TOKEN", config.githubToken], ["DISCORD_WEBHOOK_URL", config.discordWebhookUrl], ["DISCORD_BOT_TOKEN", config.discordBotToken], ["DISCORD_CHANNEL_ID", config.discordChannelId], ["DISCORD_GUILD_ID", config.discordGuildId], ["DISCORD_APPLICATION_ID", config.discordApplicationId]]) {
       if (!value) throw new Error(`${name} is required`);
     }
-    if (config.discordApprovers.size === 0) throw new Error("DISCORD_APPROVER_USER_IDS is required");
+    if (config.discordApprovers.size === 0 && !config.discordBootstrapCode) throw new Error("DISCORD_APPROVER_USER_IDS or DISCORD_BOOTSTRAP_CODE is required");
   }
   return config;
 }

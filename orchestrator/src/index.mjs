@@ -66,7 +66,7 @@ async function runIssue(issue) {
     });
     await github.removeReadyLabel(issue.number).catch(() => {});
     await github.comment(issue.number, `Codex completed the implementation: ${pr.html_url}\n\nMerge is waiting for Discord approval.`);
-    await discord.report(`✅ **#${issue.number} 구현 완료**\n${pr.html_url}\n병합 승인: \`!approve ${id}\`\n거부: \`!reject ${id}\``);
+    await discord.report(`✅ **#${issue.number} 구현 완료**\nPR: ${pr.html_url}\n승인 ID: \`${id}\`\n병합: \`/agent-approve\`\n거부: \`/agent-reject\``);
   } catch (error) {
     log("job_failed", { issue: issue.number, error: error.message });
     await store.update((state) => {
@@ -104,9 +104,27 @@ discord.on("approval", async ({ action, id, userId }) => {
   }
 });
 
+discord.on("gatewayError", (error) => log("discord_gateway_error", { error: error.message }));
+
+discord.on("claim", async ({ userId }) => {
+  discord.authorize(userId);
+  await store.update((state) => {
+    state.authorizedDiscordUsers ??= [];
+    if (!state.authorizedDiscordUsers.includes(userId)) state.authorizedDiscordUsers.push(userId);
+  });
+  await discord.report(`🔐 **Discord 승인자 등록 완료**\n승인자: <@${userId}>`);
+});
+
+discord.on("status", async ({ interaction }) => {
+  const pending = Object.values(store.state.approvals).filter((item) => item.status === "pending");
+  const usage = store.state.usage[utcDay()] ?? { tokens: 0, estimatedUsd: 0 };
+  await discord.reply(interaction, `**Social Drive AI 상태**\n실행 중: ${active.size}/${config.maxParallel}\n전체 작업: ${Object.keys(store.state.jobs).length}\n병합 승인 대기: ${pending.length}\n오늘 토큰: ${usage.tokens}\n오늘 예상 비용: $${Number(usage.estimatedUsd).toFixed(2)}`);
+});
+
 await store.load();
+for (const userId of store.state.authorizedDiscordUsers ?? []) discord.authorize(userId);
 discord.connect();
-await discord.report(`🟢 Social Drive 오케스트레이터 시작 — 최대 병렬 Agent ${config.maxParallel}개`);
+discord.once("ready", () => void discord.report(`🟢 **Social Drive AI 시작**\n상태: GitHub Issue 감시 중\n최대 병렬 Agent: ${config.maxParallel}\n대상: ${config.githubOwner}/${config.githubRepo}`));
 await poll().catch((error) => log("poll_failed", { error: error.message }));
 setInterval(() => poll().catch((error) => log("poll_failed", { error: error.message })), config.pollIntervalMs);
 
