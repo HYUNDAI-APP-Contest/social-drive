@@ -10,6 +10,7 @@ services:
       SOURCE_REPOSITORY: /repository
       WORKSPACE_ROOT: /runtime/workspaces
       STATE_PATH: /runtime/data/state.json
+      DISCORD_AVATAR_PATH: /app/assets/developer-avatar.png
     volumes:
       - ./:/repository:ro
       - orchestrator-runtime:/runtime

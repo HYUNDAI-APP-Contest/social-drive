@@ -1,0 +1,18 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+
+const template = fs.readFileSync(new URL("../template.yaml", import.meta.url), "utf8");
+
+test("keeps storage private, encrypted, on-demand, and retained", () => {
+  for (const expected of ["BlockPublicAcls: true", "RestrictPublicBuckets: true", "SSEEnabled: true", "BillingMode: PAY_PER_REQUEST", "PointInTimeRecoveryEnabled: true", "DeletionPolicy: Retain"]) assert.match(template, new RegExp(expected));
+});
+
+test("protects API routes with Cognito JWT", () => {
+  for (const expected of ["DefaultAuthorizer: CognitoJwt", "$request.header.Authorization", "GenerateSecret: false"]) assert.ok(template.includes(expected));
+});
+
+test("contains no account id or credentials", () => {
+  assert.doesNotMatch(template, /\b\d{12}\b|AKIA[0-9A-Z]{16}|aws_secret_access_key/i);
+});
+

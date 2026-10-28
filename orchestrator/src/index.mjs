@@ -18,6 +18,13 @@ const observedUsage = new Map();
 
 const log = (event, fields = {}) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), event, ...fields }));
 const approvalId = (pr) => `pr-${pr.number}`;
+const redact = (value) => {
+  let text = String(value);
+  const secrets = [config.githubToken, config.discordBotToken, config.discordWebhookUrl, process.env.AWS_ACCESS_KEY_ID, process.env.AWS_SECRET_ACCESS_KEY, process.env.AWS_SESSION_TOKEN].filter(Boolean);
+  for (const secret of secrets) text = text.replaceAll(secret, "[REDACTED]");
+  return text;
+};
+const onAsync = (event, handler) => discord.on(event, (...args) => void handler(...args).catch((error) => log(`${event}_failed`, { error: redact(error.message) })));
 
 async function accountUsage(issueNumber, event) {
   const usage = event?.params?.usage ?? event?.params?.turn?.usage;
@@ -68,12 +75,12 @@ async function runIssue(issue) {
     await github.comment(issue.number, `Codex completed the implementation: ${pr.html_url}\n\nMerge is waiting for Discord approval.`);
     await discord.report(`✅ **#${issue.number} 구현 완료**\nPR: ${pr.html_url}\n승인 ID: \`${id}\`\n병합: \`/agent-approve\`\n거부: \`/agent-reject\``);
   } catch (error) {
-    log("job_failed", { issue: issue.number, error: error.message });
+    log("job_failed", { issue: issue.number, error: redact(error.message) });
     await store.update((state) => {
       const job = state.jobs[key] ?? { issue: issue.number, attempts: 1 };
       job.status = job.attempts <= config.maxRetries ? "retry" : "failed"; job.error = error.message; job.updatedAt = new Date().toISOString(); state.jobs[key] = job;
     });
-    await discord.report(`❌ **#${issue.number} 작업 실패**\n${String(error.message).slice(0, 1500)}`);
+    await discord.report(`❌ **#${issue.number} 작업 실패**\n${redact(error.message).slice(0, 1500)}`);
   } finally { active.delete(key); }
 }
 
@@ -90,23 +97,40 @@ async function poll() {
   }
 }
 
-discord.on("approval", async ({ action, id, userId }) => {
-  const approval = store.state.approvals[id];
-  if (!approval || approval.status !== "pending") return void discord.report(`⚠️ 유효한 대기 승인이 아닙니다: \`${id}\``);
+onAsync("approval", async ({ action, id, userId }) => {
+  let approval;
+  await store.update((state) => {
+    const candidate = state.approvals[id];
+    if (candidate?.status !== "pending") return;
+    candidate.status = "processing";
+    candidate.processingBy = userId;
+    approval = { ...candidate };
+  });
+  if (!approval) return void discord.report(`⚠️ 이미 처리됐거나 유효하지 않은 승인입니다: \`${id}\``);
   if (Date.now() > approval.expiresAt) action = "reject";
+  if (approval.type === "dry-run") {
+    await store.update((state) => { state.approvals[id].status = action === "approve" ? "approved" : "rejected"; state.approvals[id].decidedBy = userId; });
+    await discord.report(action === "approve" ? `✅ **건식 승인 테스트 성공**\n승인 ID: \`${id}\`\n승인자: <@${userId}>\n외부 변경: 없음` : `🛑 **건식 거부 테스트 성공**\n승인 ID: \`${id}\`\n거부자: <@${userId}>\n외부 변경: 없음`);
+    return;
+  }
   if (action === "approve") {
-    const result = await github.mergePullRequest(approval.pr);
-    await store.update((state) => { state.approvals[id].status = "approved"; state.approvals[id].decidedBy = userId; state.jobs[String(approval.issue)].status = result.merged ? "merged" : "merge_failed"; });
-    await discord.report(result.merged ? `🚀 PR #${approval.pr} 병합 완료 — 승인자 <@${userId}>` : `❌ PR #${approval.pr} 병합 실패: ${result.message}`);
+    try {
+      const result = await github.mergePullRequest(approval.pr);
+      await store.update((state) => { state.approvals[id].status = "approved"; state.approvals[id].decidedBy = userId; state.jobs[String(approval.issue)].status = result.merged ? "merged" : "merge_failed"; });
+      await discord.report(result.merged ? `🚀 PR #${approval.pr} 병합 완료 — 승인자 <@${userId}>` : `❌ PR #${approval.pr} 병합 실패: ${redact(result.message)}`);
+    } catch (error) {
+      await store.update((state) => { state.approvals[id].status = "failed"; state.approvals[id].error = redact(error.message); });
+      await discord.report(`❌ PR #${approval.pr} 병합 요청 실패\n${redact(error.message)}`);
+    }
   } else {
     await store.update((state) => { state.approvals[id].status = "rejected"; state.approvals[id].decidedBy = userId; state.jobs[String(approval.issue)].status = "rejected"; });
     await discord.report(`🛑 PR #${approval.pr} 병합 거부 — <@${userId}>`);
   }
 });
 
-discord.on("gatewayError", (error) => log("discord_gateway_error", { error: error.message }));
+discord.on("gatewayError", (error) => log("discord_gateway_error", { error: redact(error.message) }));
 
-discord.on("claim", async ({ userId }) => {
+onAsync("claim", async ({ userId }) => {
   discord.authorize(userId);
   await store.update((state) => {
     state.authorizedDiscordUsers ??= [];
@@ -115,16 +139,34 @@ discord.on("claim", async ({ userId }) => {
   await discord.report(`🔐 **Discord 승인자 등록 완료**\n승인자: <@${userId}>`);
 });
 
-discord.on("status", async ({ interaction }) => {
+onAsync("status", async ({ interaction }) => {
   const pending = Object.values(store.state.approvals).filter((item) => item.status === "pending");
   const usage = store.state.usage[utcDay()] ?? { tokens: 0, estimatedUsd: 0 };
   await discord.reply(interaction, `**Social Drive AI 상태**\n실행 중: ${active.size}/${config.maxParallel}\n전체 작업: ${Object.keys(store.state.jobs).length}\n병합 승인 대기: ${pending.length}\n오늘 토큰: ${usage.tokens}\n오늘 예상 비용: $${Number(usage.estimatedUsd).toFixed(2)}`);
 });
 
+onAsync("testApproval", async ({ userId }) => {
+  const id = `test-${Date.now().toString(36)}`;
+  await store.update((state) => {
+    state.approvals[id] = { id, type: "dry-run", createdAt: Date.now(), expiresAt: Date.now() + config.approvalTtlMs, status: "pending", requestedBy: userId };
+  });
+  await discord.report(`🧪 **건식 승인 요청**\n승인 ID: \`${id}\`\n실제 GitHub·AWS 변경: 없음\n승인: \`/agent-approve id:${id}\`\n거부: \`/agent-reject id:${id}\``);
+});
+
 await store.load();
 for (const userId of store.state.authorizedDiscordUsers ?? []) discord.authorize(userId);
+try {
+  const brandVersion = await discord.brandVersion();
+  if (store.state.discordBrandVersion !== brandVersion) {
+    await discord.updateBrand();
+    await store.update((state) => { state.discordBrandVersion = brandVersion; });
+    log("discord_brand_updated", { name: config.discordDisplayName });
+  }
+} catch (error) {
+  log("discord_brand_update_failed", { error: error.message });
+}
 discord.connect();
-discord.once("ready", () => void discord.report(`🟢 **Social Drive AI 시작**\n상태: GitHub Issue 감시 중\n최대 병렬 Agent: ${config.maxParallel}\n대상: ${config.githubOwner}/${config.githubRepo}`));
+discord.once("ready", () => void discord.report(`🟢 **개발자 시작**\n상태: GitHub Issue 감시 중\n최대 병렬 Agent: ${config.maxParallel}\n대상: ${config.githubOwner}/${config.githubRepo}`));
 await poll().catch((error) => log("poll_failed", { error: error.message }));
 setInterval(() => poll().catch((error) => log("poll_failed", { error: error.message })), config.pollIntervalMs);
 

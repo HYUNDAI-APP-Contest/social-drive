@@ -1,11 +1,14 @@
 import { EventEmitter } from "node:events";
 import { timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
 
 const commands = [
   { name: "agent-approve", description: "Codex PR 병합을 승인합니다", options: [{ type: 3, name: "id", description: "승인 ID (예: pr-12)", required: true }] },
   { name: "agent-reject", description: "Codex PR 병합을 거부합니다", options: [{ type: 3, name: "id", description: "승인 ID (예: pr-12)", required: true }] },
   { name: "agent-claim", description: "최초 Discord 승인자로 등록합니다", options: [{ type: 3, name: "code", description: "로컬 설치 시 출력된 등록 코드", required: true }] },
   { name: "agent-status", description: "자율 개발 오케스트레이터 상태를 확인합니다" },
+  { name: "agent-test-approval", description: "실제 병합 없이 Discord 승인 게이트를 테스트합니다" },
 ];
 
 const equalSecret = (left, right) => {
@@ -16,6 +19,23 @@ const equalSecret = (left, right) => {
 export class Discord extends EventEmitter {
   constructor(config) { super(); this.config = config; this.socket = null; this.sequence = null; this.heartbeat = null; }
   authorize(userId) { this.config.discordApprovers.add(userId); }
+
+  async brandVersion() {
+    const avatar = await fs.readFile(this.config.discordAvatarPath);
+    return createHash("sha256").update(this.config.discordDisplayName).update(avatar).digest("hex");
+  }
+
+  async updateBrand() {
+    const avatar = await fs.readFile(this.config.discordAvatarPath);
+    const data = `data:image/png;base64,${avatar.toString("base64")}`;
+    await this.api("PATCH", "/users/@me", { avatar: data });
+    await this.api("PATCH", `/guilds/${this.config.discordGuildId}/members/@me`, { nick: this.config.discordDisplayName });
+    const response = await fetch(this.config.discordWebhookUrl, {
+      method: "PATCH", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: this.config.discordDisplayName, avatar: data }), signal: AbortSignal.timeout(15_000),
+    });
+    if (!response.ok) throw new Error(`Discord webhook branding: ${response.status} ${await response.text()}`);
+  }
 
   async api(method, path, body) {
     const response = await fetch(`https://discord.com/api/v10${path}`, {
@@ -28,16 +48,27 @@ export class Discord extends EventEmitter {
   }
 
   async report(content) {
-    const safe = String(content).replaceAll(this.config.githubToken, "[REDACTED]").slice(0, 1900);
+    let safe = String(content);
+    for (const secret of [this.config.githubToken, this.config.discordBotToken, this.config.discordWebhookUrl].filter(Boolean)) safe = safe.replaceAll(secret, "[REDACTED]");
+    safe = safe.slice(0, 1900);
     const response = await fetch(this.config.discordWebhookUrl, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "Social Drive AI", content: safe, allowed_mentions: { parse: [] } }), signal: AbortSignal.timeout(15_000),
+      body: JSON.stringify({ username: this.config.discordDisplayName, content: safe, allowed_mentions: { parse: [] } }), signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) throw new Error(`Discord webhook: ${response.status}`);
   }
 
   async registerCommands() {
     await this.api("PUT", `/applications/${this.config.discordApplicationId}/guilds/${this.config.discordGuildId}/commands`, commands);
+  }
+
+  async registerCommandsWithRetry() {
+    let lastError;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try { await this.registerCommands(); return; }
+      catch (error) { lastError = error; await new Promise((resolve) => setTimeout(resolve, attempt * 1_000)); }
+    }
+    throw lastError;
   }
 
   connect() {
@@ -62,7 +93,9 @@ export class Discord extends EventEmitter {
       return;
     }
     if (packet.t === "READY") {
-      await this.registerCommands(); this.emit("ready"); return;
+      try { await this.registerCommandsWithRetry(); this.emit("ready"); }
+      catch (error) { this.emit("gatewayError", error); this.socket.close(4000, "command registration failed"); }
+      return;
     }
     if (packet.t !== "INTERACTION_CREATE" || packet.d.type !== 2 || packet.d.channel_id !== this.config.discordChannelId) return;
     const interaction = packet.d;
@@ -79,6 +112,12 @@ export class Discord extends EventEmitter {
     if (name === "agent-status") {
       if (!this.config.discordApprovers.has(userId)) return void this.reply(interaction, "승인 권한이 없습니다.");
       this.emit("status", { interaction, userId }); return;
+    }
+    if (name === "agent-test-approval") {
+      if (!this.config.discordApprovers.has(userId)) return void this.reply(interaction, "승인 권한이 없습니다.");
+      this.emit("testApproval", { userId });
+      await this.reply(interaction, "건식 승인 요청을 생성했습니다. 보고 채널에서 승인 ID를 확인하세요.");
+      return;
     }
     if (!["agent-approve", "agent-reject"].includes(name)) return;
     if (!this.config.discordApprovers.has(userId)) return void this.reply(interaction, "승인 권한이 없습니다.");

@@ -8,6 +8,7 @@ RUN apt-get update \
 WORKDIR /app
 COPY package.json ./
 COPY src ./src
+COPY assets ./assets
 
 USER node
 CMD ["node", "src/index.mjs"]

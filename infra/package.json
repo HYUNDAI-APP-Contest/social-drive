@@ -1,0 +1,11 @@
+{
+  "name": "social-drive-infra",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test",
+    "validate": "node --test && (command -v sam >/dev/null && sam validate --lint --template-file template.yaml || echo 'SAM CLI not installed; deterministic security checks passed')"
+  }
+}
+

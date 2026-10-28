@@ -26,6 +26,8 @@ export function loadConfig({ requireSecrets = true } = {}) {
     discordApplicationId: process.env.DISCORD_APPLICATION_ID ?? "",
     discordApprovers: new Set((process.env.DISCORD_APPROVER_USER_IDS ?? "").split(",").map((v) => v.trim()).filter(Boolean)),
     discordBootstrapCode: process.env.DISCORD_BOOTSTRAP_CODE ?? "",
+    discordDisplayName: process.env.DISCORD_DISPLAY_NAME ?? "개발자",
+    discordAvatarPath: path.resolve(process.env.DISCORD_AVATAR_PATH ?? "./orchestrator/assets/developer-avatar.png"),
     codexCommand: process.env.CODEX_COMMAND ?? "codex app-server --listen stdio://",
     codexModel: process.env.CODEX_MODEL || null,
     maxParallel: integer("MAX_PARALLEL_AGENTS", 3, 1),

@@ -42,9 +42,13 @@ if [[ -z "$channel_id" || -z "$guild_id" || -z "$application_id" ]]; then
   exit 1
 fi
 
-invite_url="https://discord.com/oauth2/authorize?client_id=${application_id}&permissions=0&integration_type=0&scope=bot%20applications.commands"
+invite_url="https://discord.com/oauth2/authorize?client_id=${application_id}&permissions=67109888&integration_type=0&scope=bot%20applications.commands"
 if ! curl -fsS -H "Authorization: Bot $bot_token" "https://discord.com/api/v10/guilds/$guild_id" >/dev/null; then
   printf 'The bot is not in the webhook server yet. Open this URL, add it, then rerun this script:\n%s\n' "$invite_url" >&2
+  exit 1
+fi
+if ! curl -fsS -H "Authorization: Bot $bot_token" "https://discord.com/api/v10/channels/$channel_id" >/dev/null; then
+  printf 'The bot cannot view the selected webhook channel. Grant View Channel permission, then rerun this script.\n' >&2
   exit 1
 fi
 
@@ -63,6 +67,8 @@ umask 077
   printf 'DISCORD_APPLICATION_ID=%s\n' "$application_id"
   printf 'DISCORD_APPROVER_USER_IDS=\n'
   printf 'DISCORD_BOOTSTRAP_CODE=%s\n' "$bootstrap_code"
+  printf 'DISCORD_DISPLAY_NAME=개발자\n'
+  printf 'DISCORD_AVATAR_PATH=%s/orchestrator/assets/developer-avatar.png\n' "$repo_root"
   printf 'CODEX_COMMAND=codex app-server --listen stdio://\n'
   printf 'CODEX_MODEL=\n'
   printf 'MAX_PARALLEL_AGENTS=3\n'
@@ -105,14 +111,17 @@ EOF
 
 launchctl bootout "gui/$(id -u)" "$plist" >/dev/null 2>&1 || true
 launchctl bootstrap "gui/$(id -u)" "$plist"
+launchctl kickstart -k "gui/$(id -u)/com.socialdrive.codex-orchestrator"
 
 gh label create agent:ready --repo HYUNDAI-APP-Contest/social-drive --color 1D76DB --description "Ready for autonomous Codex implementation" --force
 
-git add -A
+git add -- .env.example compose.yaml orchestrator scripts
 if ! git diff --cached --quiet; then
-  git commit -m "feat: add Discord approval workflow"
+  git commit -m "feat: add autonomous development foundation"
   git push origin main
 fi
+
+"$node_bin" "--env-file=$env_file" "$repo_root/scripts/send-discord-test.mjs"
 
 printf '\nSetup complete.\n'
 printf 'Discord claim code: %s\n' "$bootstrap_code"
