@@ -42,7 +42,7 @@ if [[ -z "$channel_id" || -z "$guild_id" || -z "$application_id" ]]; then
   exit 1
 fi
 
-invite_url="https://discord.com/oauth2/authorize?client_id=${application_id}&permissions=67109888&integration_type=0&scope=bot%20applications.commands"
+invite_url="https://discord.com/oauth2/authorize?client_id=${application_id}&permissions=67128320&integration_type=0&scope=bot%20applications.commands"
 if ! curl -fsS -H "Authorization: Bot $bot_token" "https://discord.com/api/v10/guilds/$guild_id" >/dev/null; then
   printf 'The bot is not in the webhook server yet. Open this URL, add it, then rerun this script:\n%s\n' "$invite_url" >&2
   exit 1

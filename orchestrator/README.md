@@ -8,7 +8,7 @@ This service implements the Symphony control-loop pattern for GitHub Issues, Cod
 2. The orchestrator starts up to three isolated issue workspaces.
 3. Codex edits, tests, and commits inside its workspace with GitHub and Discord secrets removed from its environment.
 4. The host pushes the branch and opens a pull request.
-5. An authorized Discord user runs `/agent-approve` or `/agent-reject`.
+5. An authorized Discord user clicks the approval or rejection button. Slash commands remain as a fallback.
 6. Only the host performs the squash merge.
 
 ## Local setup

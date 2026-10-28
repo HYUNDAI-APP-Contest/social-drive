@@ -58,6 +58,25 @@ export class Discord extends EventEmitter {
     if (!response.ok) throw new Error(`Discord webhook: ${response.status}`);
   }
 
+  async requestApproval({ id, title, description, url = null }) {
+    const fields = [{ name: "승인 ID", value: `\`${id}\``, inline: true }];
+    if (url) fields.push({ name: "검토", value: `[변경사항 열기](${url})`, inline: true });
+    await this.api("POST", `/channels/${this.config.discordChannelId}/messages`, {
+      content: "🔐 **사용자 승인이 필요합니다**",
+      embeds: [{ title, description, color: 0x002c5f, fields, footer: { text: "일반 개발 작업은 자동 진행되며 중요한 변경만 묻습니다." } }],
+      components: [{ type: 1, components: [
+        { type: 2, style: 3, label: "승인", emoji: { name: "✅" }, custom_id: `approval:approve:${id}` },
+        { type: 2, style: 4, label: "거부", emoji: { name: "🛑" }, custom_id: `approval:reject:${id}` },
+      ] }],
+      allowed_mentions: { parse: [] },
+    });
+  }
+
+  async disableApprovalButtons(interaction) {
+    const components = (interaction.message?.components ?? []).map((row) => ({ ...row, components: row.components.map((component) => ({ ...component, disabled: true })) }));
+    if (interaction.message?.id) await this.api("PATCH", `/channels/${interaction.channel_id}/messages/${interaction.message.id}`, { components });
+  }
+
   async registerCommands() {
     await this.api("PUT", `/applications/${this.config.discordApplicationId}/guilds/${this.config.discordGuildId}/commands`, commands);
   }
@@ -97,9 +116,20 @@ export class Discord extends EventEmitter {
       catch (error) { this.emit("gatewayError", error); this.socket.close(4000, "command registration failed"); }
       return;
     }
-    if (packet.t !== "INTERACTION_CREATE" || packet.d.type !== 2 || packet.d.channel_id !== this.config.discordChannelId) return;
+    if (packet.t !== "INTERACTION_CREATE" || packet.d.channel_id !== this.config.discordChannelId) return;
     const interaction = packet.d;
     const userId = interaction.member?.user?.id ?? interaction.user?.id;
+
+    if (interaction.type === 3) {
+      const match = interaction.data.custom_id?.match(/^approval:(approve|reject):(.+)$/);
+      if (!match) return;
+      if (!this.config.discordApprovers.has(userId)) return void this.reply(interaction, "승인 권한이 없습니다.");
+      await this.disableApprovalButtons(interaction).catch((error) => this.emit("gatewayError", error));
+      this.emit("approval", { action: match[1], id: match[2], userId });
+      await this.reply(interaction, `${match[1] === "approve" ? "승인" : "거부"} 요청을 접수했습니다.`);
+      return;
+    }
+    if (interaction.type !== 2) return;
     const name = interaction.data.name;
     const value = interaction.data.options?.[0]?.value;
 

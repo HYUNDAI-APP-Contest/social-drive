@@ -73,7 +73,7 @@ async function runIssue(issue) {
     });
     await github.removeReadyLabel(issue.number).catch(() => {});
     await github.comment(issue.number, `Codex completed the implementation: ${pr.html_url}\n\nMerge is waiting for Discord approval.`);
-    await discord.report(`✅ **#${issue.number} 구현 완료**\nPR: ${pr.html_url}\n승인 ID: \`${id}\`\n병합: \`/agent-approve\`\n거부: \`/agent-reject\``);
+    await discord.requestApproval({ id, title: `PR #${pr.number} 병합`, description: `#${issue.number} ${issue.title}\n\nCodex 구현과 검증이 끝났습니다. PR을 검토한 뒤 버튼을 선택하세요.`, url: pr.html_url });
   } catch (error) {
     log("job_failed", { issue: issue.number, error: redact(error.message) });
     await store.update((state) => {
@@ -150,7 +150,7 @@ onAsync("testApproval", async ({ userId }) => {
   await store.update((state) => {
     state.approvals[id] = { id, type: "dry-run", createdAt: Date.now(), expiresAt: Date.now() + config.approvalTtlMs, status: "pending", requestedBy: userId };
   });
-  await discord.report(`🧪 **건식 승인 요청**\n승인 ID: \`${id}\`\n실제 GitHub·AWS 변경: 없음\n승인: \`/agent-approve id:${id}\`\n거부: \`/agent-reject id:${id}\``);
+  await discord.requestApproval({ id, title: "건식 승인 게이트 테스트", description: "실제 GitHub·AWS 변경은 발생하지 않습니다. 아래 버튼으로 승인 또는 거부 흐름을 시험하세요." });
 });
 
 await store.load();
