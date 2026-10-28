@@ -1,0 +1,26 @@
+services:
+  orchestrator:
+    build:
+      context: ./orchestrator
+    init: true
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      SOURCE_REPOSITORY: /repository
+      WORKSPACE_ROOT: /runtime/workspaces
+      STATE_PATH: /runtime/data/state.json
+    volumes:
+      - ./:/repository:ro
+      - orchestrator-runtime:/runtime
+      - ${HOME}/.codex:/home/node/.codex:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=1g
+
+volumes:
+  orchestrator-runtime:
+

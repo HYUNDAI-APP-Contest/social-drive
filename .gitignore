@@ -1,0 +1,8 @@
+.env
+.DS_Store
+node_modules/
+orchestrator/data/
+orchestrator/logs/
+orchestrator/workspaces/
+*.log
+
