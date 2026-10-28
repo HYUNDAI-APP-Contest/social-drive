@@ -74,9 +74,9 @@ export class Discord extends EventEmitter {
 
   persona(role) {
     const personas = {
-      architect: { name: "아키 · 설계자", color: 0x3b82f6, avatarPath: this.config.discordArchitectAvatarPath },
-      builder: { name: "볼트 · 구현자", color: 0x35d0ba, avatarPath: this.config.discordBuilderAvatarPath },
-      reviewer: { name: "센티넬 · 검토자", color: 0xffb547, avatarPath: this.config.discordReviewerAvatarPath },
+      architect: { name: "아키(기획·설계)", color: 0x3b82f6, avatarPath: this.config.discordArchitectAvatarPath },
+      designer: { name: "픽시(디자인·개발)", color: 0xd96cff, avatarPath: this.config.discordDesignerAvatarPath },
+      reviewer: { name: "센티넬(검토자)", color: 0xffb547, avatarPath: this.config.discordReviewerAvatarPath },
     };
     return personas[role];
   }

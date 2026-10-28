@@ -29,7 +29,7 @@ export function loadConfig({ requireSecrets = true } = {}) {
     discordDisplayName: process.env.DISCORD_DISPLAY_NAME ?? "개발자",
     discordAvatarPath: path.resolve(process.env.DISCORD_AVATAR_PATH ?? "./orchestrator/assets/developer-avatar.png"),
     discordArchitectAvatarPath: path.resolve(process.env.DISCORD_ARCHITECT_AVATAR_PATH ?? "./orchestrator/assets/personas/aki-architect.png"),
-    discordBuilderAvatarPath: path.resolve(process.env.DISCORD_BUILDER_AVATAR_PATH ?? "./orchestrator/assets/personas/bolt-builder.png"),
+    discordDesignerAvatarPath: path.resolve(process.env.DISCORD_DESIGNER_AVATAR_PATH ?? "./orchestrator/assets/personas/pixie-designer.png"),
     discordReviewerAvatarPath: path.resolve(process.env.DISCORD_REVIEWER_AVATAR_PATH ?? "./orchestrator/assets/personas/sentinel-reviewer.png"),
     codexCommand: process.env.CODEX_COMMAND ?? "codex app-server --listen stdio://",
     codexModel: process.env.CODEX_MODEL || null,

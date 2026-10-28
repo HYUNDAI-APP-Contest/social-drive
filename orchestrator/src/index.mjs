@@ -49,7 +49,7 @@ async function runIssue(issue) {
     await store.update((state) => { state.jobs[key] = { ...(state.jobs[key] ?? {}), issue: issue.number, title: issue.title, status: "preparing", attempts: (state.jobs[key]?.attempts ?? 0) + 1, error: null, nextRetryAt: null, updatedAt: new Date().toISOString() }; });
     const { workspace, branch } = await workspaces.prepare(issue);
     await store.update((state) => { state.jobs[key].status = "running"; state.jobs[key].workspace = workspace; state.jobs[key].branch = branch; });
-    await discord.report(`🤖 **#${issue.number} ${issue.title}** 3인 개발 회의를 시작합니다.\n브랜치: \`${branch}\`\n순서: 아키 설계 → 볼트 구현 → 센티넬 독립 검토`);
+    await discord.report(`🤖 **#${issue.number} ${issue.title}** 3인 개발 회의를 시작합니다.\n브랜치: \`${branch}\`\n순서: 아키 기획·설계 → 픽시 디자인·개발 → 센티넬 독립 검토`);
 
     const workflow = await fs.readFile(path.join(config.sourceRepository, "WORKFLOW.md"), "utf8").catch(() => "");
     const issuePrompt = `Issue #${issue.number}: ${issue.title}\n\n${issue.body ?? ""}`;
@@ -68,35 +68,35 @@ async function runIssue(issue) {
 
     await store.update((state) => { state.jobs[key].status = "planning"; });
     const plan = await runRole({
-      role: "아키",
+      role: "아키(기획·설계)",
       meter: "architect",
       sandboxMode: "read-only",
-      instructions: "You are 아키, the senior systems architect. Analyze only; never edit files, push, deploy, or request credentials. Produce a concise implementation contract for 볼트 and explicit review criteria for 센티넬.",
-      prompt: `${workflow}\n\n# 역할: 아키 · 설계자\n${issuePrompt}\n\n저장소를 읽고 구현 계약을 작성하세요. 범위, 영향 파일, 설계 결정, 테스트, 보안·UX 위험, 완료 기준을 포함하세요. 볼트가 바로 구현하고 센티넬이 독립 검증할 수 있을 정도로 구체적으로 작성하세요.`,
+      instructions: "You are 아키, the senior product planner and systems architect. Analyze only; never edit files, push, deploy, or request credentials. Produce one concise product and technical contract for 픽시, with explicit review criteria for 센티넬.",
+      prompt: `${workflow}\n\n# 역할: 아키(기획·설계)\n${issuePrompt}\n\n저장소와 요구사항을 읽고 통합 기획·설계 계약을 작성하세요. 사용자 문제와 여정, 우선순위, 범위와 비범위, 엣지 케이스, 영향 파일, 데이터·상태 흐름, 인터페이스, 설계 결정, 테스트, 보안·성능 위험, 측정 가능한 완료 기준을 포함하세요. 픽시가 디자인과 구현을 바로 진행하고 센티넬이 독립 검증할 수 있을 정도로 구체적이어야 합니다.`,
     });
     await store.update((state) => { state.jobs[key].plan = plan; });
-    await discord.personaReport("architect", `#${issue.number} 구현 계약`, plan);
+    await discord.personaReport("architect", `#${issue.number} 기획·설계 계약`, plan);
 
     await store.update((state) => { state.jobs[key].status = "implementing"; });
-    let builderReport = await runRole({
-      role: "볼트",
-      meter: "builder-initial",
+    let implementationReport = await runRole({
+      role: "픽시(디자인·개발)",
+      meter: "designer-builder-initial",
       sandboxMode: "workspace-write",
-      instructions: "You are 볼트, the implementation engineer. Follow 아키's contract and repository instructions. Edit and test inside the workspace, commit locally, and never push, merge, deploy, or access credentials.",
-      prompt: `${workflow}\n\n# 역할: 볼트 · 구현자\n${issuePrompt}\n\n# 아키의 구현 계약\n${plan}\n\n계약을 구현하고 관련 테스트를 실행하세요. 완료 후 변경 파일, 테스트 증거, 남은 위험을 보고하고 로컬 커밋을 만드세요.`,
+      instructions: "You are 픽시, the senior female product designer and implementation engineer. Follow 아키's product and technical contract and repository instructions. Define the UX before editing, then implement and test inside the workspace. Commit locally, and never push, merge, deploy, or access credentials.",
+      prompt: `${workflow}\n\n# 역할: 픽시(디자인·개발)\n${issuePrompt}\n\n# 아키의 기획·설계 계약\n${plan}\n\n먼저 기존 디자인 시스템을 기준으로 사용자 흐름, 화면 계층, 컴포넌트 상태, 로딩·빈 화면·오류, 반응형, 접근성, 모션, 문구와 시각 완성도 기준을 정한 뒤 곧바로 구현하세요. UI가 없는 작업이면 사용자 경험과 운영 가시성을 설계하고 구현하세요. 관련 테스트를 실행하고 변경 파일, 테스트 증거, 디자인 반영 증거, 남은 위험을 보고한 뒤 로컬 커밋을 만드세요.`,
     });
-    await discord.personaReport("builder", `#${issue.number} 구현 보고`, builderReport);
+    await discord.personaReport("designer", `#${issue.number} 디자인·개발 보고`, implementationReport);
 
     let approved = false;
     let finalReview = "";
     for (let round = 1; round <= config.maxReviewRounds; round += 1) {
       await store.update((state) => { state.jobs[key].status = "reviewing"; state.jobs[key].reviewRound = round; });
       finalReview = await runRole({
-        role: "센티넬",
+        role: "센티넬(검토자)",
         meter: `reviewer-${round}`,
         sandboxMode: "read-only",
         instructions: "You are 센티넬, an independent quality and security reviewer. Never edit files. Inspect the actual diff and test evidence, challenge assumptions, and fail closed. End with exactly VERDICT: APPROVE or VERDICT: CHANGES_REQUIRED.",
-        prompt: `# 역할: 센티넬 · 독립 검토자\n${issuePrompt}\n\n# 아키의 계약\n${plan}\n\n# 볼트의 보고\n${builderReport}\n\n실제 git diff와 테스트를 독립적으로 확인하세요. 기능 정확성, 회귀, 보안, 개인정보, 자동차 UX, 테스트 증거를 검토하고 구체적인 발견사항을 작성하세요. 마지막 줄은 반드시 VERDICT: APPROVE 또는 VERDICT: CHANGES_REQUIRED 중 하나여야 합니다.`,
+        prompt: `# 역할: 센티넬(검토자)\n${issuePrompt}\n\n# 아키의 기획·설계 계약\n${plan}\n\n# 픽시의 디자인·개발 보고\n${implementationReport}\n\n실제 git diff와 테스트를 독립적으로 확인하세요. 기능 정확성, 기획 수용 기준, 디자인 완성도, 모든 UI 상태, 반응형·접근성, 회귀, 보안, 개인정보, 자동차 UX, 테스트 증거를 검토하고 구체적인 발견사항을 작성하세요. 마지막 줄은 반드시 VERDICT: APPROVE 또는 VERDICT: CHANGES_REQUIRED 중 하나여야 합니다.`,
       });
       await store.update((state) => { state.jobs[key].reviews ??= []; state.jobs[key].reviews.push({ round, report: finalReview }); });
       await discord.personaReport("reviewer", `#${issue.number} 독립 검토 · ${round}차`, finalReview);
@@ -105,20 +105,20 @@ async function runIssue(issue) {
       if (round === config.maxReviewRounds) throw new Error(`센티넬 검토를 ${config.maxReviewRounds}회 통과하지 못했습니다.`);
 
       await store.update((state) => { state.jobs[key].status = "reworking"; });
-      builderReport = await runRole({
-        role: "볼트",
-        meter: `builder-rework-${round}`,
+      implementationReport = await runRole({
+        role: "픽시(디자인·개발)",
+        meter: `designer-builder-rework-${round}`,
         sandboxMode: "workspace-write",
-        instructions: "You are 볼트, the implementation engineer. Address every blocking finding from 센티넬, rerun tests, and commit locally. Never push, merge, deploy, or access credentials.",
-        prompt: `# 역할: 볼트 · 재작업\n${issuePrompt}\n\n# 아키의 계약\n${plan}\n\n# 센티넬의 반려 의견\n${finalReview}\n\n각 지적을 수정하고 테스트를 다시 실행하세요. 무엇을 어떻게 해결했는지 근거와 함께 보고하고 로컬 커밋을 만드세요.`,
+        instructions: "You are 픽시, the product designer and implementation engineer. Address every blocking functional and design finding from 센티넬, rerun tests, and commit locally. Never push, merge, deploy, or access credentials.",
+        prompt: `# 역할: 픽시(디자인·개발) · 재작업\n${issuePrompt}\n\n# 아키의 기획·설계 계약\n${plan}\n\n# 센티넬의 반려 의견\n${finalReview}\n\n각 지적을 수정하고 테스트를 다시 실행하세요. 무엇을 어떻게 해결했는지 기능·디자인 근거와 함께 보고하고 로컬 커밋을 만드세요.`,
       });
-      await discord.personaReport("builder", `#${issue.number} 검토 반영 · ${round}차`, builderReport);
+      await discord.personaReport("designer", `#${issue.number} 검토 반영 · ${round}차`, implementationReport);
     }
 
     await store.update((state) => { state.jobs[key].status = "publishing"; });
     const commit = await workspaces.ensureCommit(workspace, issue);
     await workspaces.push(workspace, branch);
-    const pr = await github.createPullRequest(branch, `[Agent] ${issue.title}`, `Closes #${issue.number}\n\nThree-role autonomous workflow completed: 아키 architecture, 볼트 implementation, 센티넬 independent approval. Merge is gated by Discord approval.\n\nCommit: ${commit}\n\nReviewer verdict:\n${finalReview.slice(-1200)}`);
+    const pr = await github.createPullRequest(branch, `[Agent] ${issue.title}`, `Closes #${issue.number}\n\nThree-role autonomous workflow completed: 아키 product planning and architecture, 픽시 product design and implementation, 센티넬 independent approval. Merge is gated by Discord approval.\n\nCommit: ${commit}\n\nReviewer verdict:\n${finalReview.slice(-1200)}`);
     const id = approvalId(pr);
     await store.update((state) => {
       state.jobs[key] = { ...state.jobs[key], status: "awaiting_merge_approval", pr: pr.number, prUrl: pr.html_url, commit, updatedAt: new Date().toISOString() };
@@ -209,9 +209,9 @@ onAsync("testApproval", async ({ userId }) => {
   await store.update((state) => {
     state.approvals[id] = { id, type: "dry-run", createdAt: Date.now(), expiresAt: Date.now() + config.approvalTtlMs, status: "pending", requestedBy: userId };
   });
-  await discord.personaReport("architect", "회의 테스트 · 구현 계약", "요구사항을 작은 단위로 분리하고, 외부 변경 없이 승인 게이트의 메시지·권한·감사 흐름만 검증하겠습니다.");
-  await discord.personaReport("builder", "회의 테스트 · 실행 결과", "건식 승인 요청을 생성했습니다. GitHub, AWS, 데이터에는 어떤 변경도 수행하지 않았습니다.");
-  await discord.personaReport("reviewer", "회의 테스트 · 독립 검토", "승인 ID, 만료 시간, 승인자 권한, 중복 클릭 방지를 확인했습니다.\n\nVERDICT: APPROVE");
+  await discord.personaReport("architect", "회의 테스트 · 기획·설계", "사용자는 승인 ID를 복사하지 않고 버튼 한 번으로 결정할 수 있어야 합니다. 권한, 만료, 중복 처리 방지를 포함한 건식 승인 흐름을 완료 기준으로 설계했습니다.");
+  await discord.personaReport("designer", "회의 테스트 · 디자인·개발", "승인과 거부를 색상·아이콘·문구로 구분하고 검토 링크와 영향이 한 화면에서 읽히도록 구성했습니다. GitHub, AWS, 데이터에는 어떤 변경도 수행하지 않았습니다.");
+  await discord.personaReport("reviewer", "회의 테스트 · 독립 검토", "기획 기준, 버튼 가독성, 승인 ID, 만료 시간, 승인자 권한, 중복 클릭 방지를 확인했습니다.\n\nVERDICT: APPROVE");
   await discord.requestApproval({ id, title: "건식 승인 게이트 테스트", description: "실제 GitHub·AWS 변경은 발생하지 않습니다. 아래 버튼으로 승인 또는 거부 흐름을 시험하세요." });
 });
 

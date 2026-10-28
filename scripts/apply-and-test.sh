@@ -9,7 +9,7 @@ test -f .env
 
 git add -- .env.example .github compose.yaml design infra orchestrator scripts
 if ! git diff --cached --quiet; then
-  git commit -m "feat: add secure AWS and Discord approval foundation"
+  git commit -m "feat: update autonomous development orchestrator"
   git push origin main
 fi
 
