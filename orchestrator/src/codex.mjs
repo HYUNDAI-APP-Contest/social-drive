@@ -56,7 +56,15 @@ export class CodexAppServer {
       this.send({ jsonrpc: "2.0", id: message.id, result: decision }); return;
     }
     this.onEvent({ event: message.method ?? "notification", params: message.params });
-    if (message.method === "turn/completed" && message.params?.threadId === this.completed?.threadId) this.completed.resolve(message.params.turn);
+    if (message.method === "turn/completed" && message.params?.threadId === this.completed?.threadId) {
+      const turn = message.params.turn;
+      if (turn?.status === "completed") this.completed.resolve(turn);
+      else {
+        const error = new Error(turn?.error?.message ?? `Codex turn ${turn?.status ?? "failed"}`);
+        error.codexErrorInfo = turn?.error?.codexErrorInfo ?? null;
+        this.completed.reject(error);
+      }
+    }
   }
 
   failAll(error) {

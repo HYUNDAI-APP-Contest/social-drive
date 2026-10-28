@@ -1,0 +1,45 @@
+name: Autonomous development task
+description: Queue a scoped task for the Codex orchestrator
+title: "[Agent] "
+labels:
+  - agent:ready
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Saving this issue queues autonomous development. Codex may edit, test, commit, push a branch, and open a PR. Merge and AWS deployment still require Discord approval.
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: Describe one concrete outcome.
+      placeholder: What should be true when this task is complete?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List observable checks that prove completion.
+      placeholder: |
+        - [ ] Behavior implemented
+        - [ ] Tests pass
+        - [ ] Documentation updated
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and constraints
+      description: Relevant files, designs, non-goals, and safety constraints.
+  - type: dropdown
+    id: risk
+    attributes:
+      label: Risk level
+      options:
+        - Low — local code and tests only
+        - Medium — dependencies or configuration
+        - High — infrastructure, deployment, or external side effects
+    validations:
+      required: true
+

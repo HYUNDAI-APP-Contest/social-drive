@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { loadConfig } from "./config.mjs";
 import { Store, utcDay } from "./store.mjs";
-import { budgetStatus } from "./policy.mjs";
+import { budgetStatus, isUsageLimitError } from "./policy.mjs";
 import { GitHub } from "./github.mjs";
 import { Discord } from "./discord.mjs";
 import { WorkspaceManager } from "./workspace.mjs";
@@ -46,7 +46,7 @@ async function accountUsage(issueNumber, event) {
 async function runIssue(issue) {
   const key = String(issue.number);
   try {
-    await store.update((state) => { state.jobs[key] = { ...(state.jobs[key] ?? {}), issue: issue.number, title: issue.title, status: "preparing", attempts: (state.jobs[key]?.attempts ?? 0) + 1, updatedAt: new Date().toISOString() }; });
+    await store.update((state) => { state.jobs[key] = { ...(state.jobs[key] ?? {}), issue: issue.number, title: issue.title, status: "preparing", attempts: (state.jobs[key]?.attempts ?? 0) + 1, error: null, nextRetryAt: null, updatedAt: new Date().toISOString() }; });
     const { workspace, branch } = await workspaces.prepare(issue);
     await store.update((state) => { state.jobs[key].status = "running"; state.jobs[key].workspace = workspace; state.jobs[key].branch = branch; });
     await discord.report(`🤖 **#${issue.number} ${issue.title}** 작업을 시작했습니다. 브랜치: \`${branch}\``);
@@ -76,11 +76,16 @@ async function runIssue(issue) {
     await discord.requestApproval({ id, title: `PR #${pr.number} 병합`, description: `#${issue.number} ${issue.title}\n\nCodex 구현과 검증이 끝났습니다. PR을 검토한 뒤 버튼을 선택하세요.`, url: pr.html_url });
   } catch (error) {
     log("job_failed", { issue: issue.number, error: redact(error.message) });
+    const usageLimited = isUsageLimitError(error);
     await store.update((state) => {
       const job = state.jobs[key] ?? { issue: issue.number, attempts: 1 };
-      job.status = job.attempts <= config.maxRetries ? "retry" : "failed"; job.error = error.message; job.updatedAt = new Date().toISOString(); state.jobs[key] = job;
+      job.status = usageLimited ? "paused_usage_limit" : job.attempts <= config.maxRetries ? "retry" : "failed";
+      job.error = redact(error.message);
+      job.nextRetryAt = usageLimited ? Date.now() + config.usageLimitCooldownMs : null;
+      job.updatedAt = new Date().toISOString(); state.jobs[key] = job;
     });
-    await discord.report(`❌ **#${issue.number} 작업 실패**\n${redact(error.message).slice(0, 1500)}`);
+    if (usageLimited) await discord.report(`⏸️ **#${issue.number} 사용량 한도로 일시 정지**\n작업 상태는 보존됩니다. ${Math.round(config.usageLimitCooldownMs / 60_000)}분 후 자동 재시도합니다.`);
+    else await discord.report(`❌ **#${issue.number} 작업 실패**\n${redact(error.message).slice(0, 1500)}`);
   } finally { active.delete(key); }
 }
 
@@ -92,6 +97,7 @@ async function poll() {
   for (const issue of issues) {
     if (active.size >= config.maxParallel) break;
     const key = String(issue.number); const job = store.state.jobs[key];
+    if (job?.nextRetryAt && Date.now() < job.nextRetryAt) continue;
     if (active.has(key) || ["awaiting_merge_approval", "merged", "rejected", "failed"].includes(job?.status)) continue;
     active.set(key, true); void runIssue(issue);
   }

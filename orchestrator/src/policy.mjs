@@ -16,3 +16,9 @@ export function budgetStatus(config, usage = { tokens: 0, estimatedUsd: 0 }) {
   return { allowed: true, estimatedUsd };
 }
 
+export function isUsageLimitError(error) {
+  const info = typeof error?.codexErrorInfo === "string" ? error.codexErrorInfo : JSON.stringify(error?.codexErrorInfo ?? "");
+  const message = `${error?.message ?? ""} ${info}`;
+  return /usageLimitExceeded|rateLimitExceeded|sessionBudgetExceeded|usage limit|rate limit/i.test(message);
+}
+

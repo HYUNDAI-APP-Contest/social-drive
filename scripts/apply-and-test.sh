@@ -7,7 +7,7 @@ label="com.socialdrive.codex-orchestrator"
 cd "$repo_root"
 test -f .env
 
-git add -- .env.example compose.yaml design infra orchestrator scripts
+git add -- .env.example .github compose.yaml design infra orchestrator scripts
 if ! git diff --cached --quiet; then
   git commit -m "feat: add secure AWS and Discord approval foundation"
   git push origin main

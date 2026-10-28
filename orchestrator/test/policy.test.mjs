@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { budgetStatus, classifyCommand } from "../src/policy.mjs";
+import { budgetStatus, classifyCommand, isUsageLimitError } from "../src/policy.mjs";
 
 test("blocks destructive and deployment commands", () => {
   assert.equal(classifyCommand("rm -rf /", "/work/issue-1").decision, "decline");
@@ -15,5 +15,12 @@ test("allows a workspace-local test", () => {
 test("budget fails closed at token limit", () => {
   const config = { dailyTokenLimit: 100, dailyCostLimitUsd: 10, estimatedUsdPerMillionTokens: 1 };
   assert.equal(budgetStatus(config, { tokens: 100, estimatedUsd: 0 }).allowed, false);
+});
+
+test("recognizes plan usage limit errors for automatic pause", () => {
+  const error = new Error("request failed");
+  error.codexErrorInfo = "usageLimitExceeded";
+  assert.equal(isUsageLimitError(error), true);
+  assert.equal(isUsageLimitError(new Error("ordinary test failure")), false);
 });
 

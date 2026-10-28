@@ -75,6 +75,7 @@ umask 077
   printf 'POLL_INTERVAL_SECONDS=30\n'
   printf 'TURN_TIMEOUT_MINUTES=90\n'
   printf 'MAX_RETRIES=3\n'
+  printf 'USAGE_LIMIT_COOLDOWN_MINUTES=60\n'
   printf 'DAILY_TOKEN_LIMIT=2000000\n'
   printf 'DAILY_COST_LIMIT_USD=25\n'
   printf 'ESTIMATED_USD_PER_1M_TOKENS=10\n'
@@ -115,7 +116,7 @@ launchctl kickstart -k "gui/$(id -u)/com.socialdrive.codex-orchestrator"
 
 gh label create agent:ready --repo HYUNDAI-APP-Contest/social-drive --color 1D76DB --description "Ready for autonomous Codex implementation" --force
 
-git add -- .env.example compose.yaml orchestrator scripts
+git add -- .env.example .github compose.yaml design infra orchestrator scripts
 if ! git diff --cached --quiet; then
   git commit -m "feat: add autonomous development foundation"
   git push origin main

@@ -34,6 +34,7 @@ export function loadConfig({ requireSecrets = true } = {}) {
     pollIntervalMs: integer("POLL_INTERVAL_SECONDS", 30, 5) * 1000,
     turnTimeoutMs: integer("TURN_TIMEOUT_MINUTES", 90, 1) * 60_000,
     maxRetries: integer("MAX_RETRIES", 3, 0),
+    usageLimitCooldownMs: integer("USAGE_LIMIT_COOLDOWN_MINUTES", 60, 5) * 60_000,
     dailyTokenLimit: integer("DAILY_TOKEN_LIMIT", 2_000_000, 1),
     dailyCostLimitUsd: number("DAILY_COST_LIMIT_USD", 25, 0),
     estimatedUsdPerMillionTokens: number("ESTIMATED_USD_PER_1M_TOKENS", 10, 0),
