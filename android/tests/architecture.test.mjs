@@ -208,10 +208,19 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   const relative = "app/src/androidTest/java/com/socialdrive/app/AutomotiveSafetyUiTest.kt";
   assert.equal(fs.existsSync(path.join(root, relative)), true);
   const ui = read(relative);
+  const conflictUi = read("app/src/androidTest/java/com/socialdrive/app/ConflictReviewUiTest.kt");
   for (const marker of [
     "MotionState.Driving", "MotionState.Unknown", "assertDoesNotExist", "pressBack()",
     "기록을 종료할까요?", "parkedUserCanReachPublishThroughDetailOnly", "드라이브 게시",
   ]) assert.ok(ui.includes(marker), marker);
+  for (const source of [ui, conflictUi]) {
+    assert.doesNotMatch(
+      source,
+      /import androidx\.compose\.ui\.test\.assertDoesNotExist/,
+      "Compose 1.7 exposes assertDoesNotExist as a SemanticsNodeInteraction member, not a top-level import",
+    );
+    assert.match(source, /\.assertDoesNotExist\(\)/);
+  }
 });
 
 test("content and upload states are observable in the demo", () => {
