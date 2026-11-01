@@ -130,19 +130,44 @@ internal object PleosReadinessParser {
         val tasks = mutableListOf<TaskBlock>()
         var task: TaskBlock? = null
         var activity: String? = null
+        var activityIndent = -1
         var consistent = true
         dump.lineSequence().forEach { line ->
+            val indent = line.indexOfFirst { !it.isWhitespace() }.let { if (it < 0) Int.MAX_VALUE else it }
+            if (activity != null && indent <= activityIndent && !HIST_RECORD.containsMatchIn(line)) {
+                activity = null
+                activityIndent = -1
+            }
             TASK_HEADER.find(line)?.groupValues?.get(1)?.let { id ->
                 task = TaskBlock(id)
                 tasks += requireNotNull(task)
                 activity = null
+                activityIndent = -1
             }
             ACTIVITY_RECORD.find(line)?.let { match ->
-                if (task?.id != match.groupValues[4]) consistent = false
-                activity = normalize(match.groupValues[2], match.groupValues[3])
-                val active = requireNotNull(activity)
-                task?.components?.add(active)
-                task?.users?.getOrPut(active, ::mutableSetOf)?.add(match.groupValues[1].toInt())
+                val recordTaskId = match.groupValues[4]
+                val component = normalize(match.groupValues[2], match.groupValues[3])
+                val userId = match.groupValues[1].toInt()
+                if (HIST_RECORD.containsMatchIn(line)) {
+                    if (!HIST_ZERO.containsMatchIn(line)) {
+                        activity = null
+                        activityIndent = -1
+                    } else {
+                        if (task?.id != recordTaskId) consistent = false
+                        val detailed = task ?: TaskBlock(recordTaskId).also(tasks::add)
+                        detailed.addRecord(component, userId)
+                        activity = component
+                        activityIndent = indent
+                    }
+                } else {
+                    // Global Resumed/mFocusedApp/application-token summaries use their own tNNN.
+                    TaskBlock(recordTaskId).also { summary ->
+                        summary.addRecord(component, userId)
+                        tasks += summary
+                    }
+                    activity = null
+                    activityIndent = -1
+                }
             }
             val active = activity
             if (active != null) {
@@ -155,6 +180,11 @@ internal object PleosReadinessParser {
             }
         }
         return ParsedTasks(tasks, consistent)
+    }
+
+    private fun TaskBlock.addRecord(component: String, userId: Int) {
+        components += component
+        users.getOrPut(component, ::mutableSetOf) += userId
     }
 
     private fun canonicalize(raw: List<TaskBlock>, currentUserId: Int?): List<CanonicalTask>? {
@@ -212,6 +242,8 @@ internal object PleosReadinessParser {
 
     private val TASK_HEADER = Regex("\\bTask\\{[^\\n]*#([0-9]+)\\b")
     private val ACTIVITY_RECORD = Regex("ActivityRecord\\{[^\\n]*\\su([0-9]+)\\s+([A-Za-z0-9_.]+)/([A-Za-z0-9_.$]+)\\s+t([0-9]+)")
+    private val HIST_RECORD = Regex("\\bHist #[0-9]+:")
+    private val HIST_ZERO = Regex("\\bHist #0:")
     private val VISIBILITY = Regex("(?:^|\\s)mVisible=(true|false)(?:\\s|$)")
     private val LIFECYCLE = Regex("(?:^|\\s)state=(CREATED|STARTED|RESUMED|PAUSED|STOPPED|DESTROYED)(?:\\s|$)")
 }

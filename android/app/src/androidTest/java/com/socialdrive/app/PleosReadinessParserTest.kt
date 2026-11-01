@@ -20,6 +20,8 @@ class PleosReadinessParserTest {
         assertEquals(short.snapshot, full.snapshot)
         val repeatedSections = PleosReadinessParser.observe("42", fixture() + fixture(), "42", 10)
         assertEquals(listOf("10", "20", "30"), requireNotNull(repeatedSections.snapshot).taskIds)
+        val capturedStyle = PleosReadinessParser.observe("42", capturedStyleDump(), "42", 10)
+        assertEquals(listOf("1000299", "1000318", "1000304"), requireNotNull(capturedStyle.snapshot).taskIds)
     }
 
     @Test fun duplicateInvisibleMissingAndPidFlipFailClosed() {
@@ -112,4 +114,14 @@ class PleosReadinessParserTest {
         $epoch 42 42 E AndroidRuntime: Process: ai.umos.homescreen, PID: 42
         $epoch 42 42 E AndroidRuntime: java.lang.IllegalArgumentException: boom
     """.trimIndent()
+
+    private fun capturedStyleDump(): String = buildString {
+        append(task("1000299", "ai.umos.homescreen/.HomeActivity"))
+        append(task("1000318", "ai.umos.drivingview/.DrivingViewActivity"))
+        append(task("1000304", "ai.umos.maps.android.navigation.app/.MainActivity"))
+        appendLine("* Task{empty #1000300 type=organizer}")
+        appendLine("Resumed: ActivityRecord{one u10 ai.umos.homescreen/.HomeActivity t1000299}")
+        appendLine("mFocusedApp=ActivityRecord{two u10 ai.umos.drivingview/.DrivingViewActivity t1000318}")
+        appendLine("topResumedActivity=ActivityRecord{three u10 ai.umos.maps.android.navigation.app/.MainActivity t1000304}")
+    }
 }
