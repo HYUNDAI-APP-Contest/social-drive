@@ -168,10 +168,8 @@ test("Pleos dependencies permissions and flavors are least-privilege isolated", 
   assert.doesNotMatch(build, /(?:implementation|demoImplementation).*?(?:Vehicle|NaviHelper)/);
   assert.doesNotMatch(mainManifest, /uses-permission/);
   const permissions = [...pleosManifest.matchAll(/uses-permission android:name="([^"]+)"/g)].map((match) => match[1]);
-  assert.deepEqual(permissions.sort(), [
-    "pleos.car.permission.CAR_DRIVE",
-    "pleos.car.permission.NAVI_ROUTE_SEARCH",
-  ]);
+  assert.deepEqual(permissions, ["pleos.car.permission.NAVI_ROUTE_SEARCH"]);
+  assert.doesNotMatch(pleosManifest, /CAR_DRIVE/);
   for (const forbidden of ["FusedLocation", "TextToSpeech", "SpeechToText", "CONTROL_CAR_"]) {
     assert.doesNotMatch(build + pleosManifest, new RegExp(forbidden));
   }
@@ -187,7 +185,7 @@ test("actual adapters fail closed and never fall back to demo state", () => {
   assert.match(application, /vehicleMotionSource\.status\.collect[\s\S]*parkedExecutionGate\.transitionTo\(status\.motion\)/);
   assert.match(pleos, /Vehicle\(context\)/);
   assert.match(pleos, /vehicle\.initialize\(\)/);
-  assert.match(pleos, /capabilityResult[\s\S]*currentValueResult[\s\S]*callbackResult/);
+  assert.match(pleos, /lifecycleOnlyResult\(\)/);
   assert.match(pleos, /VehicleMotionStatus\(MotionState\.Unknown, actualUnavailable\)/);
   assert.match(pleos, /requestSimulation\(motion: MotionState\): Boolean = false/);
   assert.doesNotMatch(pleos, /DemoVehicle|FakePleos|VehicleMotionStatus\(MotionState\.Parked/);
@@ -198,19 +196,43 @@ test("actual adapters fail closed and never fall back to demo state", () => {
 
 test("navigation validates named coordinates and serializes requests without logging private places", () => {
   const contract = read("app/src/main/java/com/socialdrive/app/domain/IntegrationContracts.kt");
+  const controller = read("app/src/main/java/com/socialdrive/app/integration/NavigationRequestController.kt");
   const pleos = read("app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
   const detail = read("app/src/main/java/com/socialdrive/app/ui/screens/DetailScreen.kt");
   for (const marker of ["val name: String", "val latitude: Double", "val longitude: Double", "isFinite()", "-90.0..90.0", "-180.0..180.0", "MAX_WAYPOINTS"]) {
     assert.ok(contract.includes(marker), marker);
   }
-  assert.match(pleos, /if \(!requestMutex\.tryLock\(\)\) return NavigationRequestResult\.Busy/);
-  assert.ok(pleos.indexOf("NavigationState.Requesting") < pleos.indexOf("helper.requestRoute("));
-  assert.match(pleos, /delay\(250\)/);
+  assert.match(controller, /lifecycleEpoch/);
+  assert.match(controller, /requestGeneration/);
+  assert.match(controller, /fun timeout\(/);
+  assert.match(controller, /fun settle\(/);
+  assert.match(controller, /quarantineToken/);
+  assert.match(controller, /fun endQuarantine\(/);
+  assert.match(pleos, /RequestStart\.Busy -> NavigationRequestResult\.Busy/);
+  assert.match(pleos, /REQUEST_TIMEOUT_MILLIS = 15_000L/);
+  assert.match(pleos, /MINIMUM_FEEDBACK_MILLIS = 250L/);
+  assert.match(pleos, /STALE_EVENT_QUARANTINE_MILLIS = 750L/);
+  assert.match(pleos, /requestListener\(start\.token\)/);
+  assert.match(pleos, /currentSession\.requestToken != token/);
+  assert.match(pleos, /helperFactory: \(\) -> NaviHelper/);
+  assert.match(pleos, /disposeSessionLocked\(\)[\s\S]*controller\.beginInitialization\(\)/);
+  assert.match(pleos, /previous\.helper\.release\(\)[\s\S]*previous\.rootJob\.cancel\(\)/);
   assert.match(pleos, /NaviHelperEventListener/);
   assert.match(pleos, /safeErrorMessage/);
   assert.doesNotMatch(pleos, /android\.util\.Log|println\(|printStackTrace/);
   assert.match(detail, /drive\.navigationRequest == null/);
   assert.match(detail, /실제 좌표가 포함되지 않아/);
+});
+
+test("Kotlin controller tests cover callback order timeout release reinitialize exception and stale events", () => {
+  const relative = "app/src/test/java/com/socialdrive/app/integration/NavigationRequestControllerTest.kt";
+  assert.equal(fs.existsSync(path.join(root, relative)), true);
+  const suite = read(relative);
+  for (const marker of [
+    "route started then completed", "double callbacks", "timeout", "late callback",
+    "release", "old initialize callback", "invocation exception", "new lifecycle can recover",
+  ]) assert.ok(suite.includes(marker), marker);
+  assert.match(suite, /controller\.routingCompleted\(old\)[\s\S]*ControllerUpdate\.Ignored/);
 });
 
 test("integration UI is explicit about actual demo unavailable and coming-soon features", () => {
@@ -237,6 +259,7 @@ test("all required product boundaries and screens exist", () => {
     "app/src/main/java/com/socialdrive/app/data/fake/FakeDriveRepository.kt",
     "app/src/main/java/com/socialdrive/app/safety/SafetyPolicy.kt",
     "app/src/main/java/com/socialdrive/app/domain/IntegrationContracts.kt",
+    "app/src/main/java/com/socialdrive/app/integration/NavigationRequestController.kt",
     "app/src/demo/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt",
     "app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt",
     "app/src/main/java/com/socialdrive/app/ui/screens/HomeScreen.kt",

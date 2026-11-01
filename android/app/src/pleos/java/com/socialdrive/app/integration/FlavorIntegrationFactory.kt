@@ -26,14 +26,13 @@ import com.socialdrive.app.domain.VehicleMotionSource
 import com.socialdrive.app.domain.VehicleMotionStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import java.util.concurrent.atomic.AtomicBoolean
 
 object FlavorIntegrationFactory {
     fun create(context: Context): IntegrationBundle = IntegrationBundle(
@@ -43,9 +42,9 @@ object FlavorIntegrationFactory {
 }
 
 /**
- * Vehicle v2.3.2 lifecycle is real, but its public Brake surface documents pedal status only.
- * A pedal value is not proof that the vehicle is parked. Until a documented parking/gear
- * signal is approved, every lifecycle/capability/read/callback/error path remains Unknown.
+ * Vehicle v2.3.2 lifecycle is real, but this adapter does not call a permissioned Vehicle API.
+ * Initialization alone is not proof that the vehicle is parked. Until a documented parking/gear
+ * signal is approved and actually read, every path remains Unknown and no Vehicle permission is requested.
  */
 private class PleosVehicleMotionSource(context: Context) : VehicleMotionSource {
     private val vehicle = Vehicle(context)
@@ -61,15 +60,10 @@ private class PleosVehicleMotionSource(context: Context) : VehicleMotionSource {
         mutableStatus.value = VehicleMotionStatus(MotionState.Unknown, actualUnavailable)
         runCatching { vehicle.initialize() }
             .onFailure { failClosed() }
-        capabilityResult()
-        currentValueResult()
-        callbackResult()
+        lifecycleOnlyResult()
     }
 
-    // The published capability/get/callback surface has no verified parking or gear contract.
-    private fun capabilityResult() = failClosed()
-    private fun currentValueResult() = failClosed()
-    private fun callbackResult() = failClosed()
+    private fun lifecycleOnlyResult() = failClosed()
 
     private fun failClosed() {
         mutableStatus.value = VehicleMotionStatus(MotionState.Unknown, actualUnavailable)
@@ -84,69 +78,84 @@ private class PleosVehicleMotionSource(context: Context) : VehicleMotionSource {
 }
 
 private class PleosNavigationGateway(context: Context) : NavigationGateway {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val helper = NaviHelper(context)
-    private val requestMutex = Mutex()
-    private val requestOutstanding = AtomicBoolean(false)
-    private val completionScheduled = AtomicBoolean(false)
-    private val released = AtomicBoolean(false)
+    private val applicationContext = context.applicationContext
+    private val lifecycleLock = Any()
     private val actualUnavailable = CapabilityStatus(CapabilityState.Unavailable, IntegrationSource.Actual, "실차 · 연결 안 됨")
     private val actualAvailable = CapabilityStatus(CapabilityState.Available, IntegrationSource.Actual, "실차")
     private val mutableCapability = MutableStateFlow(actualUnavailable)
     private val mutableState = MutableStateFlow<NavigationState>(NavigationState.Idle(actualUnavailable))
-    private var activeLabel: String? = null
-    private var listenerRegistered = false
+    private val controller = NavigationRequestController(
+        disconnectedIdleState = NavigationState.Idle(actualUnavailable),
+        connectedIdleState = NavigationState.Idle(actualAvailable),
+    )
+    private val helperFactory: () -> NaviHelper = { NaviHelper(applicationContext) }
+    private var session: NaviSession? = null
 
     override val state: StateFlow<NavigationState> = mutableState.asStateFlow()
     override val capability: StateFlow<CapabilityStatus> = mutableCapability.asStateFlow()
 
-    private val listener = object : NaviHelperEventListener {
-        override fun onRouteStarted(routeStartInfo: RouteStartInfo) = completeAfterFeedback(success = true)
-        override fun onRoutingCompleted() = completeAfterFeedback(success = true)
-        override fun onError(errorCode: NaviErrorCode) = completeAfterFeedback(
-            success = false,
-            errorMessage = safeErrorMessage(errorCode),
-        )
-    }
-
     override suspend fun initialize() {
-        released.set(false)
-        helper.initialize(
-            onConnected = {
-                if (!listenerRegistered) {
-                    helper.addListener(listener)
-                    listenerRegistered = true
-                }
-                mutableCapability.value = actualAvailable
-                mutableState.value = NavigationState.Idle(actualAvailable)
-            },
-            onFailed = {
-                mutableCapability.value = actualUnavailable
-                mutableState.value = NavigationState.Failed("차량 내비게이션에 연결할 수 없어요.")
-            },
-        )
+        synchronized(lifecycleLock) {
+            disposeSessionLocked()
+            val lifecycleToken = controller.beginInitialization()
+            val rootJob = SupervisorJob()
+            val newSession = NaviSession(
+                lifecycleToken = lifecycleToken,
+                helper = helperFactory(),
+                rootJob = rootJob,
+                scope = CoroutineScope(rootJob + Dispatchers.Default),
+            )
+            session = newSession
+            mutableCapability.value = actualUnavailable
+            mutableState.value = controller.state()
+            runCatching {
+                newSession.helper.initialize(
+                    onConnected = { handleConnected(newSession) },
+                    onFailed = { handleInitializationFailure(newSession) },
+                )
+            }.onFailure { handleInitializationFailure(newSession) }
+        }
     }
 
     override suspend fun requestRoute(request: NavigationRequest): NavigationRequestResult {
         val validation = NavigationRequestValidator.validate(request)
         if (validation is NavigationValidation.Invalid) {
-            mutableState.value = NavigationState.Failed(validation.userMessage)
+            synchronized(lifecycleLock) { publish(controller.localRejection(validation.userMessage)) }
             return NavigationRequestResult.Rejected(validation.userMessage)
         }
         if (mutableCapability.value.capability != CapabilityState.Available) {
             return NavigationRequestResult.Rejected("차량 내비게이션 연결을 확인해 주세요.")
         }
-        if (!requestMutex.tryLock()) return NavigationRequestResult.Busy
+        return synchronized(lifecycleLock) {
+            val currentSession = session
+                ?: return@synchronized NavigationRequestResult.Rejected("차량 내비게이션 연결을 확인해 주세요.")
+            when (val start = controller.beginRequest(request.requestId, request.destination.name)) {
+                RequestStart.Busy -> NavigationRequestResult.Busy
+                RequestStart.Unavailable -> NavigationRequestResult.Rejected("차량 내비게이션 연결을 확인해 주세요.")
+                is RequestStart.Accepted -> startRequestLocked(currentSession, start, request)
+            }
+        }
+    }
 
-        requestOutstanding.set(true)
-        completionScheduled.set(false)
-        activeLabel = request.destination.name
-        mutableState.value = NavigationState.Requesting(request.requestId, request.destination.name)
+    private fun startRequestLocked(
+        currentSession: NaviSession,
+        start: RequestStart.Accepted,
+        request: NavigationRequest,
+    ): NavigationRequestResult {
+        val listener = requestListener(start.token)
+        currentSession.requestToken = start.token
+        currentSession.listener = listener
+        mutableState.value = start.state
         return runCatching {
+            currentSession.helper.addListener(listener)
+            currentSession.timeoutJob = currentSession.scope.launch {
+                delay(REQUEST_TIMEOUT_MILLIS)
+                handleTimeout(start.token)
+            }
             if (request.waypoints.isEmpty()) {
-                helper.requestRoute(request.destination.toRouteInfo())
+                currentSession.helper.requestRoute(request.destination.toRouteInfo())
             } else {
-                helper.requestRouteWithWaypoints(
+                currentSession.helper.requestRouteWithWaypoints(
                     RouteWithWaypointsRequest(
                         destination = request.destination.toRouteInfo(),
                         waypoints = listOf(request.waypoints.single().toWaypointInfo()),
@@ -155,37 +164,136 @@ private class PleosNavigationGateway(context: Context) : NavigationGateway {
             }
             NavigationRequestResult.Accepted
         }.getOrElse {
-            mutableState.value = NavigationState.Failed("경로 요청을 전달하지 못했어요. 잠시 후 다시 시도해 주세요.")
-            unlockRequest()
+            val update = controller.invocationFailed(start.token, "경로 요청을 전달하지 못했어요. 잠시 후 다시 시도해 주세요.")
+            cleanupRequestLocked(currentSession, start.token)
+            publish(update)
             NavigationRequestResult.Rejected("경로 요청을 전달하지 못했어요.")
         }
     }
 
-    private fun completeAfterFeedback(success: Boolean, errorMessage: String = "") {
-        if (!completionScheduled.compareAndSet(false, true)) return
-        val label = activeLabel ?: return
-        scope.launch {
-            delay(250)
-            if (released.get()) return@launch
-            mutableState.value = if (success) NavigationState.Active(label) else NavigationState.Failed(errorMessage)
-            activeLabel = null
-            unlockRequest()
+    private fun requestListener(token: RequestToken) = object : NaviHelperEventListener {
+        override fun onRouteStarted(routeStartInfo: RouteStartInfo) {
+            handleEvent(token, RequestEvent.RouteStarted)
+        }
+
+        override fun onRoutingCompleted() {
+            handleEvent(token, RequestEvent.RoutingCompleted)
+        }
+
+        override fun onError(errorCode: NaviErrorCode) {
+            handleEvent(token, RequestEvent.Error(safeErrorMessage(errorCode)))
         }
     }
 
-    private fun unlockRequest() {
-        if (requestOutstanding.compareAndSet(true, false)) requestMutex.unlock()
+    private fun handleEvent(token: RequestToken, event: RequestEvent) {
+        synchronized(lifecycleLock) {
+            val currentSession = session ?: return
+            if (currentSession.requestToken != token) return
+            val update = when (event) {
+                RequestEvent.RouteStarted -> controller.routeStarted(token)
+                RequestEvent.RoutingCompleted -> controller.routingCompleted(token)
+                is RequestEvent.Error -> controller.requestError(token, event.userMessage)
+            }
+            if (update == ControllerUpdate.TerminalPending && currentSession.settleJob == null) {
+                currentSession.settleJob = currentSession.scope.launch {
+                    delay(MINIMUM_FEEDBACK_MILLIS)
+                    handleSettle(token)
+                }
+            }
+        }
+    }
+
+    private fun handleSettle(token: RequestToken) {
+        synchronized(lifecycleLock) {
+            val currentSession = session ?: return
+            if (currentSession.requestToken != token) return
+            currentSession.settleJob = null
+            val update = controller.settle(token)
+            if (update is ControllerUpdate.Applied && update.terminal) cleanupRequestLocked(currentSession, token)
+            publish(update)
+        }
+    }
+
+    private fun handleTimeout(token: RequestToken) {
+        synchronized(lifecycleLock) {
+            val currentSession = session ?: return
+            if (currentSession.requestToken != token) return
+            currentSession.timeoutJob = null
+            val update = controller.timeout(token, "차량 내비게이션 응답이 지연되고 있어요. 다시 시도해 주세요.")
+            if (update is ControllerUpdate.Applied && update.terminal) cleanupRequestLocked(currentSession, token)
+            publish(update)
+        }
+    }
+
+    private fun handleConnected(expected: NaviSession) {
+        synchronized(lifecycleLock) {
+            if (session !== expected) return
+            val update = controller.connected(expected.lifecycleToken)
+            if (update is ControllerUpdate.Applied) {
+                mutableCapability.value = actualAvailable
+                publish(update)
+            }
+        }
+    }
+
+    private fun handleInitializationFailure(expected: NaviSession) {
+        synchronized(lifecycleLock) {
+            if (session !== expected) return
+            val update = controller.initializationFailed(
+                expected.lifecycleToken,
+                "차량 내비게이션에 연결할 수 없어요.",
+            )
+            mutableCapability.value = actualUnavailable
+            publish(update)
+            disposeSessionLocked()
+        }
+    }
+
+    private fun cleanupRequestLocked(currentSession: NaviSession, token: RequestToken) {
+        if (currentSession.requestToken != token) return
+        currentSession.timeoutJob?.cancel()
+        currentSession.settleJob?.cancel()
+        currentSession.listener?.let { listener ->
+            runCatching { currentSession.helper.removeListener(listener) }
+        }
+        currentSession.timeoutJob = null
+        currentSession.settleJob = null
+        currentSession.listener = null
+        currentSession.requestToken = null
+        currentSession.quarantineJob?.cancel()
+        currentSession.quarantineJob = currentSession.scope.launch {
+            delay(STALE_EVENT_QUARANTINE_MILLIS)
+            synchronized(lifecycleLock) {
+                if (session !== currentSession) return@synchronized
+                controller.endQuarantine(token)
+                currentSession.quarantineJob = null
+            }
+        }
+    }
+
+    private fun publish(update: ControllerUpdate) {
+        if (update is ControllerUpdate.Applied) mutableState.value = update.state
     }
 
     override fun release() {
-        released.set(true)
-        if (listenerRegistered) runCatching { helper.removeListener(listener) }
-        listenerRegistered = false
-        runCatching { helper.release() }
-        activeLabel = null
-        unlockRequest()
-        mutableCapability.value = actualUnavailable
-        mutableState.value = NavigationState.Idle(actualUnavailable)
+        synchronized(lifecycleLock) {
+            publish(controller.release())
+            mutableCapability.value = actualUnavailable
+            disposeSessionLocked()
+        }
+    }
+
+    private fun disposeSessionLocked() {
+        val previous = session ?: return
+        previous.timeoutJob?.cancel()
+        previous.settleJob?.cancel()
+        previous.quarantineJob?.cancel()
+        previous.listener?.let { listener -> runCatching { previous.helper.removeListener(listener) } }
+        previous.listener = null
+        previous.requestToken = null
+        runCatching { previous.helper.release() }
+        previous.rootJob.cancel()
+        session = null
     }
 
     private fun safeErrorMessage(errorCode: NaviErrorCode): String = when (errorCode) {
@@ -194,6 +302,30 @@ private class PleosNavigationGateway(context: Context) : NavigationGateway {
         NaviErrorCode.CAUSE_SEARCH_ROUTE_TOO_SHORT_DISTANCE -> "목적지가 현재 위치와 너무 가까워요."
         NaviErrorCode.CAUSE_SEARCH_ROUTE -> "경로 탐색 서비스가 응답하지 않아요."
         else -> "차량 내비게이션에서 경로를 처리하지 못했어요."
+    }
+
+    private data class NaviSession(
+        val lifecycleToken: LifecycleToken,
+        val helper: NaviHelper,
+        val rootJob: Job,
+        val scope: CoroutineScope,
+        var requestToken: RequestToken? = null,
+        var listener: NaviHelperEventListener? = null,
+        var timeoutJob: Job? = null,
+        var settleJob: Job? = null,
+        var quarantineJob: Job? = null,
+    )
+
+    private sealed interface RequestEvent {
+        data object RouteStarted : RequestEvent
+        data object RoutingCompleted : RequestEvent
+        data class Error(val userMessage: String) : RequestEvent
+    }
+
+    private companion object {
+        const val MINIMUM_FEEDBACK_MILLIS = 250L
+        const val STALE_EVENT_QUARANTINE_MILLIS = 750L
+        const val REQUEST_TIMEOUT_MILLIS = 15_000L
     }
 }
 
