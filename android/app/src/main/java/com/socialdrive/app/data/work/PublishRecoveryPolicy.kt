@@ -5,6 +5,44 @@ import com.socialdrive.app.data.remote.RemoteFailureCode
 enum class PublishFailureAction { REWIND_UPLOAD, STOP_PERMANENT, STANDARD_FAILURE }
 enum class RecoveryEnqueueMode { KEEP, REPLACE }
 data class RewindHandoffResult(val committed: Boolean, val scheduled: Boolean)
+data class WorkerStageLease(val stage: String, val attempt: Int)
+data class WorkerQueueSnapshot(val stage: String, val status: String, val attempts: Int)
+data class DraftRemoteSnapshot(val state: String, val remoteDriveId: String?, val remoteVersion: Int?)
+
+/**
+ * SDK-independent mirror of the Room compare-and-set predicates used by publish workers.
+ * Room remains authoritative; this contract makes replacement overlap behavior deterministic in JVM tests.
+ */
+object WorkerTransitionContract {
+    private val claimableStatuses = setOf("QUEUED", "FAILED", "PAUSED_MOTION")
+
+    fun claim(snapshot: WorkerQueueSnapshot): WorkerStageLease? =
+        snapshot.takeIf { it.status in claimableStatuses }
+            ?.let { WorkerStageLease(stage = it.stage, attempt = it.attempts + 1) }
+
+    fun owns(snapshot: WorkerQueueSnapshot, lease: WorkerStageLease): Boolean =
+        snapshot.stage == lease.stage && snapshot.status == "RUNNING" && snapshot.attempts == lease.attempt
+
+    fun transition(
+        snapshot: WorkerQueueSnapshot,
+        lease: WorkerStageLease,
+        nextStage: String,
+        nextStatus: String,
+    ): WorkerQueueSnapshot? = snapshot.takeIf { owns(it, lease) }
+        ?.copy(stage = nextStage, status = nextStatus)
+
+    fun acceptsCreateResult(current: DraftRemoteSnapshot, expected: DraftRemoteSnapshot): Boolean = current == expected
+
+    fun acceptsCreateReplayIdentity(existingRemoteId: String?, replayRemoteId: String): Boolean =
+        existingRemoteId == null || existingRemoteId == replayRemoteId
+
+    fun acceptsPublishResult(
+        current: DraftRemoteSnapshot,
+        expected: DraftRemoteSnapshot,
+        expectedRemoteId: String,
+        expectedVersion: Int,
+    ): Boolean = current == expected && current.remoteDriveId == expectedRemoteId && current.remoteVersion == expectedVersion
+}
 
 object PublishRecoveryPolicy {
     const val MAX_UPLOAD_REWINDS = 2

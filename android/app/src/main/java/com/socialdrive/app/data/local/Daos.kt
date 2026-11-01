@@ -51,6 +51,38 @@ interface DraftDao {
 
     @Query("UPDATE drive_drafts SET state = 'PUBLISHED', remoteDriveId = :remoteDriveId, remoteVersion = :remoteVersion, publishedAtEpochMs = :now, updatedAtEpochMs = :now WHERE id = :id")
     suspend fun markPublished(id: String, remoteDriveId: String, remoteVersion: Int, now: Long): Int
+
+    @Query("""
+        UPDATE drive_drafts SET state = 'QUEUED', remoteDriveId = :newRemoteDriveId,
+            remoteVersion = :newRemoteVersion, updatedAtEpochMs = :now
+        WHERE id = :id AND state = :expectedState
+          AND ((remoteDriveId IS NULL AND :expectedRemoteDriveId IS NULL) OR remoteDriveId = :expectedRemoteDriveId)
+          AND ((remoteVersion IS NULL AND :expectedRemoteVersion IS NULL) OR remoteVersion = :expectedRemoteVersion)
+    """)
+    suspend fun applyCreateResultCas(
+        id: String,
+        expectedState: String,
+        expectedRemoteDriveId: String?,
+        expectedRemoteVersion: Int?,
+        newRemoteDriveId: String,
+        newRemoteVersion: Int,
+        now: Long,
+    ): Int
+
+    @Query("""
+        UPDATE drive_drafts SET state = 'PUBLISHED', remoteVersion = :publishedVersion,
+            publishedAtEpochMs = :now, updatedAtEpochMs = :now
+        WHERE id = :id AND state = :expectedState AND remoteDriveId = :remoteDriveId
+          AND remoteVersion = :expectedVersion
+    """)
+    suspend fun markPublishedCas(
+        id: String,
+        expectedState: String,
+        remoteDriveId: String,
+        expectedVersion: Int,
+        publishedVersion: Int,
+        now: Long,
+    ): Int
 }
 
 @Dao
@@ -77,6 +109,64 @@ interface UploadQueueDao {
         lastErrorCode: String?,
         now: Long,
     ): Int
+
+    @Query("""
+        UPDATE upload_queue SET status = 'RUNNING', attempts = :runningAttempt,
+            nextAttemptAtEpochMs = :now, lastErrorCode = NULL, updatedAtEpochMs = :now
+        WHERE draftId = :draftId AND stage = :stage AND status = :expectedStatus
+          AND attempts = :expectedAttempts
+          AND :expectedStatus IN ('QUEUED', 'FAILED', 'PAUSED_MOTION')
+    """)
+    suspend fun claimStage(
+        draftId: String,
+        stage: String,
+        expectedStatus: String,
+        expectedAttempts: Int,
+        runningAttempt: Int,
+        now: Long,
+    ): Int
+
+    @Query("""
+        UPDATE upload_queue SET status = 'PAUSED_MOTION', nextAttemptAtEpochMs = :now,
+            lastErrorCode = 'MOTION_NOT_PARKED', updatedAtEpochMs = :now
+        WHERE draftId = :draftId AND stage = :stage AND status = 'RUNNING' AND attempts = :attempts
+    """)
+    suspend fun pauseRunningStage(draftId: String, stage: String, attempts: Int, now: Long): Int
+
+    @Query("""
+        UPDATE upload_queue SET status = 'PAUSED_MOTION', nextAttemptAtEpochMs = :now,
+            lastErrorCode = 'MOTION_NOT_PARKED', updatedAtEpochMs = :now
+        WHERE draftId = :draftId AND stage = :stage AND status = :expectedStatus
+          AND attempts = :attempts AND :expectedStatus IN ('QUEUED', 'PAUSED_MOTION')
+    """)
+    suspend fun pauseIdleStage(
+        draftId: String,
+        stage: String,
+        expectedStatus: String,
+        attempts: Int,
+        now: Long,
+    ): Int
+
+    @Query("""
+        UPDATE upload_queue SET stage = 'UPLOAD', status = 'QUEUED',
+            nextAttemptAtEpochMs = :now, lastErrorCode = NULL, updatedAtEpochMs = :now
+        WHERE draftId = :draftId AND stage = 'CREATE' AND status = 'RUNNING' AND attempts = :attempts
+    """)
+    suspend fun completeCreateStage(draftId: String, attempts: Int, now: Long): Int
+
+    @Query("""
+        UPDATE upload_queue SET stage = 'PUBLISH', status = 'QUEUED',
+            nextAttemptAtEpochMs = :now, lastErrorCode = NULL, updatedAtEpochMs = :now
+        WHERE draftId = :draftId AND stage = 'UPLOAD' AND status = 'RUNNING' AND attempts = :attempts
+    """)
+    suspend fun completeUploadStage(draftId: String, attempts: Int, now: Long): Int
+
+    @Query("""
+        UPDATE upload_queue SET stage = 'COMPLETE', status = 'PUBLISHED',
+            nextAttemptAtEpochMs = 0, lastErrorCode = NULL, updatedAtEpochMs = :now
+        WHERE draftId = :draftId AND stage = 'PUBLISH' AND status = 'RUNNING' AND attempts = :attempts
+    """)
+    suspend fun completePublishStage(draftId: String, attempts: Int, now: Long): Int
 
     @Query("""
         UPDATE upload_queue

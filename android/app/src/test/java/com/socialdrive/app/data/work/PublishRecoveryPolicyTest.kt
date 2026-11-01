@@ -3,6 +3,7 @@ package com.socialdrive.app.data.work
 import com.socialdrive.app.data.remote.RemoteFailureCode
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlinx.coroutines.runBlocking
 
 class PublishRecoveryPolicyTest {
@@ -66,5 +67,69 @@ class PublishRecoveryPolicyTest {
         )
         assertEquals(RewindHandoffResult(committed = false, scheduled = false), result)
         assertEquals(false, scheduled)
+    }
+
+    @Test
+    fun `admission issues one exact lease and rejects running overlap`() {
+        val queued = WorkerQueueSnapshot(stage = "CREATE", status = "QUEUED", attempts = 3)
+        val lease = requireNotNull(WorkerTransitionContract.claim(queued))
+        assertEquals(WorkerStageLease("CREATE", 4), lease)
+        assertNull(WorkerTransitionContract.claim(queued.copy(status = "RUNNING")))
+        assertNull(WorkerTransitionContract.claim(queued.copy(status = "PUBLISHED")))
+    }
+
+    @Test
+    fun `stale create cannot overwrite a newer remote version or published draft`() {
+        val expected = DraftRemoteSnapshot("DRAFT", remoteDriveId = null, remoteVersion = null)
+        assertEquals(true, WorkerTransitionContract.acceptsCreateResult(expected, expected))
+        assertEquals(
+            false,
+            WorkerTransitionContract.acceptsCreateResult(
+                DraftRemoteSnapshot("QUEUED", remoteDriveId = "remote-new", remoteVersion = 9),
+                expected,
+            ),
+        )
+        assertEquals(
+            false,
+            WorkerTransitionContract.acceptsCreateResult(
+                DraftRemoteSnapshot("PUBLISHED", remoteDriveId = "remote-new", remoteVersion = 10),
+                expected,
+            ),
+        )
+    }
+
+    @Test
+    fun `legacy create replay fails closed when the returned remote id differs`() {
+        assertEquals(true, WorkerTransitionContract.acceptsCreateReplayIdentity(null, "remote-created"))
+        assertEquals(true, WorkerTransitionContract.acceptsCreateReplayIdentity("remote-existing", "remote-existing"))
+        assertEquals(false, WorkerTransitionContract.acceptsCreateReplayIdentity("remote-existing", "remote-other"))
+    }
+
+    @Test
+    fun `stale upload pause and failure cannot move a completed row backward`() {
+        val lease = WorkerStageLease("UPLOAD", 2)
+        val completed = WorkerQueueSnapshot("COMPLETE", "PUBLISHED", attempts = 3)
+        assertEquals(false, WorkerTransitionContract.owns(completed, lease))
+        assertNull(WorkerTransitionContract.transition(completed, lease, "UPLOAD", "PAUSED_MOTION"))
+        assertNull(WorkerTransitionContract.transition(completed, lease, "UPLOAD", "FAILED"))
+        assertNull(WorkerTransitionContract.transition(completed, lease, "PUBLISH", "QUEUED"))
+    }
+
+    @Test
+    fun `stale publish acknowledgement cannot mark a changed frozen version`() {
+        val expected = DraftRemoteSnapshot("QUEUED", remoteDriveId = "remote-1", remoteVersion = 7)
+        assertEquals(
+            false,
+            WorkerTransitionContract.acceptsPublishResult(
+                current = expected.copy(remoteVersion = 8),
+                expected = expected,
+                expectedRemoteId = "remote-1",
+                expectedVersion = 7,
+            ),
+        )
+        assertEquals(
+            true,
+            WorkerTransitionContract.acceptsPublishResult(expected, expected, "remote-1", 7),
+        )
     }
 }

@@ -140,15 +140,11 @@ class PublishQueueRepository(
         val now = clock()
         database.withTransaction {
             database.uploadQueueDao().recoverable().forEach { item ->
-                database.uploadQueueDao().updateStage(
-                    draftId = item.draftId,
-                    stage = item.stage,
-                    status = LocalState.PAUSED_MOTION,
-                    attempts = item.attempts,
-                    nextAttemptAt = now,
-                    lastErrorCode = "MOTION_NOT_PARKED",
-                    now = now,
-                )
+                if (item.status == LocalState.RUNNING) {
+                    database.uploadQueueDao().pauseRunningStage(item.draftId, item.stage, item.attempts, now)
+                } else {
+                    database.uploadQueueDao().pauseIdleStage(item.draftId, item.stage, item.status, item.attempts, now)
+                }
             }
         }
     }

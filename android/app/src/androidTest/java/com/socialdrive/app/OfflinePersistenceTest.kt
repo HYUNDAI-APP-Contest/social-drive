@@ -106,4 +106,66 @@ class OfflinePersistenceTest {
         assertEquals(LocalState.PUBLISHED, reconstructedQueue.status)
         assertEquals(2, reconstructedQueue.uploadRewindCount)
     }
+
+    @Test
+    fun workerLeaseCasRejectsReplacedAndTerminalQueueRows() = runTest {
+        val values = ArrayDeque(listOf("recording-6", "draft-6", "request-6"))
+        val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 600L })
+        val queueRepository = PublishQueueRepository(database, clock = { 600L })
+        val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
+        queueRepository.enqueue(draft.id, MotionState.Parked)
+
+        assertEquals(1, database.uploadQueueDao().claimStage(draft.id, LocalState.CREATE, LocalState.QUEUED, 0, 1, 601L))
+        assertEquals(0, database.uploadQueueDao().claimStage(draft.id, LocalState.CREATE, LocalState.QUEUED, 0, 1, 601L))
+        assertEquals(0, database.uploadQueueDao().pauseRunningStage(draft.id, LocalState.CREATE, 0, 602L))
+        assertEquals(0, database.uploadQueueDao().failRunningStage(draft.id, LocalState.CREATE, 0, "STALE", 602L))
+
+        assertEquals(
+            1,
+            database.draftDao().applyCreateResultCas(
+                draft.id, LocalState.QUEUED, null, null, "remote-lease", 7, 603L,
+            ),
+        )
+        assertEquals(1, database.uploadQueueDao().completeCreateStage(draft.id, 1, 603L))
+        assertEquals(
+            0,
+            database.draftDao().applyCreateResultCas(
+                draft.id, LocalState.QUEUED, null, null, "remote-stale", 1, 604L,
+            ),
+        )
+
+        assertEquals(1, database.uploadQueueDao().claimStage(draft.id, LocalState.UPLOAD, LocalState.QUEUED, 1, 2, 605L))
+        database.uploadQueueDao().updateStage(
+            draft.id, LocalState.COMPLETE, LocalState.PUBLISHED, 3, 0L, null, 606L,
+        )
+        assertEquals(0, database.uploadQueueDao().completeUploadStage(draft.id, 2, 607L))
+        assertEquals(0, database.uploadQueueDao().pauseRunningStage(draft.id, LocalState.UPLOAD, 2, 607L))
+        assertEquals(0, database.uploadQueueDao().failRunningStage(draft.id, LocalState.UPLOAD, 2, "STALE", 607L))
+        val terminal = requireNotNull(database.uploadQueueDao().find(draft.id))
+        assertEquals(LocalState.COMPLETE, terminal.stage)
+        assertEquals(LocalState.PUBLISHED, terminal.status)
+    }
+
+    @Test
+    fun stalePublishAckCannotPublishAChangedFrozenVersion() = runTest {
+        val values = ArrayDeque(listOf("recording-7", "draft-7", "request-7"))
+        val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 700L })
+        val queueRepository = PublishQueueRepository(database, clock = { 700L })
+        val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
+        queueRepository.enqueue(draft.id, MotionState.Parked)
+        database.draftDao().updateRemoteState(draft.id, LocalState.QUEUED, "remote-publish", 7, 701L)
+        database.uploadQueueDao().updateStage(draft.id, LocalState.PUBLISH, LocalState.QUEUED, 2, 702L, null, 702L)
+        assertEquals(1, database.uploadQueueDao().claimStage(draft.id, LocalState.PUBLISH, LocalState.QUEUED, 2, 3, 703L))
+
+        // A replacement/user-review path changed the frozen version while this worker was in flight.
+        database.draftDao().updateRemoteState(draft.id, LocalState.QUEUED, "remote-publish", 8, 704L)
+        assertEquals(
+            0,
+            database.draftDao().markPublishedCas(
+                draft.id, LocalState.QUEUED, "remote-publish", 7, 9, 705L,
+            ),
+        )
+        assertEquals(LocalState.QUEUED, requireNotNull(database.draftDao().find(draft.id)).state)
+        assertEquals(8, requireNotNull(database.draftDao().find(draft.id)).remoteVersion)
+    }
 }

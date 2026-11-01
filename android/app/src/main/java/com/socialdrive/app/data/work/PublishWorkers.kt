@@ -10,6 +10,7 @@ import com.socialdrive.app.data.DraftSnapshot
 import com.socialdrive.app.data.local.DraftEntity
 import com.socialdrive.app.data.local.LocalState
 import com.socialdrive.app.data.local.SocialDriveDatabase
+import com.socialdrive.app.data.local.UploadQueueEntity
 import com.socialdrive.app.data.remote.RemoteDriveApi
 import com.socialdrive.app.data.remote.RemoteDriveException
 import com.socialdrive.app.data.remote.assetUploads
@@ -24,6 +25,8 @@ data class PublishWorkerDependencies(
     val rescheduler: PublishRescheduler,
     val clock: () -> Long = System::currentTimeMillis,
 )
+
+private class StaleWorkerTransition : Exception()
 
 class PublishWorkerFactory(private val dependencies: PublishWorkerDependencies) : WorkerFactory() {
     override fun createWorker(
@@ -45,34 +48,37 @@ abstract class StagedPublishWorker(
 ) : CoroutineWorker(appContext, params) {
     protected val draftId: String? get() = inputData.getString(KEY_DRAFT_ID)
 
-    protected suspend fun pauseForMotion(
-        draftId: String,
-        stage: String,
-        attempts: Int,
-    ) {
+    protected suspend fun claim(draftId: String, queue: UploadQueueEntity): WorkerStageLease? {
         val now = dependencies.clock()
-        dependencies.database.uploadQueueDao().updateStage(
+        val lease = WorkerTransitionContract.claim(
+            WorkerQueueSnapshot(queue.stage, queue.status, queue.attempts),
+        ) ?: return null
+        val claimed = dependencies.database.uploadQueueDao().claimStage(
             draftId = draftId,
-            stage = stage,
-            status = LocalState.PAUSED_MOTION,
-            attempts = attempts,
-            nextAttemptAt = now,
-            lastErrorCode = "MOTION_NOT_PARKED",
+            stage = queue.stage,
+            expectedStatus = queue.status,
+            expectedAttempts = queue.attempts,
+            runningAttempt = lease.attempt,
             now = now,
         )
+        return lease.takeIf { claimed == 1 }
     }
 
-    protected suspend fun fail(draftId: String, expectedStage: String, expectedAttempt: Int, error: Throwable): Result {
+    protected suspend fun pauseForMotion(draftId: String, lease: WorkerStageLease) {
+        dependencies.database.uploadQueueDao().pauseRunningStage(draftId, lease.stage, lease.attempt, dependencies.clock())
+    }
+
+    protected suspend fun fail(draftId: String, lease: WorkerStageLease, error: Throwable): Result {
         val remote = error as? RemoteDriveException
         val now = dependencies.clock()
         val updated = dependencies.database.uploadQueueDao().failRunningStage(
             draftId = draftId,
-            stage = expectedStage,
-            attempts = expectedAttempt,
+            stage = lease.stage,
+            attempts = lease.attempt,
             lastErrorCode = remote?.code?.name ?: "UNKNOWN",
             now = now,
         )
-        if (updated == 0) return Result.failure()
+        if (updated == 0) return Result.success()
         return if (remote?.retryable == true && runAttemptCount < MAX_RETRY_ATTEMPTS) Result.retry() else Result.failure()
     }
 
@@ -102,18 +108,20 @@ class CreateDriveWorker(
         val id = draftId ?: return Result.failure()
         val draft = dependencies.database.draftDao().find(id) ?: return Result.failure()
         val queue = dependencies.database.uploadQueueDao().find(id) ?: return Result.failure()
-        val repairsMigratedVersion = draft.remoteDriveId != null && draft.remoteVersion == null
-        if (queue.stage != LocalState.CREATE && !repairsMigratedVersion) return Result.success()
-        val startedAt = dependencies.clock()
-        dependencies.database.uploadQueueDao().updateStage(id, queue.stage, LocalState.RUNNING, queue.attempts + 1, startedAt, null, startedAt)
+        if (queue.stage != LocalState.CREATE) return Result.success()
+        val lease = claim(id, queue) ?: return Result.success()
         return try {
             val execution = dependencies.executionGate.execute(
-                onPaused = { pauseForMotion(id, queue.stage, queue.attempts + 1) },
+                onPaused = { pauseForMotion(id, lease) },
             ) {
                 if (draft.remoteDriveId != null && draft.remoteVersion != null) {
                     com.socialdrive.app.data.remote.RemoteDraftRef(draft.remoteDriveId, draft.remoteVersion)
                 } else {
-                    dependencies.remote.createDrive(draft.clientRequestId, draft.snapshot())
+                    dependencies.remote.createDrive(draft.clientRequestId, draft.snapshot()).also { replay ->
+                        if (!WorkerTransitionContract.acceptsCreateReplayIdentity(draft.remoteDriveId, replay.id)) {
+                            throw RemoteDriveException(com.socialdrive.app.data.remote.RemoteFailureCode.REJECTED, retryable = false)
+                        }
+                    }
                 }
             }
             val remote = when (execution) {
@@ -121,16 +129,21 @@ class CreateDriveWorker(
                 is ParkedExecutionResult.Completed -> execution.value
             }
             val now = dependencies.clock()
-            dependencies.database.withTransaction {
-                dependencies.database.draftDao().updateRemoteState(id, LocalState.QUEUED, remote.id, remote.version, now)
-                val nextStage = if (queue.stage == LocalState.CREATE) LocalState.UPLOAD else queue.stage
-                dependencies.database.uploadQueueDao().updateStage(id, nextStage, LocalState.QUEUED, queue.attempts + 1, now, null, now)
-            }
+            try {
+                dependencies.database.withTransaction {
+                    if (dependencies.database.draftDao().applyCreateResultCas(
+                        id, draft.state, draft.remoteDriveId, draft.remoteVersion, remote.id, remote.version, now,
+                    ) != 1) throw StaleWorkerTransition()
+                    if (dependencies.database.uploadQueueDao().completeCreateStage(id, lease.attempt, now) != 1) {
+                        throw StaleWorkerTransition()
+                    }
+                }
+            } catch (_: StaleWorkerTransition) { return Result.success() }
             Result.success()
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
-            fail(id, queue.stage, queue.attempts + 1, error)
+            fail(id, lease, error)
         }
     }
 }
@@ -145,24 +158,24 @@ class UploadAssetsWorker(
         val draft = dependencies.database.draftDao().find(id) ?: return Result.failure()
         val queue = dependencies.database.uploadQueueDao().find(id) ?: return Result.failure()
         if (queue.stage != LocalState.UPLOAD) return Result.success()
-        val startedAt = dependencies.clock()
-        dependencies.database.uploadQueueDao().updateStage(id, queue.stage, LocalState.RUNNING, queue.attempts + 1, startedAt, null, startedAt)
-        val remoteId = draft.remoteDriveId ?: return fail(id, queue.stage, queue.attempts + 1, IllegalStateException("missing remote id"))
+        val lease = claim(id, queue) ?: return Result.success()
+        val remoteId = draft.remoteDriveId ?: return fail(id, lease, IllegalStateException("missing remote id"))
         return try {
             val execution = dependencies.executionGate.execute(
-                onPaused = { pauseForMotion(id, queue.stage, queue.attempts + 1) },
+                onPaused = { pauseForMotion(id, lease) },
             ) {
                 // Each retry refreshes the complete frozen manifest; returned URLs remain in memory.
                 dependencies.remote.uploadAssets(remoteId, draft.snapshot().assetUploads())
             }
             if (execution is ParkedExecutionResult.Paused) return Result.failure()
             val now = dependencies.clock()
-            dependencies.database.uploadQueueDao().updateStage(id, LocalState.PUBLISH, LocalState.QUEUED, queue.attempts + 1, now, null, now)
+            // A zero-row result means a replacement worker already owns or completed this row.
+            dependencies.database.uploadQueueDao().completeUploadStage(id, lease.attempt, now)
             Result.success()
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
-            fail(id, queue.stage, queue.attempts + 1, error)
+            fail(id, lease, error)
         }
     }
 }
@@ -177,14 +190,13 @@ class PublishDriveWorker(
         val draft = dependencies.database.draftDao().find(id) ?: return Result.failure()
         val queue = dependencies.database.uploadQueueDao().find(id) ?: return Result.failure()
         if (queue.stage == LocalState.COMPLETE || draft.state == LocalState.PUBLISHED) return Result.success()
-        if (queue.stage != LocalState.PUBLISH) return Result.failure()
-        val startedAt = dependencies.clock()
-        dependencies.database.uploadQueueDao().updateStage(id, queue.stage, LocalState.RUNNING, queue.attempts + 1, startedAt, null, startedAt)
-        val remoteId = draft.remoteDriveId ?: return fail(id, queue.stage, queue.attempts + 1, IllegalStateException("missing remote id"))
-        val expectedVersion = draft.remoteVersion ?: return fail(id, queue.stage, queue.attempts + 1, IllegalStateException("missing remote version"))
+        if (queue.stage != LocalState.PUBLISH) return Result.success()
+        val lease = claim(id, queue) ?: return Result.success()
+        val remoteId = draft.remoteDriveId ?: return fail(id, lease, IllegalStateException("missing remote id"))
+        val expectedVersion = draft.remoteVersion ?: return fail(id, lease, IllegalStateException("missing remote version"))
         return try {
             val execution = dependencies.executionGate.execute(
-                onPaused = { pauseForMotion(id, queue.stage, queue.attempts + 1) },
+                onPaused = { pauseForMotion(id, lease) },
             ) {
                 dependencies.remote.publishDrive(remoteId, expectedVersion, draft.clientRequestId)
             }
@@ -193,11 +205,17 @@ class PublishDriveWorker(
                 is ParkedExecutionResult.Completed -> execution.value
             }
             val now = dependencies.clock()
-            dependencies.database.withTransaction {
-                // The original draft is retained after acknowledgement for recovery and audit.
-                dependencies.database.draftDao().markPublished(id, remoteId, acknowledgement.version, now)
-                dependencies.database.uploadQueueDao().updateStage(id, LocalState.COMPLETE, LocalState.PUBLISHED, queue.attempts + 1, 0, null, now)
-            }
+            try {
+                dependencies.database.withTransaction {
+                    // The original draft is retained after acknowledgement; only publication metadata changes.
+                    if (dependencies.database.draftDao().markPublishedCas(
+                        id, draft.state, remoteId, expectedVersion, acknowledgement.version, now,
+                    ) != 1) throw StaleWorkerTransition()
+                    if (dependencies.database.uploadQueueDao().completePublishStage(id, lease.attempt, now) != 1) {
+                        throw StaleWorkerTransition()
+                    }
+                }
+            } catch (_: StaleWorkerTransition) { return Result.success() }
             Result.success()
         } catch (error: CancellationException) {
             throw error
@@ -208,22 +226,22 @@ class PublishDriveWorker(
                     val now = dependencies.clock()
                     dependencies.database.uploadQueueDao().failPublishAtUploadLimit(
                         id,
-                        queue.attempts + 1,
+                        lease.attempt,
                         PublishRecoveryPolicy.MAX_UPLOAD_REWINDS,
                         now,
                     )
                     return stalePublishResult(id)
                 }
-                return fail(id, queue.stage, queue.attempts + 1, RemoteDriveException(error.code, retryable = false))
+                return fail(id, lease, RemoteDriveException(error.code, retryable = false))
             }
-            if (action != PublishFailureAction.REWIND_UPLOAD) return fail(id, queue.stage, queue.attempts + 1, error)
+            if (action != PublishFailureAction.REWIND_UPLOAD) return fail(id, lease, error)
             val now = dependencies.clock()
             val handoff = DurableRewindHandoff.commitThenSchedule(
                 persist = {
                     dependencies.database.withTransaction {
                         dependencies.database.uploadQueueDao().rewindPublishToUpload(
                             draftId = id,
-                            attempts = queue.attempts + 1,
+                            attempts = lease.attempt,
                             maxRewinds = PublishRecoveryPolicy.MAX_UPLOAD_REWINDS,
                             now = now,
                         ) == 1
@@ -237,7 +255,7 @@ class PublishDriveWorker(
             }
             stalePublishResult(id)
         } catch (error: Throwable) {
-            fail(id, queue.stage, queue.attempts + 1, error)
+            fail(id, lease, error)
         }
     }
 

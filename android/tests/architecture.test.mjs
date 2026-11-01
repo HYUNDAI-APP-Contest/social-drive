@@ -272,7 +272,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 35/);
+  assert.match(coreRunner, /expectedTests = 40/);
   assert.match(readme, /does not compile Android framework code, the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 
@@ -357,16 +357,29 @@ test("publish concurrency and upload recovery retain frozen versions and bounded
   assert.match(daos, /stage = 'PUBLISH' AND status = 'RUNNING'[\s\S]*attempts = :attempts/);
   assert.match(daos, /failPublishAtUploadLimit/);
   assert.match(daos, /failRunningStage/);
+  assert.match(daos, /claimStage/);
+  assert.match(daos, /pauseRunningStage/);
+  assert.match(daos, /completeCreateStage/);
+  assert.match(daos, /completeUploadStage/);
+  assert.match(daos, /completePublishStage/);
+  assert.match(daos, /applyCreateResultCas/);
+  assert.match(daos, /markPublishedCas/);
   assert.match(workers, /stalePublishResult/);
   assert.match(workers, /remoteVersion \?: return fail/);
-  assert.match(workers, /repairsMigratedVersion/);
+  assert.match(workers, /acceptsCreateReplayIdentity\(draft\.remoteDriveId, replay\.id\)/);
+  assert.match(workers, /draft\.remoteDriveId != null && draft\.remoteVersion != null[\s\S]*remote\.createDrive/);
   assert.match(workers, /publishDrive\(remoteId, expectedVersion, draft\.clientRequestId\)/);
-  assert.match(workers, /markPublished\(id, remoteId, acknowledgement\.version, now\)/);
+  assert.match(workers, /markPublishedCas/);
+  assert.doesNotMatch(workers, /updateStage\(/);
   assert.match(workers, /replaceFromUpload\(id\)/);
   assert.match(scheduler, /ExistingWorkPolicy\.REPLACE/);
   assert.match(scheduler, /PublishRecoveryPolicy\.recoveryEnqueueMode/);
   assert.match(policy, /MAX_UPLOAD_REWINDS = 2/);
-  for (const marker of ["version conflict always stops", "rewinds only within", "expired upload remains", "commits before", "restart recovery", "stale rewind"]) {
+  for (const marker of [
+    "version conflict always stops", "rewinds only within", "expired upload remains", "commits before",
+    "restart recovery", "stale rewind", "one exact lease", "stale create cannot overwrite",
+    "stale upload pause and failure", "stale publish acknowledgement", "legacy create replay fails closed",
+  ]) {
     assert.ok(policyTest.includes(marker), marker);
   }
 });

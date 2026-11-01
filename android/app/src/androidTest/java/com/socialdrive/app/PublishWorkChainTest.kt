@@ -16,6 +16,7 @@ import com.socialdrive.app.data.local.LocalState
 import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.remote.RemoteDriveApi
 import com.socialdrive.app.data.remote.AssetUploadCommand
+import com.socialdrive.app.data.remote.RemoteDraftRef
 import com.socialdrive.app.data.work.PublishScheduler
 import com.socialdrive.app.data.work.PublishWorkerDependencies
 import com.socialdrive.app.data.work.PublishWorkerFactory
@@ -92,13 +93,67 @@ class PublishWorkChainTest {
         val resumed = manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id)).get(5, TimeUnit.SECONDS)
         assertEquals(3, resumed.count { !it.state.isFinished })
     }
+
+    @Test
+    fun legacyRemoteIdWithoutVersionReplaysCreateWithStableIdentity() = runTest {
+        val values = ArrayDeque(listOf("recording-8", "draft-8", "request-8"))
+        val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 800L })
+        val queueRepository = PublishQueueRepository(database, clock = { 800L })
+        val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
+        queueRepository.enqueue(draft.id, MotionState.Parked)
+        database.draftDao().updateRemoteState(draft.id, LocalState.QUEUED, "remote-legacy", null, 801L)
+        database.uploadQueueDao().updateStage(
+            draft.id, LocalState.CREATE, LocalState.QUEUED, 0, 801L, "REMOTE_VERSION_REQUIRED", 801L,
+        )
+        remote.createResult = RemoteDraftRef("remote-legacy", 4)
+
+        val scheduler = PublishScheduler(WorkManager.getInstance(context), queueRepository, motion)
+        scheduler.recoverAfterProcessRestart()
+        val manager = WorkManager.getInstance(context)
+        val work = manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id)).get(5, TimeUnit.SECONDS)
+        val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
+        work.forEach { driver.setAllConstraintsMet(it.id) }
+
+        assertEquals(1, remote.createCalls)
+        assertEquals("remote-legacy", database.draftDao().find(draft.id)?.remoteDriveId)
+        assertEquals(true, requireNotNull(database.draftDao().find(draft.id)?.remoteVersion) >= 4)
+    }
+
+    @Test
+    fun legacyCreateReplayWithDifferentRemoteIdFailsClosed() = runTest {
+        val values = ArrayDeque(listOf("recording-9", "draft-9", "request-9"))
+        val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 900L })
+        val queueRepository = PublishQueueRepository(database, clock = { 900L })
+        val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
+        queueRepository.enqueue(draft.id, MotionState.Parked)
+        database.draftDao().updateRemoteState(draft.id, LocalState.QUEUED, "remote-legacy", null, 901L)
+        database.uploadQueueDao().updateStage(
+            draft.id, LocalState.CREATE, LocalState.QUEUED, 0, 901L, "REMOTE_VERSION_REQUIRED", 901L,
+        )
+        remote.createResult = RemoteDraftRef("remote-other", 4)
+
+        val scheduler = PublishScheduler(WorkManager.getInstance(context), queueRepository, motion)
+        scheduler.recoverAfterProcessRestart()
+        val manager = WorkManager.getInstance(context)
+        val work = manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id)).get(5, TimeUnit.SECONDS)
+        val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
+        work.forEach { driver.setAllConstraintsMet(it.id) }
+
+        assertEquals(1, remote.createCalls)
+        assertEquals("remote-legacy", database.draftDao().find(draft.id)?.remoteDriveId)
+        assertEquals(null, database.draftDao().find(draft.id)?.remoteVersion)
+        assertEquals("REJECTED", database.uploadQueueDao().find(draft.id)?.lastErrorCode)
+    }
 }
 
 private class CountingRemoteDriveApi : RemoteDriveApi {
     var calls = 0
+    var createCalls = 0
+    var createResult: RemoteDraftRef? = null
     override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): com.socialdrive.app.data.remote.RemoteDraftRef {
         calls += 1
-        return com.socialdrive.app.data.remote.RemoteDraftRef("remote-${draft.id}", 1)
+        createCalls += 1
+        return createResult ?: com.socialdrive.app.data.remote.RemoteDraftRef("remote-${draft.id}", 1)
     }
     override suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>) { calls += 1 }
     override suspend fun publishDrive(remoteDriveId: String, expectedVersion: Int, clientRequestId: String): com.socialdrive.app.data.remote.RemotePublishAck {
