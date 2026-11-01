@@ -12,7 +12,7 @@
 
 1. 실제 앱 화면과 실제 실행 증거를 먼저 보여 준다.
 2. `실제 SDK`, `앱 구현`, `코드 존재(미통합)`, `데모 데이터`, `미구현`, `향후 기능`을 같은 색상 체계로 끝까지 구분한다.
-3. Vehicle/NaviHelper 최신 `89078a0`은 독립 검토 `APPROVE`, production core compile, JVM 15/15, npm 21/21이지만 `코드 존재(미통합)` 상태다. main 미병합과 vendor adapter compile·Gradle assemble·APK·AVD 미검증을 표시하고, AVD callback 증거가 생긴 뒤에만 `실제 SDK`로 승격한다.
+3. PLEOS `89078a0`과 cloud contract를 포함한 Android 통합 HEAD `0d31576`은 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, SQLite predicate PASS지만 `코드 존재(미통합)` 상태다. main 미병합과 actual cloud configuration·vendor adapter·Gradle·instrumentation·APK·AVD·AWS E2E 미검증을 표시하고, runtime 증거가 생긴 뒤에만 상태를 승격한다.
 4. FusedLocation, STT, TTS, Vehicle Control은 실제 기능으로 말하지 않는다.
 5. MAU와 retention은 산식·검증 방법을 제시하고 근거 없는 숫자를 만들지 않는다.
 
@@ -59,7 +59,7 @@
 
 - Compose/Room/Worker: 현재 `코드 존재(미통합)`
 - preset 경로: `데모 데이터`
-- Vehicle/NaviHelper: 최신 `89078a0`, 독립 검토 `APPROVE`, production core compile, JVM 15/15, npm 21/21이지만 `코드 존재(미통합)`; main 병합·vendor adapter compile·Gradle assemble·AVD 실기 성공 후에만 `실제 SDK`
+- Vehicle/NaviHelper: 통합 HEAD `0d31576`이 PLEOS `89078a0` 포함, 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23이지만 `코드 존재(미통합)`; main 병합·vendor adapter·Gradle·AVD 실기 성공 후에만 `실제 SDK`
 
 ### 4장 — 모바일이 아니라 차량이어야 완성된다
 
@@ -72,7 +72,7 @@
 
 발표 문장:
 
-> 구현 목표는 Vehicle 상태로 사용자가 입력할 수 있는 순간을 결정하고 NaviHelper로 콘텐츠를 실제 주행에 연결하는 것입니다. 최신 `89078a0`은 독립 검토 `APPROVE`이고 production core compile·JVM 15/15를 통과했지만 main 미병합·vendor adapter compile·Gradle assemble·AVD 검증 전이며, Coming Soon SDK도 실제 기능으로 주장하지 않습니다.
+> 구현 목표는 Vehicle 상태로 사용자가 입력할 수 있는 순간을 결정하고 NaviHelper로 콘텐츠를 실제 주행에 연결하는 것입니다. 통합 HEAD `0d31576`은 독립 검토 `APPROVE`와 core Kotlin 41/41을 통과했지만 main 미병합·vendor adapter·Gradle·AVD 검증 전이며, Coming Soon SDK도 실제 기능으로 주장하지 않습니다.
 
 평가 연결: 기술 활용성. [공식 개발 환경](https://appdevchallenge.auto-hmg.io/guide/development), [공식 SDK 상태](https://document.pleos.ai/en/docs/pleos-only/create-my-project)
 
@@ -103,10 +103,10 @@ Parked
 왼쪽, 현재 코드 증거:
 
 - Android 별도 작업 브랜치: recording session, `highlightCount`, draft, pending queue, preset reference와 안전 gate 코드
-- 백엔드 승인 HEAD `agent/issue-backend-mvp@ddbd61f`: Cognito JWT, DynamoDB, private S3 계약
+- Android 통합 HEAD `0d31576`: backend `ddbd61f`의 Cognito JWT, DynamoDB, private S3 계약 통합; P0-1 정적·core 승인 완료
 - 테스트 소스: 안전 정책, Room migration, 오프라인 복구, API security
-- PLEOS adapter 코드 증거: `6e930d6` 위 최신 `89078a0`; 독립 검토 `APPROVE`, production core compile, JVM 15/15, npm 21/21
-- 아직 없는 증거: 실제 경로점·위치 수집, 위치 동의·철회 UI, main 병합, vendor adapter compile, Gradle assemble, AVD 실기 결과, 앱-AWS E2E, release APK
+- 통합 코드 증거: `0d31576`이 PLEOS `89078a0`과 cloud contract 포함; 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, SQLite predicate PASS
+- 아직 없는 증거: 실제 경로점·위치 수집, 위치 동의·철회 UI, main 병합, concrete Cognito/API host·no-redirect HTTP adapter 설정, vendor adapter, Gradle·instrumentation, AVD 실기, 앱-AWS E2E, release APK
 - root `readme.md`: 공식 네 항목의 문서 구조 완료. 빌드·AVD·APK 실증 결과는 아직 갱신 필요
 
 오른쪽, retention loop:
@@ -133,7 +133,7 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 - 11/15 선택 가산점 목표: GitHub, 소스, release APK, 시연 영상
 - 11/23: 1차 결과
 - 12/3~4: 실제 동작 앱 PT
-- 남은 P0: Pleos 실기, Android-AWS E2E, release APK, 제출 검수
+- 남은 P0: P0-2 위치 안전 게이트, 이후 Gradle/runtime 차단 해소, Pleos 실기, Android-AWS E2E, release APK, 제출 검수
 
 마무리 문장:
 
@@ -150,8 +150,8 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 | 0–7초 | 로고, 앱명, 차량 화면 | 없음 | “한 번의 터치가 다음 사람의 드라이브가 됩니다.” |
 | 7–17초 | SNS→지도→내비 재입력 Before | 문제 정의 | “좋은 코스를 발견해도 장소를 다시 찾아야 합니다.” |
 | 17–29초 | 피드와 드라이브 상세 | 현재 `코드 존재(미통합)` 또는 `데모 데이터` | 코스, 하이라이트, preset 목적지 확인 |
-| 29–43초 | `이 코스 따라가기`와 Navigation 앱 | 현재 `코드 존재(미통합)`; runtime 검증 성공 시 `실제 SDK` | 최신 `89078a0` 독립 검토 `APPROVE`, production core compile·JVM 15/15. vendor adapter compile·Gradle assemble·실제 NaviHelper callback 증거가 없으므로 현재는 데모로 대체 |
-| 43–57초 | Virtual Console P→D, 앱 안전 전환 | 현재 `코드 존재(미통합)`; runtime 검증 성공 시 `실제 SDK` | 최신 `89078a0` 독립 검토 `APPROVE`, production core compile·JVM 15/15. vendor adapter compile·Gradle assemble·Vehicle AVD 증거가 없으므로 현재는 데모로 대체 |
+| 29–43초 | `이 코스 따라가기`와 Navigation 앱 | 현재 `코드 존재(미통합)`; runtime 검증 성공 시 `실제 SDK` | `0d31576` core 승인 완료. vendor adapter·Gradle·실제 NaviHelper callback 증거가 없으므로 현재는 데모로 대체 |
+| 43–57초 | Virtual Console P→D, 앱 안전 전환 | 현재 `코드 존재(미통합)`; runtime 검증 성공 시 `실제 SDK` | `0d31576` core 승인 완료. vendor adapter·Gradle·Vehicle AVD 증거가 없으므로 현재는 데모로 대체 |
 | 57–70초 | 기록 화면에서 `방금 좋았어` 한 번 터치 | 현재 `코드 존재(미통합)` 또는 `데모 데이터` | 주행 중 긴 입력이 없음을 보여 줌 |
 | 70–80초 | 앱 종료·재실행 후 세션/초안 복원 | 검증 후 `앱 구현` | session·draft·queue persistence 증거. 실제 경로점 저장으로 표현 금지 |
 | 80–91초 | D 또는 Unknown에서 게시 진입 거부 | 검증 후 `앱 구현` | fail-closed 안전 정책 |
@@ -280,7 +280,7 @@ No-Go 대응:
 
 ### 모바일 앱과 무엇이 다른가?
 
-완성 목표에서는 Vehicle 상태가 입력 가능 범위를 결정하고 NaviHelper가 콘텐츠를 차량의 실제 경로 안내로 전환한다. 최신 `89078a0`은 독립 검토 `APPROVE`이고 production core compile·JVM 15/15를 통과했지만 main 미병합·vendor adapter compile·Gradle assemble·APK·AVD runtime 검증 전이다. 이 목표가 실제 검증되면 모바일과 달리 차량 상태 기반 안전 전환부터 차량 Navigation 앱까지 흐름을 완결할 수 있다.
+완성 목표에서는 Vehicle 상태가 입력 가능 범위를 결정하고 NaviHelper가 콘텐츠를 차량의 실제 경로 안내로 전환한다. 통합 HEAD `0d31576`은 독립 검토 `APPROVE`와 core Kotlin 41/41을 통과했지만 main 미병합·vendor adapter·Gradle·instrumentation·APK·AVD runtime 검증 전이다. 이 목표가 실제 검증되면 모바일과 달리 차량 상태 기반 안전 전환부터 차량 Navigation 앱까지 흐름을 완결할 수 있다.
 
 ### 주행 중 안전을 어떻게 강제하는가?
 

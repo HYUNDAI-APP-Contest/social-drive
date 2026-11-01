@@ -7,11 +7,11 @@
 
 우선순위는 다음과 같다.
 
-1. **P0-1 Android↔Cognito/API/S3 로컬 계약 통합** — 지금 바로 구현 가능한 최우선 작업
-2. **P0-2 route source·위치 동의 안전 게이트** — FusedLocation Coming Soon 제약 아래 실제 수집을 막고 demo를 정직하게 분리
-3. **P0-3 release APK·AVD·서명·제출 증거** — 1·2 완료 뒤 실행 가능한 산출물과 발표 증거 생성
+1. **P0-1 Android↔Cognito/API/S3 로컬 계약 통합 — 완료(정적·core 승인)**
+2. **P0-2 route source·위치 동의 안전 게이트 — 다음 작업**: FusedLocation Coming Soon 제약 아래 실제 수집을 막고 demo를 정직하게 분리
+3. **P0-3 release APK·AVD·서명·제출 증거 — 차단**: P0-2 완료와 Gradle/runtime 환경 확보 뒤 실행
 
-P0-1과 P0-2는 같은 Android 기반에서 충돌 파일을 조정해 순차 또는 stacked PR로 진행한다. P0-3는 두 작업이 통합되고 Gradle 의존성을 받을 수 있을 때 시작한다.
+P0-1의 완료는 `0d31576`에 대한 정적·core 계약 승인이다. 이는 `main` 병합, 실제 Cognito/API/S3 연결, Gradle·instrumentation·vendor adapter, APK, Pleos AVD 또는 AWS E2E 완료를 뜻하지 않는다. P0-2는 `0d31576`을 기준으로 이어가며, P0-3는 P0-2와 Gradle/runtime 차단 조건이 해결될 때까지 시작하지 않는다.
 
 공식적으로 11월 15일에는 기획서가 필수이며 GitHub·APK·영상은 선택 가산점이다. 그러나 2차 PT 대상자는 실제 동작 앱을 완성해야 한다. [공식 제출 안내](https://appdevchallenge.auto-hmg.io/guide/submission), [공식 심사 안내](https://appdevchallenge.auto-hmg.io/guide/judging-awards)
 
@@ -19,9 +19,9 @@ P0-1과 P0-2는 같은 Android 기반에서 충돌 파일을 조정해 순차 �
 
 | 영역 | 확인된 증거 | 아직 증명되지 않은 것 |
 |---|---|---|
-| Android/Pleos | `issue-pleos-integration` 최신 `89078a0`; 독립 검토 `APPROVE`, production core Kotlin compile, JVM 15/15, npm 21/21 | main 병합, vendor adapter compile, Gradle assemble, APK, Pleos AVD runtime, callback 화면 |
+| Android 통합 HEAD | `0d315763353a54c65352fffab2d6cb7222ec4a83`이 PLEOS `89078a0`과 cloud contract 포함; 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, 수동 SQLite migration predicate PASS | main 병합, Gradle, Android instrumentation, vendor adapter, APK, Pleos AVD runtime/callback |
 | Android local data | recording session, `highlightCount`, draft, pending queue, preset reference 코드가 별도 브랜치에 존재 | 실제 위치 샘플·route point 수집, 동의·철회 UI |
-| Backend | `agent/issue-backend-mvp@ddbd61fde381d09bc4605c758126ebf6ba0a5ea5`에 Cognito JWT, drive/feed, DynamoDB, private S3/presigned upload 계약 코드가 존재하는 것으로 승인됨 | 이 contest worktree에는 해당 branch object가 없어 구현 worker가 시작할 때 `infra/API.md`와 tests를 다시 읽어 계약을 확인해야 함 |
+| Cloud contract | backend `ddbd61fde381d09bc4605c758126ebf6ba0a5ea5` 계약이 `0d31576` core에 통합되어 P0-1 정적·core 승인 완료 | concrete Cognito/API host와 no-redirect HTTP adapter 설정이 없어 actual cloud unavailable; AWS E2E 미검증 |
 | 현재 제출 worktree의 `infra/` | Cognito, HTTP API, DynamoDB, private S3 scaffold와 `/users/me`, `/feed` skeleton 확인 | 최신 backend branch의 전체 drive/publish/upload 계약을 대표하지 않음 |
 | SDK 가용성 | Vehicle State와 NaviHelper는 Ready to Use | Android runtime 성공 |
 | 위치 SDK | FusedLocation은 공식 Coming Soon | 실제 위치 수집을 구현·시연할 근거 |
@@ -29,17 +29,18 @@ P0-1과 P0-2는 같은 Android 기반에서 충돌 파일을 조정해 순차 �
 
 FusedLocation, TTS, STT, Vehicle Control은 현재 Not Available Yet/Coming Soon이고 Vehicle State와 NaviHelper만 Ready to Use다. [공식 SDK 상태](https://document.pleos.ai/en/docs/pleos-only/create-my-project)
 
-### Backend 시작 전 필수 preflight
+### 승인된 P0-1 pin과 runtime 경계
 
-현재 이 worktree에는 별도 branch Git object가 없다. credential을 소유한 host orchestrator가 다음 pin을 read-only로 확인해 Issue에 기록한다.
+현재 이 contest worktree에는 `0d31576` branch Git object가 없어 코드를 다시 실행·검사할 수 없다. 아래 pin과 결과는 host orchestrator가 전달한 최종 승인 증거이며, 이 문서는 그 범위를 넘겨 runtime 성공을 주장하지 않는다.
 
 ```text
 PLEOS_BASE=89078a09dc29b0ab8346d4909bb87347f5a8efbb
 BACKEND_HEAD=ddbd61fde381d09bc4605c758126ebf6ba0a5ea5
+ANDROID_INTEGRATED_HEAD=0d315763353a54c65352fffab2d6cb7222ec4a83
 BACKEND_CONTRACT_PATH=infra/API.md
 ```
 
-최신 backend head에서 다음 API와 오류·idempotency·upload 계약을 재확인하기 전에는 Android DTO를 확정하지 않는다.
+다음 API와 오류·idempotency·upload 계약은 `0d31576`의 정적·core 승인 범위다. 실제 endpoint 연결과 런타임 성공 증거는 아니며, backend 계약이 바뀌면 Android DTO를 다시 대조한다.
 
 - `GET /users/me`
 - `GET /feed`
@@ -54,11 +55,20 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - PATCH/publish의 `expectedVersion`, 409 version conflict와 idempotency replay 계약
 - manifest 입력의 lowercase hex SHA-256과 server 응답의 RFC 4648 base64 `x-amz-checksum-sha256` 구분
 
-## 3. GitHub Issue 초안 1 — 최우선
+## 3. GitHub Issue 1 — 완료(정적·core 승인)
 
 ### 제목
 
 `[P0] Android Cognito/API/S3 production adapter와 로컬 contract test`
+
+### 완료 증거와 한계
+
+- latest: `0d315763353a54c65352fffab2d6cb7222ec4a83`
+- includes: PLEOS `89078a0` + backend `ddbd61f` cloud contract
+- evidence: independent `APPROVE`, core Kotlin 41/41, npm 23/23, manual SQLite migration predicate PASS
+- status: `코드 존재(미통합)`; P0-1 정적·core 범위 완료
+- unavailable: concrete Cognito/API host와 no-redirect HTTP adapter 설정이 없어 actual cloud 호출 불가
+- unverified: `main` 병합, Gradle, Android instrumentation, vendor adapter, APK, Pleos AVD, AWS E2E
 
 ### 권장 label
 
@@ -99,23 +109,23 @@ BACKEND_CONTRACT_PATH=infra/API.md
   - cancellation/retry에도 동일 `clientRequestId`/`clientDraftId`/`Idempotency-Key`, `expectedVersion`, manifest와 원본 draft 유지
 - demo/fake와 production 구현을 flavor/DI에서 명확히 분리
 
-### Acceptance criteria
+### 승인된 acceptance criteria
 
-- [ ] 최신 `issue-backend-mvp` head SHA와 `infra/API.md` version을 PR 설명에 기록한다.
-- [ ] 모든 보호 API는 `Authorization: Bearer`를 사용하고 token 부재/만료 시 remote call 없이 typed auth error를 반환한다.
-- [ ] token, presigned URL, raw response body, 정확한 좌표가 Room/WorkManager/log에 남지 않는다.
-- [ ] create 재시도는 local `clientRequestId`와 동일한 값을 body `clientDraftId` 및 `Idempotency-Key` header 양쪽에 사용하며 세 값은 재시도 동안 불변이다.
-- [ ] create manifest는 `COVER`와 `ROUTE`를 모두 포함하고 asset type/content type/byte size/checksum이 local upload 원본과 일치한다.
-- [ ] manifest checksum 입력은 lowercase hex SHA-256이고, S3 PUT의 `x-amz-checksum-sha256`은 server 응답의 RFC 4648 base64 값을 그대로 사용한다. 두 표현을 서로 대입하지 않는다.
-- [ ] presigned PUT에는 API authorization header가 없고 허용된 host·method·headers만 사용한다.
-- [ ] presigned URL 만료 시 `POST /drives/{id}/uploads`를 refresh stage로 사용하며 최초 create와 동일한 canonical manifest만 허용한다. asset 추가·삭제·교체 또는 metadata 변경은 fail closed한다.
-- [ ] feed cursor가 opaque string으로 왕복하며 client가 decode/조작하지 않는다.
-- [ ] PATCH와 publish는 `expectedVersion`을 보내며 409 version conflict에서 자동 overwrite/publish하지 않는다. 최신 drive를 다시 읽고 사용자에게 충돌을 보여 준 뒤, 명시적 재검토가 끝난 경우에만 갱신된 `expectedVersion`으로 replay한다.
-- [ ] 존재하지 않는 drive와 non-owner drive의 PATCH/DELETE는 모두 동일한 UI-safe `404 NOT_FOUND`로 처리되어 존재 여부를 노출하지 않는다.
-- [ ] validation 422와 rate-limit 429가 각각 UI-safe validation/retry 상태로 변환된다.
-- [ ] motion이 Parked에서 Driving/Unknown으로 바뀌면 다음 remote stage를 실행하지 않고 draft를 보존한다.
-- [ ] demo variant는 fake adapter와 `데모 데이터` 표시를 유지하고 production adapter로 조용히 fallback하지 않는다.
-- [ ] 실제 AWS 호출 없이 전체 테스트가 통과한다.
+- [x] 최신 backend `ddbd61f` 계약을 pinned contract로 기록한다.
+- [x] 모든 보호 API는 `Authorization: Bearer`를 사용하고 token 부재/만료 시 remote call 없이 typed auth error를 반환한다.
+- [x] token, presigned URL, raw response body, 정확한 좌표가 Room/WorkManager/log에 남지 않는다.
+- [x] create 재시도는 local `clientRequestId`와 동일한 값을 body `clientDraftId` 및 `Idempotency-Key` header 양쪽에 사용하며 세 값은 재시도 동안 불변이다.
+- [x] create manifest는 `COVER`와 `ROUTE`를 모두 포함하고 asset type/content type/byte size/checksum이 local upload 원본과 일치한다.
+- [x] manifest checksum 입력은 lowercase hex SHA-256이고, S3 PUT의 `x-amz-checksum-sha256`은 server 응답의 RFC 4648 base64 값을 그대로 사용한다. 두 표현을 서로 대입하지 않는다.
+- [x] presigned PUT에는 API authorization header가 없고 허용된 host·method·headers만 사용한다.
+- [x] presigned URL 만료 시 `POST /drives/{id}/uploads`를 refresh stage로 사용하며 최초 create와 동일한 canonical manifest만 허용한다. asset 추가·삭제·교체 또는 metadata 변경은 fail closed한다.
+- [x] feed cursor가 opaque string으로 왕복하며 client가 decode/조작하지 않는다.
+- [x] PATCH와 publish는 `expectedVersion`을 보내며 409 version conflict에서 자동 overwrite/publish하지 않는다. 최신 drive를 다시 읽고 사용자에게 충돌을 보여 준 뒤, 명시적 재검토가 끝난 경우에만 갱신된 `expectedVersion`으로 replay한다.
+- [x] 존재하지 않는 drive와 non-owner drive의 PATCH/DELETE는 모두 동일한 UI-safe `404 NOT_FOUND`로 처리되어 존재 여부를 노출하지 않는다.
+- [x] validation 422와 rate-limit 429가 각각 UI-safe validation/retry 상태로 변환된다.
+- [x] motion이 Parked에서 Driving/Unknown으로 바뀌면 다음 remote stage를 실행하지 않고 draft를 보존한다.
+- [x] demo variant는 fake adapter와 `데모 데이터` 표시를 유지하고 production adapter로 조용히 fallback하지 않는다.
+- [x] 실제 AWS 호출 없이 core test 범위가 통과한다.
 
 ### Tests
 
@@ -143,7 +153,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
 
 ### Dependencies
 
-- base: `issue-pleos-integration@89078a0`
+- approved integrated head: `0d31576` (includes `issue-pleos-integration@89078a0`)
 - contract: `agent/issue-backend-mvp@ddbd61f`
 - backend의 mobile Cognito client가 client secret 없는 public client인지 확인
 - P0-2와 공유하는 route DTO는 실제 좌표를 전제로 확장하지 않고 preset reference를 기본으로 유지
@@ -155,7 +165,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - PR 작성 전 secret scan과 test evidence 필요
 - push/PR 생성은 host orchestrator, merge는 Discord 승인 이후에만 수행
 
-## 4. GitHub Issue 초안 2
+## 4. GitHub Issue 초안 2 — 다음 작업
 
 ### 제목
 
@@ -208,8 +218,8 @@ BACKEND_CONTRACT_PATH=infra/API.md
 
 ### Dependencies
 
-- `issue-pleos-integration@89078a0`
-- P0-1의 API DTO와 deletion error model
+- Android 통합 HEAD `0d31576`
+- P0-1에서 승인된 API DTO와 deletion error model
 - 실제 live collector는 공식 SDK 상태 변경 또는 공식 AAOS source/permission 확인을 다루는 별도 Issue가 승인되기 전까지 scope 밖
 
 ### Approval boundary
@@ -219,7 +229,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - AWS deploy/credential 접근 금지
 - merge는 Discord 승인 이후에만 수행
 
-## 5. GitHub Issue 초안 3
+## 5. GitHub Issue 초안 3 — Gradle/runtime 차단
 
 ### 제목
 
@@ -232,6 +242,8 @@ BACKEND_CONTRACT_PATH=infra/API.md
 ### 목적
 
 정적 검토 코드를 실행 가능한 APK와 재현 가능한 증거로 전환한다. signing secret을 저장소에 넣지 않고 demo와 Pleos runtime을 분리하며, 확인된 사실만 README·영상·PT에 반영한다.
+
+현재는 Gradle·Android instrumentation·vendor adapter·Pleos AVD runtime이 검증되지 않아 차단 상태다. P0-2 완료와 실행 환경 확보 전에는 release/APK 작업을 완료로 표시하지 않는다.
 
 ### 범위
 
@@ -277,8 +289,8 @@ BACKEND_CONTRACT_PATH=infra/API.md
 
 ### Dependencies
 
-- P0-1과 P0-2 완료 및 승인
-- `issue-pleos-integration@89078a0`이 통합 가능한 상태
+- P0-1 정적·core 승인 완료(`0d31576`), P0-2는 아직 완료 필요
+- Android 통합 HEAD `0d31576`을 main 통합 후보로 사용할 수 있는 상태
 - signing material은 human/CI가 제공하며 worker는 값을 읽거나 출력하지 않음
 - Pleos SDK Maven/AVD 접근 가능 환경
 
@@ -289,72 +301,40 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - GitHub Release publish, repository APK push, merge는 별도 승인
 - AWS deploy, IAM 변경, real API smoke는 이 Issue 범위 밖
 
-## 6. P0-1 별도 workspace/branch 시작 패킷
+## 6. P0-1 완료 기록과 P0-2 handoff
 
-P0-1은 실제 AWS 없이 구현 가능하고 P0-3의 E2E를 선행하므로 최우선이다.
-
-### 권장 식별자
+### P0-1 완료 기록
 
 ```text
-Issue slug: android-cloud-integration
-Branch: agent/issue-android-cloud-integration
-Workspace: /Users/yong/Desktop/HYUNDAI APP Contest/orchestrator/workspaces/issue-android-cloud-integration
-Base: issue-pleos-integration@89078a0
-PR strategy: stacked on issue-pleos-integration until its main merge; 이후 main 기준으로 rebase/retarget
+Integrated head: 0d315763353a54c65352fffab2d6cb7222ec4a83
+Includes: PLEOS 89078a09dc29b0ab8346d4909bb87347f5a8efbb
+Backend contract: ddbd61fde381d09bc4605c758126ebf6ba0a5ea5
+Review: APPROVE
+Core Kotlin: 41/41
+npm: 23/23
+SQLite migration predicate: PASS (manual)
 ```
 
-### Host preflight
+완료 판정은 정적·core 계약 범위에 한정한다. concrete Cognito/API host와 no-redirect HTTP adapter 설정이 없으므로 actual cloud는 unavailable이다. worker가 실제 endpoint나 credential을 추정해 채우지 않는다.
 
-host orchestrator가 credential을 노출하지 않고 다음을 확인한다.
+### P0-2 시작 기준
 
-1. `issue-pleos-integration`이 정확히 `89078a09dc29b0ab8346d4909bb87347f5a8efbb`인지 확인
-2. `agent/issue-backend-mvp`가 정확히 `ddbd61fde381d09bc4605c758126ebf6ba0a5ea5`인지 확인
-3. 두 branch의 `AGENTS.md`, Android package 구조, `infra/API.md`를 worker prompt에 포함
-4. 동일 workspace/branch가 이미 존재하지 않는지 확인
-5. GitHub Issue를 생성하고 `agent:ready`는 dependency가 충족된 뒤에만 추가
+- base를 Android 통합 HEAD `0d31576`으로 고정
+- P0-1의 API DTO·deletion error model·upload queue 계약 보존
+- FusedLocation/TTS/STT/Vehicle Control을 production dependency에 추가하지 않음
+- actual route collection은 계속 unavailable로 두고 `DemoPreset`을 명시적으로 구분
+- 위치 동의·철회 상태와 purge/cancel 동작을 core/DB/UI test로 검증
+- AWS deploy, credential 접근, real vehicle/user location 수집 금지
 
-현재 contest worktree에는 두 branch object가 없으므로 여기서 임의로 worktree를 만들지 않는다.
+### P0-3 차단 해제 조건
 
-### 첫 worker prompt 초안
+- P0-2 독립 승인
+- Gradle dependency resolution과 assemble 가능
+- Android instrumentation 실행 가능
+- vendor adapter compile 가능
+- Pleos Emulator 2.1.0/API34 실행 가능
 
-```text
-역할: Android cloud integration worker.
-Workspace: /Users/yong/Desktop/HYUNDAI APP Contest/orchestrator/workspaces/issue-android-cloud-integration
-Base: issue-pleos-integration@89078a0
-Backend contract: agent/issue-backend-mvp@ddbd61f, infra/API.md
-
-P0-1 acceptance criteria만 구현하세요. 실제 AWS 호출, deploy, credential/keychain/.env 접근은 금지합니다.
-MockWebServer와 fake auth session으로 Cognito JWT header, drive/feed API, presigned S3 PUT,
-upload refresh와 idempotent WorkManager retry를 검증하세요. local clientRequestId는 create body
-clientDraftId와 Idempotency-Key header에 동일 값으로 매핑하세요. create manifest는 COVER+ROUTE를
-사용하고 lowercase hex SHA-256 입력과 server-returned RFC 4648 base64
-x-amz-checksum-sha256 header를 구분하세요. 만료 URL은 POST /drives/{id}/uploads에서 동일 manifest로만
-재발급하며 mismatch는 fail closed하세요. PATCH/publish에는 expectedVersion을 전송하고 409에서
-overwrite하지 마세요. missing/non-owner PATCH/DELETE는 같은 UI-safe 404 NOT_FOUND로 매핑하세요.
-token/presigned URL/좌표를 Room, WorkManager input, 로그에 저장하지 마세요. demo와 production
-adapter를 명확히 분리하고, 실행한 검사만 보고하세요.
-로컬 commit까지만 허용되며 push/PR/merge는 host orchestrator가 담당합니다.
-```
-
-### 구현 시작 전 Go/No-Go
-
-Go:
-
-- [ ] PLEOS base가 `89078a0`
-- [ ] backend head SHA와 API contract가 고정됨
-- [ ] Android module/package와 existing `RemoteDriveApi`/Worker 경로 확인
-- [ ] create/refresh manifest schema, checksum encoding, `expectedVersion`, 404/409 오류 fixture 고정
-- [ ] test-only HTTP server dependency를 사용할 수 있음
-- [ ] real AWS endpoint/credential 없이 전 범위를 테스트할 수 있음
-
-No-Go:
-
-- backend contract가 branch와 문서에서 충돌함
-- Cognito mobile client 방식이 불명확함
-- worker가 실제 credential 또는 deploy 권한을 요구함
-- PLEOS base를 main에 병합된 것으로 오인함
-
-No-Go이면 DTO나 auth library를 추정 구현하지 말고 Issue를 차단 상태로 보고한다.
+위 조건 전에는 APK·Pleos AVD·AWS E2E 또는 release 준비 완료로 표시하지 않는다.
 
 ## 7. 전체 완료 정의
 

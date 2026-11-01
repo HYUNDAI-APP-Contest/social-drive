@@ -7,9 +7,9 @@
 2026-11-01 현재 이 저장소의 `main`에는 Android 앱과 Pleos 연동 브랜치가 병합되지 않았습니다. 이 작업공간에도 실행할 `android/` 디렉터리와 release APK가 없습니다.
 
 - Vehicle SDK 2.3.2와 NaviHelper 3.0.5 adapter의 최초 구현 커밋은 `6475287`이며 1차 독립 검토에서 `CHANGES_REQUIRED`였습니다.
-- race/lifecycle/permission 지적은 `98a2978`과 `6e930d6`에서 보완됐고, 현재 최신 커밋은 `89078a0`입니다.
-- `89078a0`은 독립 검토 `APPROVE`이며 Android Studio 내장 Kotlin compiler로 production core compile, JVM 테스트 15/15, npm 테스트 21/21을 통과했습니다.
-- 이 `APPROVE`는 vendor adapter나 런타임 성공을 뜻하지 않습니다. PLEOS 브랜치는 `main` 미병합이며 vendor adapter compile, Gradle assemble, APK 생성, Pleos AVD runtime/callback은 아직 검증되지 않았습니다.
+- race/lifecycle/permission 지적은 `98a2978`과 `6e930d6`에서 보완됐고, PLEOS 기준 커밋 `89078a0` 위에 cloud contract를 통합한 최신 Android HEAD는 `0d31576`입니다.
+- `0d31576`은 독립 검토 `APPROVE`이며 production core Kotlin 테스트 41/41, npm 테스트 23/23, 수동 SQLite migration predicate 검사가 통과했습니다. P0-1은 정적·core 계약 범위에서 완료됐습니다.
+- 이 `APPROVE`는 실제 SDK나 cloud runtime 성공을 뜻하지 않습니다. `main` 미병합이며 concrete Cognito/API host 및 no-redirect HTTP adapter 설정이 없어 actual cloud는 사용할 수 없습니다. Gradle·Android instrumentation·vendor adapter·APK·Pleos AVD·AWS E2E도 아직 검증되지 않았습니다.
 - 현재 확인된 Android 영속 데이터 범위는 recording session, `highlightCount`, draft, pending queue, preset reference입니다.
 - 실제 위치·경로점 수집과 위치정보 동의·철회 UI는 아직 구현되지 않았습니다.
 - preset route와 fake motion은 실제 차량 데이터가 아닌 데모 데이터입니다.
@@ -48,7 +48,7 @@ Social Drive의 목표 흐름은 다음과 같습니다.
 | 등급 | 기능 | 2026-11-01 증거 |
 |---|---|---|
 | `실제 SDK` | 없음 | Pleos AVD callback과 release 증거가 아직 없음 |
-| `코드 존재(미통합)` | Vehicle SDK 2.3.2 / NaviHelper 3.0.5 adapter | 최신 `89078a0`; 독립 검토 `APPROVE`, production core compile, JVM 15/15, npm 21/21. `main` 미병합, vendor adapter compile·Gradle assemble·APK·AVD runtime 미검증 |
+| `코드 존재(미통합)` | Vehicle/NaviHelper adapter + Cognito/API/S3 contract | 통합 HEAD `0d31576` (`89078a0` 포함); 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, SQLite predicate PASS. `main` 미병합, actual cloud configuration·Gradle·instrumentation·vendor adapter·APK·AVD·AWS E2E 미검증 |
 | `코드 존재(미통합)` | recording session, `highlightCount`, draft, pending queue, preset reference | 별도 Android 작업 코드에 존재하나 제출 브랜치 통합·실행 증거 전 |
 | `데모 데이터` | preset route / fake motion | 실제 위치나 실제 Vehicle callback이 아님 |
 | `미구현` | 실제 위치·경로점 수집, 위치 동의·철회 UI, release APK | 구현 또는 검증 증거 없음 |
@@ -104,11 +104,11 @@ adb install -r app/build/outputs/apk/demo/debug/app-demo-debug.apk
 | OS | macOS 개발 환경 | 로컬 호스트 사용 중 |
 | JDK | JDK 17 | Android 브랜치 빌드 미검증 |
 | Android | minSdk 28 이상, API 34 Pleos AVD | AVD 실행 미검증 |
-| Gradle | 프로젝트 Gradle Wrapper, Gradle 8 이상 | production core Kotlin은 별도 compiler로 검증됨. Gradle assemble과 vendor adapter compile은 미검증 |
+| Gradle | 프로젝트 Gradle Wrapper, Gradle 8 이상 | core Kotlin 41/41은 별도 compiler/test harness로 검증됨. Gradle assemble·Android instrumentation·vendor adapter compile은 미검증 |
 | Emulator | Pleos Connect Emulator 2.1.0, Cold Boot, RAM 4GB | 설치·부팅·앱 실행 증거 없음 |
-| Vehicle | Vehicle SDK 2.3.2 / Vehicle Service 대응 버전 | 최신 `89078a0`, 독립 검토 `APPROVE`; production core compile·JVM 15/15, vendor adapter compile·Gradle assemble·AVD callback 미검증 |
-| Navigation | NaviHelper 3.0.5 | 최신 `89078a0`, 독립 검토 `APPROVE`; production core compile·JVM 15/15, vendor adapter compile·Gradle assemble·route callback 미검증 |
-| AWS | Cognito JWT, DynamoDB, private S3 기반 목표 | backend 승인 HEAD `ddbd61f`; main 미병합, Android 통합·배포 E2E 미검증 |
+| Vehicle | Vehicle SDK 2.3.2 / Vehicle Service 대응 버전 | `0d31576`이 PLEOS `89078a0`을 포함하고 core 검토 통과; vendor adapter·Gradle·AVD callback 미검증 |
+| Navigation | NaviHelper 3.0.5 | `0d31576`이 PLEOS `89078a0`을 포함하고 core 검토 통과; vendor adapter·Gradle·route callback 미검증 |
+| AWS | Cognito JWT, DynamoDB, private S3 기반 목표 | backend `ddbd61f` 계약을 `0d31576` core에 통합. concrete Cognito/API host·no-redirect HTTP adapter 설정이 없어 actual cloud unavailable; AWS E2E 미검증 |
 
 ### Pleos variant에 필요한 설정
 

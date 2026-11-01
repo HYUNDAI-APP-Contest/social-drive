@@ -32,7 +32,7 @@
 
 좋은 드라이브 코스를 발견하는 곳과 실제로 주행하는 곳이 분리되어 있다. SNS에서 사진이나 후기를 발견해도 지도에서 장소를 다시 찾고, 차량 내비게이션에 목적지와 경유지를 다시 입력해야 한다. 반대로 운전 중 좋았던 순간을 메모하거나 자세히 기록하려는 행동은 주의 분산과 충돌한다.
 
-Social Drive는 다음 경험을 제출 목표로 한다. Vehicle/NaviHelper adapter 최신 커밋은 `89078a0`이며 독립 검토 `APPROVE`, production core compile, JVM 15/15, npm 21/21 상태다. 그러나 main 미병합이고 vendor adapter compile·Gradle assemble·APK·AVD runtime은 미검증이다. 실제 위치·경로점 수집은 아직 구현되지 않았다.
+Social Drive는 다음 경험을 제출 목표로 한다. PLEOS `89078a0`과 cloud contract를 포함한 Android 통합 HEAD `0d31576`은 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, SQLite migration predicate PASS 상태다. P0-1은 정적·core 범위에서 완료됐지만 main 미병합이며 concrete Cognito/API host·no-redirect HTTP adapter 설정이 없어 actual cloud는 사용할 수 없다. Gradle·Android instrumentation·vendor adapter·APK·Pleos AVD·AWS E2E도 미검증이고, 실제 위치·경로점 수집은 아직 구현되지 않았다.
 
 1. 주행 중에는 기록 시작·종료와 `방금 좋았어` 한 번의 터치만 제공한다.
 2. recording session, `highlightCount`, draft, pending queue와 preset reference를 로컬 DB에 보존한다.
@@ -69,11 +69,11 @@ Social Drive는 모바일 SNS를 차량 화면으로 옮긴 앱이 아니다.
 
 ### 차량 상태가 UX를 결정하는 구조를 구현한다
 
-Vehicle adapter의 목표는 Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unknown`을 판정하는 것이다. 서비스 오류, 권한 부족, 오래된 값처럼 안전을 증명할 수 없는 경우는 `Unknown`으로 처리해 편집과 게시를 차단한다. 최신 `89078a0`은 독립 검토 `APPROVE`이고 production core compile·JVM 15/15를 통과했지만 main 미병합, vendor adapter compile·Gradle assemble·Pleos AVD 검증 전이므로 실제 Vehicle 상태 연동으로 표현하지 않는다.
+Vehicle adapter의 목표는 Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unknown`을 판정하는 것이다. 서비스 오류, 권한 부족, 오래된 값처럼 안전을 증명할 수 없는 경우는 `Unknown`으로 처리해 편집과 게시를 차단한다. 통합 HEAD `0d31576`은 독립 검토 `APPROVE`와 core Kotlin 41/41을 통과했지만 main 미병합, vendor adapter·Gradle·Android instrumentation·Pleos AVD 검증 전이므로 실제 Vehicle 상태 연동으로 표현하지 않는다.
 
 ### 콘텐츠가 실제 주행으로 완결된다
 
-완성 목표에서는 사용자가 주차 상태에서 `이 코스 따라가기`를 누르면 NaviHelper에 목적지와 경유지를 전달하여 차량 Navigation 앱의 경로 안내로 이어진다. 최신 `89078a0`은 독립 검토 `APPROVE`이고 production core compile·JVM 15/15를 통과했지만 main 미병합, vendor adapter compile·Gradle assemble·AVD callback 검증 전이다.
+완성 목표에서는 사용자가 주차 상태에서 `이 코스 따라가기`를 누르면 NaviHelper에 목적지와 경유지를 전달하여 차량 Navigation 앱의 경로 안내로 이어진다. 통합 HEAD `0d31576`은 PLEOS `89078a0`을 포함하고 core 검토를 통과했지만 main 미병합, vendor adapter·Gradle·AVD callback 검증 전이다.
 
 ### 주행과 정차의 역할을 분리한다
 
@@ -122,7 +122,7 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 4. NaviHelper main 통합·Gradle/AVD 검증 후 목적지와 경유지를 전달한다.
 5. 실제 callback이 확인된 경우에만 차량 Navigation 앱 안내 시작을 시연한다.
 
-현재 증거: UI와 fake 흐름은 별도 Android 작업 브랜치에 있으므로 `데모 데이터`다. NaviHelper adapter 최신 `89078a0`은 독립 검토 `APPROVE`이고 production core compile·JVM 15/15를 통과했지만 `코드 존재(미통합)` 상태다. 3.0.5 vendor adapter compile·Gradle assemble 성공 로그와 initialize/request/callback 영상은 없다.
+현재 증거: UI와 fake 흐름은 별도 Android 작업 브랜치에 있으므로 `데모 데이터`다. 통합 HEAD `0d31576`은 PLEOS `89078a0`과 cloud contract를 포함하고 독립 검토 `APPROVE`지만 `코드 존재(미통합)` 상태다. NaviHelper 3.0.5 vendor adapter·Gradle assemble 성공 로그와 initialize/request/callback 영상은 없다.
 
 ## 8. 기술 활용성과 구현 상태
 
@@ -132,9 +132,9 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 | Room recording/draft/queue | 오프라인/재시작 복구 | session, `highlightCount`, draft, queue, preset reference 코드만 확인 | `코드 존재(미통합)` |
 | motion 재검증 Worker | 주행 중 원격 게시 차단 | Android 별도 브랜치에 코드 존재, Pleos motion 연동 전 | `코드 존재(미통합)` |
 | 실제 경로점·위치 수집과 동의·철회 UI | 실제 코스 생성과 개인정보 통제 | 확인된 구현 증거 없음 | `미구현` |
-| Cognito/DynamoDB/S3 API | 사용자·피드·비공개 업로드 | 승인 HEAD `agent/issue-backend-mvp@ddbd61f`에 코드 존재, main 미병합·배포·앱 통합 전 | `코드 존재(미통합)` |
-| Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | 최신 `89078a0`, 독립 검토 `APPROVE`, production core compile, JVM 15/15, npm 21/21; main 미병합·vendor adapter compile·Gradle assemble·APK·AVD 미검증 | `코드 존재(미통합)` |
-| NaviHelper 3.0.5 | 목적지·경유지 전달 | 최신 `89078a0`, 독립 검토 `APPROVE`, production core compile, JVM 15/15, npm 21/21; main 미병합·vendor adapter compile·Gradle assemble·APK·AVD 미검증 | `코드 존재(미통합)` |
+| Cognito/DynamoDB/S3 API | 사용자·피드·비공개 업로드 | `0d31576`에 backend `ddbd61f` 계약 통합, P0-1 정적·core 승인 완료. concrete Cognito/API host·no-redirect HTTP adapter 설정 부재로 actual cloud unavailable; main 미병합·AWS E2E 전 | `코드 존재(미통합)` |
+| Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | `0d31576`이 PLEOS `89078a0` 포함, 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23; main 미병합·vendor adapter·Gradle·instrumentation·APK·AVD 미검증 | `코드 존재(미통합)` |
+| NaviHelper 3.0.5 | 목적지·경유지 전달 | `0d31576`이 PLEOS `89078a0` 포함, 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23; main 미병합·vendor adapter·Gradle·instrumentation·APK·AVD 미검증 | `코드 존재(미통합)` |
 | preset route/motion | 전체 흐름 시연 보조 | 데모 전용 | `데모 데이터` |
 | FusedLocation/STT/TTS/Vehicle Control | 향후 자연스러운 입력·안내 | 공식 Coming Soon | `향후 기능` |
 
@@ -145,7 +145,7 @@ Vehicle State와 NaviHelper는 현재 Ready to Use지만, FusedLocation·STT·TT
 ### 현재 확인된 코드 증거
 
 - 별도 Android 작업 브랜치에 recording session, `highlightCount`, draft, pending queue와 preset reference 코드가 존재한다.
-- 별도 Android 작업 브랜치의 queue는 motion gate 구조를 포함한다. Vehicle adapter 최신 `89078a0`은 독립 검토 `APPROVE`이고 production core compile·JVM 15/15를 통과했지만 main 미병합·vendor adapter compile·Gradle assemble·APK·AVD 미검증이다.
+- 별도 Android 통합 HEAD `0d31576`의 queue는 motion gate와 cloud contract를 포함한다. 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, SQLite predicate PASS지만 main 미병합·actual cloud config·vendor adapter·Gradle·instrumentation·APK·AVD·AWS E2E 미검증이다.
 - 실제 경로점·위치 샘플 수집과 위치정보 동의·철회 UI는 아직 미구현이다.
 
 ### 구현·검증해야 할 요구사항
