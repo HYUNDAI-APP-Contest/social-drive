@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import { timingSafeEqual } from "node:crypto";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
+import { renderVisualReport } from "./visual-report.mjs";
 
 const commands = [
   { name: "agent-approve", description: "Codex PR 병합을 승인합니다", options: [{ type: 3, name: "id", description: "승인 ID (예: pr-12)", required: true }] },
@@ -18,7 +19,7 @@ const equalSecret = (left, right) => {
 };
 
 export class Discord extends EventEmitter {
-  constructor(config) { super(); this.config = config; this.socket = null; this.sequence = null; this.heartbeat = null; }
+  constructor(config, { fetchImpl = fetch } = {}) { super(); this.config = config; this.fetch = fetchImpl; this.socket = null; this.sequence = null; this.heartbeat = null; }
   authorize(userId) { this.config.discordApprovers.add(userId); }
 
   async brandVersion() {
@@ -31,7 +32,7 @@ export class Discord extends EventEmitter {
     const data = `data:image/png;base64,${avatar.toString("base64")}`;
     await this.api("PATCH", "/users/@me", { avatar: data });
     await this.api("PATCH", `/guilds/${this.config.discordGuildId}/members/@me`, { nick: this.config.discordDisplayName });
-    const response = await fetch(this.config.discordWebhookUrl, {
+    const response = await this.fetch(this.config.discordWebhookUrl, {
       method: "PATCH", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: this.config.discordDisplayName, avatar: data }), signal: AbortSignal.timeout(15_000),
     });
@@ -39,7 +40,7 @@ export class Discord extends EventEmitter {
   }
 
   async api(method, path, body) {
-    const response = await fetch(`https://discord.com/api/v10${path}`, {
+    const response = await this.fetch(`https://discord.com/api/v10${path}`, {
       method,
       headers: { Authorization: `Bot ${this.config.discordBotToken}`, "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(15_000),
@@ -52,11 +53,47 @@ export class Discord extends EventEmitter {
     let safe = String(content);
     for (const secret of [this.config.githubToken, this.config.discordBotToken, this.config.discordWebhookUrl].filter(Boolean)) safe = safe.replaceAll(secret, "[REDACTED]");
     safe = safe.slice(0, 1900);
-    const response = await fetch(this.config.discordWebhookUrl, {
+    const response = await this.fetch(this.config.discordWebhookUrl, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: this.config.discordDisplayName, content: safe, allowed_mentions: { parse: [] } }), signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) throw new Error(`Discord webhook: ${response.status}`);
+  }
+
+  async reportOnce(eventId, content) {
+    const digest = createHash("sha256").update(String(eventId)).digest("hex").slice(0, 20);
+    const marker = `cc-event:${digest}`;
+    let safe = String(content);
+    for (const secret of [this.config.githubToken, this.config.discordBotToken, this.config.discordWebhookUrl].filter(Boolean)) safe = safe.replaceAll(secret, "[REDACTED]");
+    safe = `${safe.slice(0, 1810)}\n-# 관제 이벤트: \`${marker}\``;
+    const recent = await this.api("GET", `/channels/${this.config.discordChannelId}/messages?limit=100`);
+    const existing = recent.find((message) => String(message.content ?? "").includes(marker));
+    if (existing) return existing;
+    return this.api("POST", `/channels/${this.config.discordChannelId}/messages`, {
+      content: safe,
+      nonce: `cc${digest}`,
+      enforce_nonce: true,
+      allowed_mentions: { parse: [] },
+    });
+  }
+
+  async visualReportOnce(eventId, report) {
+    const digest = createHash("sha256").update(String(eventId)).digest("hex").slice(0, 12);
+    const marker = `visual-event:${digest}`;
+    const recent = await this.api("GET", `/channels/${this.config.discordChannelId}/messages?limit=100`);
+    const existing = recent.find((message) => String(message.content ?? "").includes(marker));
+    if (existing) return existing;
+    let payload = renderVisualReport(report, { eventId });
+    let serialized = JSON.stringify({
+      ...payload,
+      nonce: `vr${createHash("sha256").update(String(eventId)).digest("hex").slice(0, 20)}`,
+      enforce_nonce: true,
+    });
+    for (const secret of [this.config.githubToken, this.config.discordBotToken, this.config.discordWebhookUrl].filter(Boolean)) {
+      serialized = serialized.replaceAll(secret, "[REDACTED]");
+    }
+    payload = JSON.parse(serialized);
+    return this.api("POST", `/channels/${this.config.discordChannelId}/messages`, payload);
   }
 
   async requestApproval({ id, title, description, url = null }) {
@@ -94,7 +131,7 @@ export class Discord extends EventEmitter {
       allowed_mentions: { parse: [] },
     }));
     form.set("files[0]", new Blob([avatar], { type: "image/png" }), filename);
-    const response = await fetch(`https://discord.com/api/v10/channels/${this.config.discordChannelId}/messages`, {
+    const response = await this.fetch(`https://discord.com/api/v10/channels/${this.config.discordChannelId}/messages`, {
       method: "POST", headers: { Authorization: `Bot ${this.config.discordBotToken}` }, body: form, signal: AbortSignal.timeout(20_000),
     });
     if (!response.ok) throw new Error(`Discord persona report: ${response.status} ${await response.text()}`);
@@ -125,7 +162,7 @@ export class Discord extends EventEmitter {
   }
 
   async reply(interaction, content) {
-    const response = await fetch(`https://discord.com/api/v10/interactions/${interaction.id}/${interaction.token}/callback`, {
+    const response = await this.fetch(`https://discord.com/api/v10/interactions/${interaction.id}/${interaction.token}/callback`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: 4, data: { content, flags: 64, allowed_mentions: { parse: [] } } }), signal: AbortSignal.timeout(15_000),
     });
