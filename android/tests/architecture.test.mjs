@@ -19,6 +19,7 @@ test("Android contract targets the automotive-compatible API floor", () => {
   assert.match(build, /androidx\.room:room-runtime:2\.6\.1/);
   assert.match(build, /androidx\.work:work-runtime-ktx:2\.9\.1/);
   assert.match(build, /room\.schemaLocation/);
+  assert.match(build, /getByName\("androidTest"\)\.assets\.srcDir\("\$projectDir\/schemas"\)/);
 });
 
 test("Room owns durable recordings drafts and a non-destructive migration path", () => {
@@ -57,14 +58,25 @@ test("publish queue is stable restart-safe and keeps ephemeral credentials out o
   assert.match(repositories, /findByRecording\(id\)/);
   assert.match(repositories, /clientRequestId = "drive-\$\{ids\.create\(\)\}"/);
   assert.match(repositories, /motionState != MotionState\.Parked/);
-  assert.match(scheduler, /beginUniqueWork\([\s\S]*ExistingWorkPolicy\.KEEP/);
+  assert.match(scheduler, /schedule\(draftId, ExistingWorkPolicy\.KEEP\)/);
+  assert.match(scheduler, /beginUniqueWork\(uniqueName\(draftId\), policy, create\)/);
   assert.match(scheduler, /recoverAfterProcessRestart/);
   assert.match(application, /recoverQueuedWork\(\)/);
   assert.match(application, /publishScheduler\.recoverAfterProcessRestart/);
   for (const worker of ["CreateDriveWorker", "UploadAssetsWorker", "PublishDriveWorker"]) assert.match(scheduler, new RegExp(worker));
   assert.match(workers, /original draft is retained after acknowledgement/);
-  assert.equal((workers.match(/pauseUnlessParked\(id, queue\.stage/g) ?? []).length, 3);
-  assert.match(scheduler, /motionStateSource\.current\(\) != MotionState\.Parked[\s\S]*pauseRecoverableForMotion/);
+  assert.equal((workers.match(/executionGate\.execute\(/g) ?? []).length, 3);
+  assert.match(scheduler, /coordinateRecovery\([\s\S]*pauseRecoverableForMotion/);
+  assert.match(scheduler, /PAUSED_MOTION[\s\S]*ExistingWorkPolicy\.REPLACE/);
+  assert.equal((workers.match(/ParkedExecutionResult\.Paused[^\n]*return Result\.failure\(\)/g) ?? []).length, 3);
+  const gate = read("app/src/main/java/com/socialdrive/app/safety/ParkedExecutionGate.kt");
+  assert.match(gate, /active \+= child[\s\S]*child\.start\(\)[\s\S]*registered\.complete/);
+  assert.match(gate, /children\.forEach \{ it\.cancel\(MotionTransitionCancellation\(\)\) \}/);
+  const gateTest = read("app/src/test/java/com/socialdrive/app/safety/ParkedExecutionGateTest.kt");
+  for (const stage of ["create", "upload", "publish"]) assert.match(gateTest, new RegExp(`"${stage}"`));
+  assert.match(gateTest, /transition after registration cancels before remote block starts/);
+  const workTest = read("app/src/androidTest/java/com/socialdrive/app/PublishWorkChainTest.kt");
+  assert.match(workTest, /recoverAfterProcessRestart\(\)[\s\S]*resumed\.count \{ !it\.state\.isFinished \}/);
   for (const marker of ["idempotencyKey", "checksumSha256Base64", "same checksum as success", "permanent conflict"]) assert.match(remote, new RegExp(marker));
   assert.match(remote, /putIfAbsent\(session, command\.checksumSha256Base64\)/);
 });

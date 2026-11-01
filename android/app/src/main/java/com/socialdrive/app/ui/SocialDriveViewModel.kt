@@ -45,7 +45,7 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
         latestDraft.value?.let { app.publishScheduler.enqueue(it.id, motionState) } ?: EnqueueResult.MissingDraft
 
     suspend fun updateMotionState(motionState: MotionState) {
-        app.motionStateSource.update(motionState)
+        app.parkedExecutionGate.transitionTo(motionState)
         if (motionState == MotionState.Parked) app.publishScheduler.recoverAfterProcessRestart()
     }
 }

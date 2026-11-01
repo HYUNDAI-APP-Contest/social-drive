@@ -13,7 +13,7 @@ import com.socialdrive.app.data.work.PublishScheduler
 import com.socialdrive.app.data.work.PublishWorkerDependencies
 import com.socialdrive.app.data.work.PublishWorkerFactory
 import com.socialdrive.app.domain.MotionState
-import com.socialdrive.app.safety.MutableMotionStateSource
+import com.socialdrive.app.safety.ParkedExecutionGate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,15 +24,15 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
 
     val database: SocialDriveDatabase by lazy { SocialDriveDatabase.create(this) }
     val remoteDriveApi: RemoteDriveApi by lazy { FakeRemoteDriveApi() }
-    val motionStateSource by lazy { MutableMotionStateSource(MotionState.Unknown) }
+    val parkedExecutionGate by lazy { ParkedExecutionGate(MotionState.Unknown) }
     val recordingRepository: RecordingRepository by lazy { RecordingRepository(database) }
     val draftRepository: DraftRepository by lazy { DraftRepository(database) }
     val publishQueueRepository: PublishQueueRepository by lazy { PublishQueueRepository(database) }
     val publishScheduler: PublishScheduler by lazy {
-        PublishScheduler(WorkManager.getInstance(this), publishQueueRepository, motionStateSource)
+        PublishScheduler(WorkManager.getInstance(this), publishQueueRepository, parkedExecutionGate)
     }
     private val publishWorkerFactory by lazy {
-        PublishWorkerFactory(PublishWorkerDependencies(database, remoteDriveApi, motionStateSource))
+        PublishWorkerFactory(PublishWorkerDependencies(database, remoteDriveApi, parkedExecutionGate))
     }
 
     override val workManagerConfiguration: Configuration

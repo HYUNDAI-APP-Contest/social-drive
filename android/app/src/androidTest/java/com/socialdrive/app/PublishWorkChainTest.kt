@@ -20,7 +20,7 @@ import com.socialdrive.app.data.work.PublishScheduler
 import com.socialdrive.app.data.work.PublishWorkerDependencies
 import com.socialdrive.app.data.work.PublishWorkerFactory
 import com.socialdrive.app.domain.MotionState
-import com.socialdrive.app.safety.MutableMotionStateSource
+import com.socialdrive.app.safety.ParkedExecutionGate
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -33,7 +33,7 @@ import org.junit.runner.RunWith
 class PublishWorkChainTest {
     private lateinit var context: Context
     private lateinit var database: SocialDriveDatabase
-    private val motion = MutableMotionStateSource(MotionState.Parked)
+    private val motion = ParkedExecutionGate(MotionState.Parked)
     private lateinit var remote: CountingRemoteDriveApi
 
     @Before
@@ -76,7 +76,7 @@ class PublishWorkChainTest {
         val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
         val scheduler = PublishScheduler(WorkManager.getInstance(context), PublishQueueRepository(database, clock = { 400L }), motion)
         scheduler.enqueue(draft.id, MotionState.Parked)
-        motion.update(MotionState.Driving)
+        motion.transitionTo(MotionState.Driving)
 
         val manager = WorkManager.getInstance(context)
         val work = manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id)).get(5, TimeUnit.SECONDS)
@@ -85,6 +85,11 @@ class PublishWorkChainTest {
 
         assertEquals(0, remote.calls)
         assertEquals(LocalState.PAUSED_MOTION, database.uploadQueueDao().find(draft.id)?.status)
+
+        motion.transitionTo(MotionState.Parked)
+        scheduler.recoverAfterProcessRestart()
+        val resumed = manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id)).get(5, TimeUnit.SECONDS)
+        assertEquals(3, resumed.count { !it.state.isFinished })
     }
 }
 

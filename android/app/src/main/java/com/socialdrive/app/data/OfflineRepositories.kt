@@ -143,7 +143,7 @@ class PublishQueueRepository(
         }
     }
 
-    suspend fun recoverable(): List<String> = database.uploadQueueDao().recoverable().map { it.draftId }
+    suspend fun recoverable(): List<UploadQueueEntity> = database.uploadQueueDao().recoverable()
 
     suspend fun pauseRecoverableForMotion() {
         val now = clock()

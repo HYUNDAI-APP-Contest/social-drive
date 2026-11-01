@@ -4,6 +4,10 @@ import com.socialdrive.app.data.DraftSnapshot
 import java.security.MessageDigest
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.yield
 
 enum class RemoteFailureCode { OFFLINE, TIMEOUT, SERVER_BUSY, REJECTED, UNKNOWN }
 
@@ -41,7 +45,8 @@ fun DraftSnapshot.assetUploads(): List<AssetUploadCommand> {
  * Production adapters must request/reissue the backend upload session with [AssetUploadCommand.idempotencyKey],
  * sign both content type and SHA-256 checksum, and treat an existing object with the same checksum as success.
  * A different checksum for the same `(clientRequestId, assetId)` is a permanent conflict. Presigned URLs and
- * credentials are consumed in memory and never returned to Room or WorkManager input data.
+ * credentials are consumed in memory and never returned to Room or WorkManager input data. Implementations must
+ * use a cancellation-cooperative HTTP client and propagate [CancellationException] rather than swallowing it.
  */
 interface RemoteDriveApi {
     suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): String
@@ -54,10 +59,15 @@ class FakeRemoteDriveApi : RemoteDriveApi {
     private val uploadedChecksums = ConcurrentHashMap<String, String>()
     private val published = ConcurrentHashMap.newKeySet<String>()
 
-    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): String =
-        drives.computeIfAbsent(clientRequestId) { "demo-${draft.id}" }
+    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): String {
+        currentCoroutineContext().ensureActive()
+        yield()
+        return drives.computeIfAbsent(clientRequestId) { "demo-${draft.id}" }
+    }
 
     override suspend fun uploadAsset(remoteDriveId: String, command: AssetUploadCommand) {
+        currentCoroutineContext().ensureActive()
+        yield()
         val actual = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(command.content))
         val expectedKey = "${command.clientRequestId}:${command.assetId}:${command.checksumSha256Base64}"
         if (actual != command.checksumSha256Base64 || command.idempotencyKey != expectedKey) {
@@ -71,6 +81,8 @@ class FakeRemoteDriveApi : RemoteDriveApi {
     }
 
     override suspend fun publishDrive(remoteDriveId: String, clientRequestId: String) {
+        currentCoroutineContext().ensureActive()
+        yield()
         published += remoteDriveId
     }
 }

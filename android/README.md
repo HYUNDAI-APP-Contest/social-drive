@@ -15,7 +15,7 @@ An offline-first visual foundation for the Hyundai app contest. The current buil
 - Room-backed recording sessions, durable drafts, and a staged upload queue with exported schemas and non-destructive migrations
 - A unique WorkManager chain per draft (`create → asset upload → publish`) that resumes after process restart
 - Stable `clientRequestId` values, local-original retention through publish acknowledgement, and no persisted presigned URLs or tokens
-- Parked-state revalidation before every remote worker stage and during process-restart recovery; Driving/Unknown pauses locally without a remote call
+- A cancellation-aware Parked execution gate around every remote worker stage and process-restart recovery; Driving/Unknown pauses locally and blocks later calls
 - Replay-safe asset sessions keyed by stable `clientRequestId + assetId + SHA-256 checksum`; checksum conflicts fail closed
 
 ## Run
@@ -50,3 +50,5 @@ Driving or unknown motion cannot enter detail, publish, or editable settings. AW
 The instrumented safety suite verifies that Driving/Unknown home states contain no feed or settings controls, system Back during recording opens the shared stop confirmation, and only the parked flow reaches publish.
 The publish admission check also fails closed for Driving and Unknown even if it is called outside Compose. Queued work stores only opaque local/remote IDs and retry metadata. The immutable `originalContentRef` and draft row remain until and after a successful publish acknowledgement; cleanup requires a separate future retention policy.
 Once a draft enters the queue its editable copy is locked (`state = DRAFT` is required for updates), so a retry cannot upload content different from the frozen local payload. The production API adapter must reissue an upload session using the stable idempotency key, sign checksum and content type, and treat only the same checksum as a replay; presigned URLs remain memory-only.
+
+The motion gate coordinates the motion state observed by this process with cancellation-cooperative remote child jobs; it cannot make a physical vehicle signal and a network service globally atomic. After a Driving/Unknown transition is observed, no new remote block starts, in-flight work receives best-effort cancellation, and stable idempotency makes a replay safe if the service had already accepted the request. Motion pause ends the current WorkManager chain without consuming retry backoff. A later Parked transition waits for the pause record, then immediately replaces the unique chain at the same persisted stage and `clientRequestId`; only one replacement chain remains runnable.

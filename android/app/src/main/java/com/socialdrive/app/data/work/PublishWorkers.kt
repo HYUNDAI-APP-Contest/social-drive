@@ -13,14 +13,14 @@ import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.remote.RemoteDriveApi
 import com.socialdrive.app.data.remote.RemoteDriveException
 import com.socialdrive.app.data.remote.assetUploads
-import com.socialdrive.app.domain.MotionState
-import com.socialdrive.app.safety.MotionStateSource
+import com.socialdrive.app.safety.ParkedExecutionGate
+import com.socialdrive.app.safety.ParkedExecutionResult
 import kotlinx.coroutines.CancellationException
 
 data class PublishWorkerDependencies(
     val database: SocialDriveDatabase,
     val remote: RemoteDriveApi,
-    val motionStateSource: MotionStateSource,
+    val executionGate: ParkedExecutionGate,
     val clock: () -> Long = System::currentTimeMillis,
 )
 
@@ -44,12 +44,11 @@ abstract class StagedPublishWorker(
 ) : CoroutineWorker(appContext, params) {
     protected val draftId: String? get() = inputData.getString(KEY_DRAFT_ID)
 
-    protected suspend fun pauseUnlessParked(
+    protected suspend fun pauseForMotion(
         draftId: String,
         stage: String,
         attempts: Int,
-    ): Result? {
-        if (dependencies.motionStateSource.current() == MotionState.Parked) return null
+    ) {
         val now = dependencies.clock()
         dependencies.database.uploadQueueDao().updateStage(
             draftId = draftId,
@@ -60,7 +59,6 @@ abstract class StagedPublishWorker(
             lastErrorCode = "MOTION_NOT_PARKED",
             now = now,
         )
-        return Result.retry()
     }
 
     protected suspend fun fail(draftId: String, error: Throwable): Result {
@@ -108,9 +106,16 @@ class CreateDriveWorker(
         if (queue.stage != LocalState.CREATE) return Result.success()
         val startedAt = dependencies.clock()
         dependencies.database.uploadQueueDao().updateStage(id, queue.stage, LocalState.RUNNING, queue.attempts + 1, startedAt, null, startedAt)
-        pauseUnlessParked(id, queue.stage, queue.attempts + 1)?.let { return it }
         return try {
-            val remoteId = draft.remoteDriveId ?: dependencies.remote.createDrive(draft.clientRequestId, draft.snapshot())
+            val execution = dependencies.executionGate.execute(
+                onPaused = { pauseForMotion(id, queue.stage, queue.attempts + 1) },
+            ) {
+                draft.remoteDriveId ?: dependencies.remote.createDrive(draft.clientRequestId, draft.snapshot())
+            }
+            val remoteId = when (execution) {
+                ParkedExecutionResult.Paused -> return Result.failure()
+                is ParkedExecutionResult.Completed -> execution.value
+            }
             val now = dependencies.clock()
             dependencies.database.withTransaction {
                 dependencies.database.draftDao().updateRemoteState(id, LocalState.QUEUED, remoteId, now)
@@ -137,13 +142,17 @@ class UploadAssetsWorker(
         if (queue.stage != LocalState.UPLOAD) return Result.success()
         val startedAt = dependencies.clock()
         dependencies.database.uploadQueueDao().updateStage(id, queue.stage, LocalState.RUNNING, queue.attempts + 1, startedAt, null, startedAt)
-        pauseUnlessParked(id, queue.stage, queue.attempts + 1)?.let { return it }
         val remoteId = draft.remoteDriveId ?: return fail(id, IllegalStateException("missing remote id"))
         return try {
-            // Each retry uses the same server session key and checksum; URLs remain in memory.
-            draft.snapshot().assetUploads().forEach { asset ->
-                dependencies.remote.uploadAsset(remoteId, asset)
+            val execution = dependencies.executionGate.execute(
+                onPaused = { pauseForMotion(id, queue.stage, queue.attempts + 1) },
+            ) {
+                // Each retry uses the same server session key and checksum; URLs remain in memory.
+                draft.snapshot().assetUploads().forEach { asset ->
+                    dependencies.remote.uploadAsset(remoteId, asset)
+                }
             }
+            if (execution is ParkedExecutionResult.Paused) return Result.failure()
             val now = dependencies.clock()
             dependencies.database.uploadQueueDao().updateStage(id, LocalState.PUBLISH, LocalState.QUEUED, queue.attempts + 1, now, null, now)
             Result.success()
@@ -168,10 +177,14 @@ class PublishDriveWorker(
         if (queue.stage != LocalState.PUBLISH) return Result.failure()
         val startedAt = dependencies.clock()
         dependencies.database.uploadQueueDao().updateStage(id, queue.stage, LocalState.RUNNING, queue.attempts + 1, startedAt, null, startedAt)
-        pauseUnlessParked(id, queue.stage, queue.attempts + 1)?.let { return it }
         val remoteId = draft.remoteDriveId ?: return fail(id, IllegalStateException("missing remote id"))
         return try {
-            dependencies.remote.publishDrive(remoteId, draft.clientRequestId)
+            val execution = dependencies.executionGate.execute(
+                onPaused = { pauseForMotion(id, queue.stage, queue.attempts + 1) },
+            ) {
+                dependencies.remote.publishDrive(remoteId, draft.clientRequestId)
+            }
+            if (execution is ParkedExecutionResult.Paused) return Result.failure()
             val now = dependencies.clock()
             dependencies.database.withTransaction {
                 // The original draft is retained after acknowledgement for recovery and audit.
