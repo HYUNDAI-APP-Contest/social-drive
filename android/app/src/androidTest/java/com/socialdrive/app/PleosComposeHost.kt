@@ -12,31 +12,64 @@ import java.util.Locale
 /** Manually owns the app Activity after the PLEOS task organizer reaches a stable generation. */
 internal class PleosComposeHost {
     private var scenario: ActivityScenario<MainActivity>? = null
+    private var readiness: PleosReadinessSession? = null
 
     fun launch() {
         check(scenario == null)
-        PleosTaskReadiness.awaitStableGeneration()
+        val stableReadiness = PleosTaskReadiness.awaitStableGeneration()
         val launched = ActivityScenario.launch(MainActivity::class.java)
         try {
             launched.moveToState(Lifecycle.State.RESUMED)
             check(launched.state == Lifecycle.State.RESUMED) { "Compose host did not reach RESUMED" }
             launched.onActivity { check(it.lifecycle.currentState == Lifecycle.State.RESUMED) }
+            stableReadiness.assertHealthy()
+            readiness = stableReadiness
             scenario = launched
         } catch (failure: Throwable) {
             runCatching { launched.close() }.exceptionOrNull()?.let(failure::addSuppressed)
-            throw failure
+            stableReadiness.rethrowClassified(failure)
         }
     }
 
     fun setContent(content: @Composable () -> Unit) {
-        requireNotNull(scenario).onActivity { activity -> activity.setContent(content = content) }
+        requireNotNull(readiness).withHealthCheck {
+            requireNotNull(scenario).onActivity { activity -> activity.setContent(content = content) }
+        }
     }
 
     fun close() {
         val active = scenario ?: return
+        val stableReadiness = requireNotNull(readiness)
         scenario = null
-        active.close()
-        check(active.state == Lifecycle.State.DESTROYED) { "Compose host did not reach DESTROYED" }
+        readiness = null
+        stableReadiness.withHealthCheck {
+            active.close()
+            check(active.state == Lifecycle.State.DESTROYED) { "Compose host did not reach DESTROYED" }
+        }
+    }
+}
+
+internal class PleosReadinessSession(
+    private val guard: PleosFatalLogGuard?,
+    private val homePid: String?,
+) {
+    fun assertHealthy() {
+        if (guard != null && homePid != null) PleosTaskReadiness.assertHealthy(guard, homePid)
+    }
+
+    fun <T> withHealthCheck(block: () -> T): T = try {
+        block().also { assertHealthy() }
+    } catch (failure: Throwable) {
+        rethrowClassified(failure)
+    }
+
+    fun rethrowClassified(failure: Throwable): Nothing {
+        val readinessFailure = runCatching(::assertHealthy).exceptionOrNull()
+        if (readinessFailure != null) {
+            readinessFailure.addSuppressed(failure)
+            throw readinessFailure
+        }
+        throw failure
     }
 }
 
@@ -65,6 +98,11 @@ internal object PleosReadinessParser {
         if (!homeTask.visible.contains(HOME) || !homeTask.resumed.contains(HOME)) {
             return PleosObservation(null, "home_not_visible_resumed")
         }
+        val unsettled = required.drop(1).any { component ->
+            val componentTask = tasks.single { component in it.components }
+            component !in componentTask.visible || component !in componentTask.active
+        }
+        if (unsettled) return PleosObservation(null, "default_task_not_visible_active")
         return PleosObservation(PleosOrganizerSnapshot(after, ids.map { it.single() }), "ready")
     }
 
@@ -87,6 +125,7 @@ internal object PleosReadinessParser {
             val active = activity
             if (active != null && VISIBLE.containsMatchIn(line)) task?.visible?.add(active)
             if (active != null && RESUMED.containsMatchIn(line)) task?.resumed?.add(active)
+            if (active != null && ACTIVE.containsMatchIn(line)) task?.active?.add(active)
         }
         return tasks
     }
@@ -101,12 +140,14 @@ internal object PleosReadinessParser {
         val components: MutableSet<String> = mutableSetOf(),
         val visible: MutableSet<String> = mutableSetOf(),
         val resumed: MutableSet<String> = mutableSetOf(),
+        val active: MutableSet<String> = mutableSetOf(),
     )
 
     private val TASK_HEADER = Regex("\\bTask\\{[^\\n]*#([0-9]+)\\b")
     private val ACTIVITY_RECORD = Regex("ActivityRecord\\{[^\\n]*\\s([A-Za-z0-9_.]+)/([A-Za-z0-9_.$]+)\\s+t[0-9]+")
     private val VISIBLE = Regex("(?:^|\\s)(?:mVisible|visible)=true(?:\\s|$)")
     private val RESUMED = Regex("(?:^|\\s)state=RESUMED(?:\\s|$)")
+    private val ACTIVE = Regex("(?:^|\\s)state=(?:STARTED|RESUMED)(?:\\s|$)")
 }
 
 internal class StableOrganizerGeneration {
@@ -124,6 +165,13 @@ internal class StableOrganizerGeneration {
 }
 
 internal data class FatalEvidence(val kind: String, val tag: String, val pid: String, val hash: String)
+
+internal object PleosShellDiagnostics {
+    private val logcatDiagnostic = Regex(
+        "(?im)^(?:logcat:|/system/bin/sh:.*logcat).*(?:permission denied|unknown option|not found|invalid|error)",
+    )
+    fun logcatCommandFailed(output: String): Boolean = logcatDiagnostic.containsMatchIn(output)
+}
 
 internal class PleosFatalLogGuard(
     val baselineEpochSeconds: Double,
@@ -172,9 +220,11 @@ private object PleosTaskReadiness {
         "com.socialdrive.app",
     )
 
-    fun awaitStableGeneration() {
+    fun awaitStableGeneration(): PleosReadinessSession {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
-        if (runCatching { instrumentation.targetContext.packageManager.getApplicationInfo(HOME_PACKAGE, 0) }.isFailure) return
+        if (runCatching { instrumentation.targetContext.packageManager.getApplicationInfo(HOME_PACKAGE, 0) }.isFailure) {
+            return PleosReadinessSession(null, null)
+        }
         val logGuard = PleosFatalLogGuard(System.currentTimeMillis() / 1_000.0, relevantPackages)
         val generation = StableOrganizerGeneration()
         val deadline = SystemClock.elapsedRealtime() + READINESS_TIMEOUT_MILLIS
@@ -189,16 +239,22 @@ private object PleosTaskReadiness {
             inspectLogs(logGuard, pidAfter)
             if (generation.record(observation)) {
                 inspectLogs(logGuard, pidAfter)
-                return
+                return PleosReadinessSession(logGuard, requireNotNull(observation.snapshot).homePid)
             }
         }
         error("PLEOS readiness deadline: $lastReason")
     }
 
+    fun assertHealthy(guard: PleosFatalLogGuard, expectedHomePid: String) {
+        val currentHomePid = shell(PID_COMMAND).trim()
+        inspectLogs(guard, currentHomePid)
+        if (currentHomePid != expectedHomePid) error("PLEOS readiness home_generation_changed")
+    }
+
     private fun inspectLogs(guard: PleosFatalLogGuard, homePid: String) {
         val cursor = String.format(Locale.US, "%.3f", guard.baselineEpochSeconds)
         val log = shell("logcat -d -v epoch -T $cursor")
-        if (COMMAND_FAILURE.containsMatchIn(log)) error("PLEOS readiness logcat_unavailable")
+        if (PleosShellDiagnostics.logcatCommandFailed(log)) error("PLEOS readiness logcat_unavailable")
         guard.inspect(log, setOf(homePid.trim()))
             ?.let { evidence -> error("PLEOS readiness ${evidence.kind} ${evidence.tag} pid=${evidence.pid} hash=${evidence.hash}") }
     }
@@ -211,5 +267,4 @@ private object PleosTaskReadiness {
     private const val PID_COMMAND = "pidof ai.umos.homescreen"
     private const val ACTIVITY_COMMAND = "dumpsys activity activities"
     private const val READINESS_TIMEOUT_MILLIS = 45_000L
-    private val COMMAND_FAILURE = Regex("(?i)permission denied|unknown option|not found")
 }

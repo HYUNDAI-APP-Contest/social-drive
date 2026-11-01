@@ -19,6 +19,14 @@ class PleosReadinessParserTest {
         val duplicate = fixture() + task("21", "ai.umos.drivingview/.DrivingViewActivity")
         assertTrue(PleosReadinessParser.observe("42", duplicate, "42").reason.startsWith("task_cardinality="))
         assertEquals("home_not_visible_resumed", PleosReadinessParser.observe("42", fixture(homeVisible = false), "42").reason)
+        assertEquals(
+            "default_task_not_visible_active",
+            PleosReadinessParser.observe("42", fixture(drivingVisible = false), "42").reason,
+        )
+        assertEquals(
+            "default_task_not_visible_active",
+            PleosReadinessParser.observe("42", fixture(naviState = "STOPPED"), "42").reason,
+        )
         assertTrue(PleosReadinessParser.observe("42", fixture(includeNavi = false), "42").reason.startsWith("task_cardinality="))
         assertEquals("home_generation_changed", PleosReadinessParser.observe("42", fixture(), "43").reason)
         assertEquals("home_pid_missing_or_multiple", PleosReadinessParser.observe("42 43", fixture(), "43").reason)
@@ -51,23 +59,35 @@ class PleosReadinessParserTest {
         assertNotNull(duplicateEvidence)
         assertEquals("duplicate_listener", duplicateEvidence?.kind)
         assertNull(duplicateGuard.inspect(duplicate, setOf("42")))
+
+        val benign = "101.000 42 42 D HOME_SCREEN: Task with ID 20 not found\n"
+        assertFalse(PleosShellDiagnostics.logcatCommandFailed(benign))
+        assertNull(PleosFatalLogGuard(100.0, setOf("ai.umos.homescreen")).inspect(benign, setOf("42")))
+        assertTrue(PleosShellDiagnostics.logcatCommandFailed("logcat: unknown option -Z"))
     }
 
     private fun fixture(
         fullComponents: Boolean = false,
         homeVisible: Boolean = true,
+        drivingVisible: Boolean = true,
+        naviState: String = "RESUMED",
         includeNavi: Boolean = true,
     ): String = buildString {
         append(task("10", if (fullComponents) "ai.umos.homescreen/ai.umos.homescreen.HomeActivity" else "ai.umos.homescreen/.HomeActivity", homeVisible))
-        append(task("20", if (fullComponents) "ai.umos.drivingview/ai.umos.drivingview.DrivingViewActivity" else "ai.umos.drivingview/.DrivingViewActivity"))
-        if (includeNavi) append(task("30", if (fullComponents) "ai.umos.maps.android.navigation.app/ai.umos.maps.android.navigation.app.MainActivity" else "ai.umos.maps.android.navigation.app/.MainActivity"))
+        append(task("20", if (fullComponents) "ai.umos.drivingview/ai.umos.drivingview.DrivingViewActivity" else "ai.umos.drivingview/.DrivingViewActivity", drivingVisible))
+        if (includeNavi) append(task("30", if (fullComponents) "ai.umos.maps.android.navigation.app/ai.umos.maps.android.navigation.app.MainActivity" else "ai.umos.maps.android.navigation.app/.MainActivity", state = naviState))
     }
 
-    private fun task(id: String, component: String, homeVisible: Boolean = true): String = """
+    private fun task(
+        id: String,
+        component: String,
+        visible: Boolean = true,
+        state: String = if (visible) "RESUMED" else "STOPPED",
+    ): String = """
         * Task{abc #$id type=standard}
           * Hist #0: ActivityRecord{def u10 $component t$id}
-            mVisibleRequested=$homeVisible mVisible=$homeVisible mClientVisible=$homeVisible
-            state=${if (homeVisible) "RESUMED" else "STOPPED"} stopped=${!homeVisible}
+            mVisibleRequested=$visible mVisible=$visible mClientVisible=$visible
+            state=$state stopped=${state == "STOPPED"}
     """.trimIndent() + "\n"
 
     private fun fatalLog(epoch: String): String = """

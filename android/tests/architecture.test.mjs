@@ -240,6 +240,8 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.match(host, /PleosOrganizerSnapshot\(after, ids\.map \{ it\.single\(\) \}\)/);
   assert.match(host, /TASK_HEADER[\s\S]*ACTIVITY_RECORD/);
   assert.match(host, /\(\?:mVisible\|visible\)=true/);
+  assert.match(host, /state=\(\?:STARTED\|RESUMED\)/);
+  assert.match(host, /default_task_not_visible_active/);
   assert.match(host, /if \(current == previous\) return true/);
   assert.match(host, /pidof ai\.umos\.homescreen/);
   assert.doesNotMatch(host, /pidof ai\.umos\.(?:drivingview|maps)/);
@@ -247,6 +249,9 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.match(host, /logcat -d -v epoch -T/);
   assert.doesNotMatch(host, /logcat -c|force-stop|\bsu\b|adoptShellPermissionIdentity/);
   assert.match(host, /duplicate_listener/);
+  assert.match(host, /setContent[\s\S]*withHealthCheck/);
+  assert.match(host, /fun close\(\)[\s\S]*withHealthCheck[\s\S]*Lifecycle\.State\.DESTROYED/);
+  assert.match(host, /\^\(\?:logcat:\|\/system\/bin\/sh:/);
   assert.match(host, /active\.close\(\)[\s\S]*Lifecycle\.State\.DESTROYED/);
   assert.doesNotMatch(host, /(?:Thread|SystemClock)\.sleep|createAndroidComposeRule/);
   for (const marker of [
@@ -255,6 +260,9 @@ test("instrumented safety suite covers lock back confirmation and parked publish
     "stableTrackerRequiresTwoCoherentObservationsAndResetsOnNullOrChange",
     "fatalGuardIgnoresOldBaselineAndRejectsNewRelevantFatalOrDuplicate",
   ]) assert.ok(hostTest.includes(marker), marker);
+  assert.match(hostTest, /Task with ID 20 not found/);
+  assert.match(hostTest, /drivingVisible = false/);
+  assert.match(hostTest, /naviState = "STOPPED"/);
 });
 
 test("content and upload states are observable in the demo", () => {
