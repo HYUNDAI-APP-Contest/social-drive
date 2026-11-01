@@ -7,14 +7,17 @@ import { GitHub } from "./github.mjs";
 import { Discord } from "./discord.mjs";
 import { WorkspaceManager } from "./workspace.mjs";
 import { CodexAppServer, agentText } from "./codex.mjs";
+import { AwsDeployer, formatChangeSummary } from "./aws.mjs";
 
 const config = loadConfig();
 const store = new Store(config.statePath);
 const github = new GitHub(config);
 const discord = new Discord(config);
 const workspaces = new WorkspaceManager(config);
+const aws = new AwsDeployer(config);
 const active = new Map();
 const observedUsage = new Map();
+let deploymentActive = false;
 
 const log = (event, fields = {}) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), event, ...fields }));
 const approvalId = (pr) => `pr-${pr.number}`;
@@ -22,7 +25,7 @@ const redact = (value) => {
   let text = String(value);
   const secrets = [config.githubToken, config.discordBotToken, config.discordWebhookUrl, process.env.AWS_ACCESS_KEY_ID, process.env.AWS_SECRET_ACCESS_KEY, process.env.AWS_SESSION_TOKEN].filter(Boolean);
   for (const secret of secrets) text = text.replaceAll(secret, "[REDACTED]");
-  return text;
+  return text.replace(/\b\d{12}\b/g, "[AWS_ACCOUNT]").replace(/\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g, "[AWS_KEY]");
 };
 const onAsync = (event, handler) => discord.on(event, (...args) => void handler(...args).catch((error) => log(`${event}_failed`, { error: redact(error.message) })));
 
@@ -143,6 +146,7 @@ async function runIssue(issue) {
 }
 
 async function poll() {
+  await expireApprovals();
   const usage = store.state.usage[utcDay()] ?? { tokens: 0, estimatedUsd: 0 };
   const budget = budgetStatus(config, usage);
   if (!budget.allowed) { log("budget_paused", { reason: budget.reason, usage }); return; }
@@ -153,6 +157,88 @@ async function poll() {
     if (job?.nextRetryAt && Date.now() < job.nextRetryAt) continue;
     if (active.has(key) || ["awaiting_merge_approval", "merged", "rejected", "failed"].includes(job?.status)) continue;
     active.set(key, true); void runIssue(issue);
+  }
+}
+
+async function expireApprovals() {
+  const now = Date.now();
+  const expired = [];
+  await store.update((state) => {
+    for (const approval of Object.values(state.approvals)) {
+      if (approval.status === "pending" && now > approval.expiresAt) {
+        approval.status = "expiring";
+        expired.push({ ...approval });
+      }
+    }
+  });
+  for (const approval of expired) {
+    try {
+      if (approval.type === "aws-deploy") await aws.reject(approval);
+      await store.update((state) => { state.approvals[approval.id].status = "expired"; });
+      await discord.report(`⌛ 승인 만료: \`${approval.id}\`${approval.type === "aws-deploy" ? " — 미실행 변경 세트를 삭제했습니다." : ""}`);
+    } catch (error) {
+      await store.update((state) => { state.approvals[approval.id].status = "failed"; state.approvals[approval.id].error = redact(error.message); });
+      await discord.report(`⚠️ 만료 승인 정리 실패: \`${approval.id}\`\n${redact(error.message).slice(0, 1200)}`);
+    }
+  }
+}
+
+async function recoverAwsApprovals() {
+  const interrupted = Object.values(store.state.approvals).filter((item) => item.type === "aws-deploy" && item.status === "processing");
+  for (const approval of interrupted) {
+    deploymentActive = true;
+    try {
+      const recovery = await aws.recover(approval);
+      if (recovery.action === "pending") {
+        await store.update((state) => { state.approvals[approval.id].status = "pending"; delete state.approvals[approval.id].processingBy; });
+        await discord.requestApproval({
+          id: approval.id,
+          title: `복구된 AWS dev 배포 · ${approval.changeSetType}`,
+          description: `재시작 전에 실행되지 않은 변경 세트입니다. 다시 결정해 주세요.\n\n${formatChangeSummary(approval.changes ?? [])}`,
+        });
+      } else {
+        await store.update((state) => { state.approvals[approval.id].status = "approved"; });
+        await discord.report(`✅ **재시작 후 AWS 배포 복구 완료**\n승인 ID: \`${approval.id}\`\n상태: \`${recovery.result.stackStatus}\``);
+      }
+    } catch (error) {
+      await store.update((state) => { state.approvals[approval.id].status = "failed"; state.approvals[approval.id].error = redact(error.message); });
+      await discord.report(`❌ **중단된 AWS 배포 복구 실패**\n승인 ID: \`${approval.id}\`\n${redact(error.message).slice(0, 1200)}`);
+    } finally { deploymentActive = false; }
+  }
+}
+
+async function prepareAwsDeployment({ sourceSha = null, pr = null, issue = null, requestedBy = null } = {}) {
+  if (!config.awsDeployEnabled) throw new Error("AWS deployment gateway is disabled");
+  if (deploymentActive) return void discord.report("⏳ AWS 변경 세트를 이미 준비하거나 실행 중입니다.");
+  const pending = Object.values(store.state.approvals).find((item) => item.type === "aws-deploy" && ["pending", "processing"].includes(item.status));
+  if (pending) return void discord.report(`⏳ AWS 배포 승인 대기 중입니다: \`${pending.id}\``);
+  deploymentActive = true;
+  const requestId = `deploy-${Date.now().toString(36)}`;
+  try {
+    await discord.report("☁️ **AWS dev 배포 후보 준비 시작**\nmain의 고정된 커밋에서 패키징하고 CloudFormation 변경 세트만 생성합니다. 아직 리소스는 배포하지 않습니다.");
+    const preparedWorkspace = await workspaces.prepareDeployment(requestId, sourceSha);
+    const prepared = await aws.prepare({ ...preparedWorkspace, sourceSha: preparedWorkspace.sha, pr, issue, requestedBy });
+    if (prepared.noChanges) {
+      await aws.reject(prepared).catch(() => {});
+      await discord.report(`ℹ️ **AWS 변경 없음**\n커밋: \`${preparedWorkspace.sha.slice(0, 12)}\`\n실행할 변경 세트가 없습니다.`);
+      return;
+    }
+    const id = prepared.id;
+    await store.update((state) => {
+      state.approvals[id] = { ...prepared, createdAt: Date.now(), expiresAt: Date.now() + config.approvalTtlMs, status: "pending" };
+      if (issue && state.jobs[String(issue)]) state.jobs[String(issue)].status = "awaiting_deploy_approval";
+    });
+    const risk = prepared.highRisk ? "\n\n⚠️ 삭제 또는 교체 가능성이 포함되어 있습니다. 특히 주의해서 확인하세요." : "";
+    await discord.requestApproval({
+      id,
+      title: `AWS dev 배포 · ${prepared.changeSetType}`,
+      description: `커밋 \`${prepared.sourceSha.slice(0, 12)}\`의 변경 세트입니다. 승인해야만 실행됩니다.\n\n${formatChangeSummary(prepared.changes)}${risk}`,
+    });
+  } catch (error) {
+    await discord.report(`❌ **AWS 변경 세트 준비 실패**\n${redact(error.message).slice(0, 1500)}`);
+    throw error;
+  } finally {
+    deploymentActive = false;
   }
 }
 
@@ -172,11 +258,43 @@ onAsync("approval", async ({ action, id, userId }) => {
     await discord.report(action === "approve" ? `✅ **건식 승인 테스트 성공**\n승인 ID: \`${id}\`\n승인자: <@${userId}>\n외부 변경: 없음` : `🛑 **건식 거부 테스트 성공**\n승인 ID: \`${id}\`\n거부자: <@${userId}>\n외부 변경: 없음`);
     return;
   }
+  if (approval.type === "aws-deploy") {
+    deploymentActive = true;
+    try {
+      if (action === "reject") {
+        await aws.reject(approval);
+        await store.update((state) => { state.approvals[id].status = "rejected"; state.approvals[id].decidedBy = userId; });
+        await discord.report(`🛑 **AWS 배포 거부**\n변경 세트 \`${id}\`를 삭제했습니다. AWS 리소스는 변경되지 않았습니다.\n결정자: <@${userId}>`);
+        return;
+      }
+      await discord.report(`🚀 **AWS dev 배포 승인됨**\n승인자: <@${userId}>\n변경 세트 \`${id}\` 실행을 시작합니다.`);
+      const result = await aws.execute(approval, (message) => discord.report(`☁️ ${message}`));
+      await store.update((state) => {
+        state.approvals[id].status = "approved"; state.approvals[id].decidedBy = userId;
+        if (approval.issue && state.jobs[String(approval.issue)]) state.jobs[String(approval.issue)].status = "deployed";
+      });
+      const smoke = result.smoke.attempted ? `HTTP ${result.smoke.status} · 인증 차단 정상` : "API URL 출력 없음";
+      await discord.report(`✅ **AWS dev 배포 완료**\n상태: \`${result.stackStatus}\`\n보안 스모크 테스트: ${smoke}\n출력 항목: ${result.outputKeys.map((key) => `\`${key}\``).join(", ") || "없음"}`);
+    } catch (error) {
+      await store.update((state) => { state.approvals[id].status = "failed"; state.approvals[id].error = redact(error.message); });
+      await discord.report(`❌ **AWS 배포 처리 실패**\n승인 ID: \`${id}\`\n${redact(error.message).slice(0, 1500)}`);
+    } finally {
+      deploymentActive = false;
+    }
+    return;
+  }
   if (action === "approve") {
     try {
       const result = await github.mergePullRequest(approval.pr);
       await store.update((state) => { state.approvals[id].status = "approved"; state.approvals[id].decidedBy = userId; state.jobs[String(approval.issue)].status = result.merged ? "merged" : "merge_failed"; });
       await discord.report(result.merged ? `🚀 PR #${approval.pr} 병합 완료 — 승인자 <@${userId}>` : `❌ PR #${approval.pr} 병합 실패: ${redact(result.message)}`);
+      if (result.merged) {
+        const files = await github.listPullRequestFiles(approval.pr);
+        if (files.some((file) => file.filename === "infra" || file.filename.startsWith("infra/"))) {
+          void prepareAwsDeployment({ sourceSha: result.sha, pr: approval.pr, issue: approval.issue, requestedBy: userId })
+            .catch((error) => log("automatic_deploy_prepare_failed", { error: redact(error.message) }));
+        }
+      }
     } catch (error) {
       await store.update((state) => { state.approvals[id].status = "failed"; state.approvals[id].error = redact(error.message); });
       await discord.report(`❌ PR #${approval.pr} 병합 요청 실패\n${redact(error.message)}`);
@@ -200,8 +318,14 @@ onAsync("claim", async ({ userId }) => {
 
 onAsync("status", async ({ interaction }) => {
   const pending = Object.values(store.state.approvals).filter((item) => item.status === "pending");
+  const mergePending = pending.filter((item) => item.type === "merge").length;
+  const deployPending = pending.filter((item) => item.type === "aws-deploy").length;
   const usage = store.state.usage[utcDay()] ?? { tokens: 0, estimatedUsd: 0 };
-  await discord.reply(interaction, `**Social Drive AI 상태**\n실행 중: ${active.size}/${config.maxParallel}\n전체 작업: ${Object.keys(store.state.jobs).length}\n병합 승인 대기: ${pending.length}\n오늘 토큰: ${usage.tokens}\n오늘 예상 비용: $${Number(usage.estimatedUsd).toFixed(2)}`);
+  await discord.reply(interaction, `**Social Drive AI 상태**\n실행 중: ${active.size}/${config.maxParallel}\n전체 작업: ${Object.keys(store.state.jobs).length}\n병합 승인 대기: ${mergePending}\nAWS 배포 승인 대기: ${deployPending}\nAWS 작업 중: ${deploymentActive ? "예" : "아니오"}\n오늘 토큰: ${usage.tokens}\n오늘 예상 비용: $${Number(usage.estimatedUsd).toFixed(2)}`);
+});
+
+onAsync("deploy", async ({ userId }) => {
+  await prepareAwsDeployment({ requestedBy: userId });
 });
 
 onAsync("testApproval", async ({ userId }) => {
@@ -228,7 +352,10 @@ try {
   log("discord_brand_update_failed", { error: error.message });
 }
 discord.connect();
-discord.once("ready", () => void discord.report(`🟢 **개발자 시작**\n상태: GitHub Issue 감시 중\n최대 병렬 Agent: ${config.maxParallel}\n대상: ${config.githubOwner}/${config.githubRepo}`));
+discord.once("ready", () => {
+  void discord.report(`🟢 **개발자 시작**\n상태: GitHub Issue 감시 중\n최대 병렬 Agent: ${config.maxParallel}\n대상: ${config.githubOwner}/${config.githubRepo}\nAWS dev 승인 게이트: ${config.awsDeployEnabled ? "활성" : "비활성"}`);
+  if (config.awsDeployEnabled) void recoverAwsApprovals().catch((error) => log("aws_recovery_failed", { error: redact(error.message) }));
+});
 await poll().catch((error) => log("poll_failed", { error: error.message }));
 setInterval(() => poll().catch((error) => log("poll_failed", { error: error.message })), config.pollIntervalMs);
 

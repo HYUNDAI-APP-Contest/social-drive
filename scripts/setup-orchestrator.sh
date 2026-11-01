@@ -87,11 +87,21 @@ umask 077
   printf 'SOURCE_REPOSITORY=%s\n' "$repo_root"
   printf 'WORKSPACE_ROOT=%s/orchestrator/workspaces\n' "$repo_root"
   printf 'STATE_PATH=%s/orchestrator/data/state.json\n' "$repo_root"
+  printf 'DEPLOYMENT_ROOT=%s/orchestrator/deployments\n' "$repo_root"
+  printf 'AWS_DEPLOY_ENABLED=true\n'
+  printf 'AWS_COMMAND=/usr/local/bin/aws\n'
+  printf 'AWS_PROFILE=social-drive-deployer\n'
+  printf 'AWS_REGION=ap-northeast-2\n'
+  printf 'AWS_STACK_NAME=social-drive-dev\n'
+  printf 'AWS_ENVIRONMENT=dev\n'
+  printf 'AWS_ARTIFACT_BUCKET=\n'
+  printf 'AWS_CLOUDFORMATION_ROLE_ARN=\n'
+  printf 'AWS_DEPLOYMENT_TIMEOUT_MINUTES=30\n'
   printf 'LOG_LEVEL=info\n'
 } > "$env_file"
 chmod 600 "$env_file"
 
-mkdir -p "$logs_dir" "$repo_root/orchestrator/data" "$repo_root/orchestrator/workspaces" "$launch_agents_dir"
+mkdir -p "$logs_dir" "$repo_root/orchestrator/data" "$repo_root/orchestrator/workspaces" "$repo_root/orchestrator/deployments" "$launch_agents_dir"
 
 cat > "$plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -120,7 +130,7 @@ launchctl kickstart -k "gui/$(id -u)/com.socialdrive.codex-orchestrator"
 
 gh label create agent:ready --repo HYUNDAI-APP-Contest/social-drive --color 1D76DB --description "Ready for autonomous Codex implementation" --force
 
-git add -- .env.example .github compose.yaml design infra orchestrator scripts
+git add -- .gitignore .env.example .github compose.yaml design infra orchestrator scripts
 if ! git diff --cached --quiet; then
   git commit -m "feat: add autonomous development foundation"
   git push origin main

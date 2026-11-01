@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { safeWorkerEnvironment } from "../src/process.mjs";
+import { isolatedWorkerEnvironment, safeWorkerEnvironment } from "../src/process.mjs";
 
 test("worker environment strips host and cloud credentials", () => {
   const keys = ["GITHUB_TOKEN", "DISCORD_WEBHOOK_URL", "AWS_ACCESS_KEY_ID", "AZURE_CLIENT_SECRET", "DATABASE_PASSWORD"];
@@ -15,4 +15,12 @@ test("worker environment strips host and cloud credentials", () => {
     for (const key of keys) previous[key] === undefined ? delete process.env[key] : process.env[key] = previous[key];
     delete process.env.SAFE_BUILD_FLAG;
   }
+});
+
+test("worker environment cannot fall back to the host AWS profile", () => {
+  const environment = isolatedWorkerEnvironment();
+  assert.equal(environment.AWS_SHARED_CREDENTIALS_FILE, "/dev/null");
+  assert.equal(environment.AWS_CONFIG_FILE, "/dev/null");
+  assert.equal(environment.AWS_EC2_METADATA_DISABLED, "true");
+  assert.equal(environment.AWS_PROFILE, undefined);
 });

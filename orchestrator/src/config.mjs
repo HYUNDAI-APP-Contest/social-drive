@@ -12,6 +12,12 @@ const number = (name, fallback, minimum = 0) => {
   return value;
 };
 
+const boolean = (name, fallback) => {
+  const value = (process.env[name] ?? String(fallback)).toLowerCase();
+  if (!["true", "false"].includes(value)) throw new Error(`${name} must be true or false`);
+  return value === "true";
+};
+
 export function loadConfig({ requireSecrets = true } = {}) {
   const config = {
     githubOwner: process.env.GITHUB_OWNER ?? "HYUNDAI-APP-Contest",
@@ -46,6 +52,16 @@ export function loadConfig({ requireSecrets = true } = {}) {
     sourceRepository: path.resolve(process.env.SOURCE_REPOSITORY ?? "."),
     workspaceRoot: path.resolve(process.env.WORKSPACE_ROOT ?? "./orchestrator/workspaces"),
     statePath: path.resolve(process.env.STATE_PATH ?? "./orchestrator/data/state.json"),
+    deploymentRoot: path.resolve(process.env.DEPLOYMENT_ROOT ?? "./orchestrator/deployments"),
+    awsDeployEnabled: boolean("AWS_DEPLOY_ENABLED", true),
+    awsCommand: process.env.AWS_COMMAND ?? (process.platform === "darwin" ? "/usr/local/bin/aws" : "aws"),
+    awsProfile: process.env.AWS_PROFILE ?? "social-drive-deployer",
+    awsRegion: process.env.AWS_REGION ?? "ap-northeast-2",
+    awsStackName: process.env.AWS_STACK_NAME ?? "social-drive-dev",
+    awsEnvironment: process.env.AWS_ENVIRONMENT ?? "dev",
+    awsArtifactBucket: process.env.AWS_ARTIFACT_BUCKET ?? "",
+    awsCloudFormationRoleArn: process.env.AWS_CLOUDFORMATION_ROLE_ARN ?? "",
+    awsDeploymentTimeoutMs: integer("AWS_DEPLOYMENT_TIMEOUT_MINUTES", 30, 5) * 60_000,
   };
 
   if (requireSecrets) {

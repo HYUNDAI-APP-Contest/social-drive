@@ -14,6 +14,7 @@ services:
       DISCORD_ARCHITECT_AVATAR_PATH: /app/assets/personas/aki-architect.png
       DISCORD_DESIGNER_AVATAR_PATH: /app/assets/personas/pixie-designer.png
       DISCORD_REVIEWER_AVATAR_PATH: /app/assets/personas/sentinel-reviewer.png
+      AWS_DEPLOY_ENABLED: "false"
     volumes:
       - ./:/repository:ro
       - orchestrator-runtime:/runtime

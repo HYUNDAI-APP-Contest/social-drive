@@ -26,7 +26,7 @@ sam build --template-file infra/template.yaml
 
 ## Planned deployment sequence
 
-1. Authenticate with AWS CLI SSO or assume a short-lived `SocialDriveDeployRole`.
+1. Authenticate with the local AWS CLI profile `social-drive-deployer`; keys are never copied into project files.
 2. Confirm the account and region with `aws sts get-caller-identity`.
 3. Package and create a named CloudFormation change set for `social-drive-dev`.
 4. Post its resource and IAM summary to Discord.
@@ -34,3 +34,5 @@ sam build --template-file infra/template.yaml
 6. Run smoke tests and report outputs without tokens or personal data.
 
 Never place AWS access keys, account IDs, JWTs, precise routes, or raw vehicle data in the repository or logs.
+
+The scripts under `infra/bootstrap/` create only the private SAM artifact bucket and restricted CloudFormation service role. Runtime deployment uses `aws cloudformation package`, a named change set, and the Discord approval boundary. SAM CLI is not required on the always-on host.

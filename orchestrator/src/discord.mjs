@@ -9,6 +9,7 @@ const commands = [
   { name: "agent-claim", description: "최초 Discord 승인자로 등록합니다", options: [{ type: 3, name: "code", description: "로컬 설치 시 출력된 등록 코드", required: true }] },
   { name: "agent-status", description: "자율 개발 오케스트레이터 상태를 확인합니다" },
   { name: "agent-test-approval", description: "실제 병합 없이 Discord 승인 게이트를 테스트합니다" },
+  { name: "agent-deploy", description: "현재 main으로 AWS dev 변경 세트를 준비합니다" },
 ];
 
 const equalSecret = (left, right) => {
@@ -174,6 +175,12 @@ export class Discord extends EventEmitter {
       if (!this.config.discordApprovers.has(userId)) return void this.reply(interaction, "승인 권한이 없습니다.");
       this.emit("testApproval", { userId });
       await this.reply(interaction, "건식 승인 요청을 생성했습니다. 보고 채널에서 승인 ID를 확인하세요.");
+      return;
+    }
+    if (name === "agent-deploy") {
+      if (!this.config.discordApprovers.has(userId)) return void this.reply(interaction, "승인 권한이 없습니다.");
+      this.emit("deploy", { userId });
+      await this.reply(interaction, "AWS dev 변경 세트 준비를 시작했습니다. 준비가 끝나면 이 채널에 승인 버튼이 나타납니다.");
       return;
     }
     if (!["agent-approve", "agent-reject"].includes(name)) return;

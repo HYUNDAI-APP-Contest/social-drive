@@ -28,6 +28,23 @@ export class WorkspaceManager {
     return { workspace, branch };
   }
 
+  async prepareDeployment(id, sourceSha = null) {
+    await fs.mkdir(this.config.deploymentRoot, { recursive: true });
+    const workspace = path.join(this.config.deploymentRoot, id);
+    await fs.rm(workspace, { recursive: true, force: true });
+    await run("git", ["clone", "--no-hardlinks", this.config.sourceRepository, workspace]);
+    await run("git", ["remote", "set-url", "origin", `https://github.com/${this.config.githubOwner}/${this.config.githubRepo}.git`], { cwd: workspace });
+    await this.withGitHubAuth(workspace, (env) => run("git", ["fetch", "origin", this.config.baseBranch], { cwd: workspace, env }));
+    const target = sourceSha || `origin/${this.config.baseBranch}`;
+    if (sourceSha) {
+      await run("git", ["cat-file", "-e", `${sourceSha}^{commit}`], { cwd: workspace });
+      await run("git", ["merge-base", "--is-ancestor", sourceSha, `origin/${this.config.baseBranch}`], { cwd: workspace });
+    }
+    await run("git", ["checkout", "--detach", target], { cwd: workspace });
+    const sha = (await run("git", ["rev-parse", "HEAD"], { cwd: workspace })).stdout.trim();
+    return { workspace, sha };
+  }
+
   async ensureCommit(workspace, issue) {
     const status = (await run("git", ["status", "--porcelain"], { cwd: workspace })).stdout.trim();
     if (status) {

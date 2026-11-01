@@ -10,6 +10,8 @@ This service implements the Symphony control-loop pattern for GitHub Issues, Cod
 4. The host pushes the branch and opens a pull request.
 5. An authorized Discord user clicks the approval or rejection button. Slash commands remain as a fallback.
 6. Only the host performs the squash merge.
+7. If the merged PR changes `infra/`, the host packages that exact merged commit and creates a CloudFormation change set.
+8. AWS resources change only after an authorized user clicks the separate Discord deployment approval button.
 
 ## Local setup
 
@@ -36,4 +38,12 @@ Local execution is preferred on macOS because it can reuse the existing Codex lo
 - Worker subprocesses do not inherit GitHub, Discord, cloud, or generic token/secret variables.
 
 The dollar limit is an estimate because app-server usage and account billing are not guaranteed to expose a per-turn charge. The token limit is the primary deterministic breaker; also set a platform-level project budget.
+
+## AWS dev approval gateway
+
+The macOS host uses the `social-drive-deployer` AWS CLI profile. Access keys remain in the local AWS credential store and are never copied into `.env`, issue workspaces, Codex subprocesses, Discord, or GitHub. Worker AWS shared credential and config paths are redirected to `/dev/null`, preventing fallback to the host profile.
+
+Run `/agent-deploy` in the claimed Discord channel to prepare a deployment from the current remote `main`. This packages artifacts and creates a named change set only. Discord shows every logical resource action and warns about removals or replacements. Clicking **승인** executes that exact change set; clicking **거부** deletes it. Completion reports the stack state, output names (never values), and an unauthenticated API smoke-test result.
+
+Infrastructure PRs enter the same deployment flow automatically after their separately approved merge. Docker has the AWS gateway disabled by default because the macOS credential profile is intentionally not mounted into the container.
 

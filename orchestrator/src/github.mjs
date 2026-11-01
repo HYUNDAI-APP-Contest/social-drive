@@ -27,5 +27,6 @@ export class GitHub {
   removeReadyLabel(number) { return this.request("DELETE", `/issues/${number}/labels/${encodeURIComponent(this.config.readyLabel)}`); }
   createPullRequest(head, title, body) { return this.request("POST", "/pulls", { head, base: this.config.baseBranch, title, body, draft: false }); }
   mergePullRequest(number) { return this.request("PUT", `/pulls/${number}/merge`, { merge_method: "squash" }); }
+  listPullRequestFiles(number) { return this.request("GET", `/pulls/${number}/files?per_page=100`); }
 }
 

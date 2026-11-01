@@ -4,5 +4,6 @@ node_modules/
 orchestrator/data/
 orchestrator/logs/
 orchestrator/workspaces/
+orchestrator/deployments/
 *.log
 
