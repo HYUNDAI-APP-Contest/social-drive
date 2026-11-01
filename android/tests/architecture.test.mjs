@@ -28,7 +28,7 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   const database = read("app/src/main/java/com/socialdrive/app/data/local/SocialDriveDatabase.kt");
   for (const table of ["recording_sessions", "drive_drafts", "upload_queue"]) assert.match(entities, new RegExp(table));
   assert.match(database, /exportSchema\s*=\s*true/);
-  assert.match(database, /version\s*=\s*4/);
+  assert.match(database, /version\s*=\s*5/);
   assert.match(database, /Migration\(1, 2\)/);
   assert.match(database, /Migration\(2, 3\)/);
   assert.match(database, /Migration\(3, 4\)/);
@@ -45,10 +45,12 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   const schema2 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/2.json"));
   const schema3 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/3.json"));
   const schema4 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/4.json"));
+  const schema5 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/5.json"));
   assert.equal(schema1.database.version, 1);
   assert.equal(schema2.database.version, 2);
   assert.equal(schema3.database.version, 3);
   assert.equal(schema4.database.version, 4);
+  assert.equal(schema5.database.version, 5);
   const queue1 = schema1.database.entities.find((entity) => entity.tableName === "upload_queue");
   const queue2 = schema2.database.entities.find((entity) => entity.tableName === "upload_queue");
   assert.equal(queue1.fields.some((field) => field.columnName === "lastErrorCode"), false);
@@ -71,6 +73,12 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   for (const table of ["route_privacy_state", "normalized_route_points", "published_delete_requests"]) {
     assert.ok(schema4.database.entities.some((entity) => entity.tableName === table), table);
   }
+  const conflict5 = schema5.database.entities.find((entity) => entity.tableName === "publish_conflicts");
+  for (const column of ["clientRequestId", "attemptedVersion", "replayCount", "fetchGeneration"]) {
+    assert.ok(conflict5.fields.some((field) => field.columnName === column), column);
+  }
+  assert.match(database, /Migration\(4, 5\)/);
+  assert.match(migrationTest, /migrateFourToFiveBackfillsReviewableAndUnreviewableConflictsWithoutChangingDrafts/);
 });
 
 test("publish queue is stable restart-safe and keeps ephemeral credentials out of Room", () => {
@@ -298,7 +306,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 51/);
+  assert.match(coreRunner, /expectedTests = 62/);
   assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 
@@ -528,4 +536,41 @@ test("hex colors stay inside the theme color source", () => {
     if (file.endsWith(path.join("theme", "Color.kt"))) continue;
     assert.doesNotMatch(fs.readFileSync(file, "utf8"), /0x[0-9A-Fa-f]{8}/, file);
   }
+});
+
+test("version conflicts are durable explicit parked-only reviews", () => {
+  const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
+  const daos = read("app/src/main/java/com/socialdrive/app/data/local/Daos.kt");
+  const workers = read("app/src/main/java/com/socialdrive/app/data/work/PublishWorkers.kt");
+  const repository = read("app/src/main/java/com/socialdrive/app/data/ConflictReviewRepository.kt");
+  const scheduler = read("app/src/main/java/com/socialdrive/app/data/work/PublishScheduler.kt");
+  const remote = read("app/src/main/java/com/socialdrive/app/data/remote/RemoteConflictReviewApi.kt");
+  const actualReview = read("app/src/pleos/java/com/socialdrive/app/data/remote/FlavorRemoteConflictReviewApiFactory.kt");
+  const demoReview = read("app/src/demo/java/com/socialdrive/app/data/remote/FlavorRemoteConflictReviewApiFactory.kt");
+  const screen = read("app/src/main/java/com/socialdrive/app/ui/screens/ConflictReviewScreen.kt");
+  assert.match(entities, /publish_conflicts/);
+  assert.match(entities, /val clientRequestId: String[\s\S]*val replayCount: Int[\s\S]*val fetchGeneration: Int/);
+  assert.doesNotMatch(entities, /presigned|authorization|accessToken|uploadUrl/i);
+  assert.match(daos, /fetchGeneration = fetchGeneration \+ 1/);
+  assert.match(daos, /fetchGeneration = :fetchGeneration AND state = 'FETCHING'/);
+  assert.match(daos, /replayCount = replayCount \+ 1/);
+  assert.match(daos, /replayCount < :maxReplays/);
+  assert.match(workers, /withContext\(NonCancellable\)[\s\S]*failVersionConflictCas[\s\S]*insertIfAbsent/);
+  assert.match(repository, /executionGate\.execute/);
+  assert.match(repository, /catch \(cancelled: CancellationException\)[\s\S]*withContext\(NonCancellable\)[\s\S]*"INTERRUPTED"/);
+  assert.match(daos, /normalizeInterruptedFetches/);
+  assert.match(repository, /recoverInterruptedFetches/);
+  assert.match(repository, /claimFetch[\s\S]*getOwnedDrive[\s\S]*storeSnapshotCas/);
+  assert.match(repository, /queueReplayCas[\s\S]*adoptConflictVersionCas[\s\S]*queueConflictReplayCas/);
+  assert.match(scheduler, /replacePublishOnly/);
+  assert.match(remote, /short-lived links, response headers and request IDs never cross it/);
+  assert.match(actualReview, /UnavailableRemoteConflictReviewApi/);
+  assert.doesNotMatch(actualReview, /DemoRemoteConflictReviewApi/);
+  assert.match(demoReview, /DemoRemoteConflictReviewApi/);
+  assert.match(screen, /서버의 새 버전이 있어요/);
+  assert.match(screen, /자동으로 덮어쓰지 않았습니다\. 초안은 이 기기에 그대로 있습니다\./);
+  assert.match(screen, /motion == MotionState\.Parked/);
+  assert.match(screen, /최신 버전 확인/);
+  assert.match(screen, /최신 버전을 기준으로 다시 게시/);
+  assert.match(screen, /로컬 초안 유지/);
 });

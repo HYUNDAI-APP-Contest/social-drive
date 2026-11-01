@@ -78,6 +78,25 @@ data class PublishedDeleteRequestEntity(
     val requestedAtEpochMs: Long,
 )
 
+@Entity(tableName = "publish_conflicts")
+data class PublishConflictEntity(
+    @PrimaryKey val draftId: String,
+    val clientRequestId: String,
+    val remoteDriveId: String,
+    val attemptedVersion: Int,
+    val latestVersion: Int?,
+    val latestStatus: String?,
+    val latestTitle: String?,
+    val latestSummary: String?,
+    val state: String,
+    val replayCount: Int,
+    val fetchGeneration: Int,
+    val detectedAtEpochMs: Long,
+    val fetchedAtEpochMs: Long?,
+    val resolvedAtEpochMs: Long?,
+    val lastFetchErrorCode: String?,
+)
+
 object LocalState {
     const val RECORDING = "RECORDING"
     const val DRAFTED = "DRAFTED"
@@ -94,4 +113,16 @@ object LocalState {
     const val CANCELLED = "CANCELLED"
     const val PRIVACY_WITHDRAWN = "PRIVACY_WITHDRAWN"
     const val DELETE_PENDING = "DELETE_PENDING"
+    const val VERSION_CONFLICT = "VERSION_CONFLICT"
+}
+
+object ConflictState {
+    const val DETECTED = "DETECTED"
+    const val FETCHING = "FETCHING"
+    const val FETCH_FAILED = "FETCH_FAILED"
+    const val SNAPSHOT_READY = "SNAPSHOT_READY"
+    const val KEPT_LOCAL = "KEPT_LOCAL"
+    const val REPLAY_QUEUED = "REPLAY_QUEUED"
+    const val RESOLVED = "RESOLVED"
+    const val UNREVIEWABLE = "UNREVIEWABLE"
 }

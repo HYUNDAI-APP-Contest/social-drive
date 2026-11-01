@@ -166,9 +166,45 @@ class RoomMigrationTest {
         }
     }
 
+    @Test
+    fun migrateFourToFiveBackfillsReviewableAndUnreviewableConflictsWithoutChangingDrafts() {
+        helper.createDatabase(CONFLICT_DATABASE, 4).apply {
+            execSQL("INSERT INTO drive_drafts VALUES ('reviewable','rec-1','request-1','local title','local body','route-memory-default','local-recording://rec-1','QUEUED','drive-remote-1',4,100,200,NULL)")
+            execSQL("INSERT INTO upload_queue VALUES ('reviewable','request-1','PUBLISH','FAILED',2,200,'VERSION_CONFLICT',0,200)")
+            execSQL("INSERT INTO drive_drafts VALUES ('mismatch','rec-2','request-2','keep title','keep body','route-memory-default','local-recording://rec-2','QUEUED','drive-remote-2',7,100,200,NULL)")
+            execSQL("INSERT INTO upload_queue VALUES ('mismatch','request-other','PUBLISH','FAILED',3,200,'VERSION_CONFLICT',0,200)")
+            close()
+        }
+
+        helper.runMigrationsAndValidate(CONFLICT_DATABASE, 5, true, RoomMigrations.MIGRATION_4_5).use { database ->
+            database.query("SELECT clientRequestId, remoteDriveId, attemptedVersion, state, replayCount, fetchGeneration FROM publish_conflicts WHERE draftId='reviewable'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("request-1", cursor.getString(0))
+                assertEquals("drive-remote-1", cursor.getString(1))
+                assertEquals(4, cursor.getInt(2))
+                assertEquals("DETECTED", cursor.getString(3))
+                assertEquals(0, cursor.getInt(4))
+                assertEquals(0, cursor.getInt(5))
+            }
+            database.query("SELECT state, lastFetchErrorCode FROM publish_conflicts WHERE draftId='mismatch'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("UNREVIEWABLE", cursor.getString(0))
+                assertEquals("IDENTITY_UNAVAILABLE", cursor.getString(1))
+            }
+            database.query("SELECT title, description, originalContentRef, remoteVersion FROM drive_drafts WHERE id='reviewable'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("local title", cursor.getString(0))
+                assertEquals("local body", cursor.getString(1))
+                assertEquals("local-recording://rec-1", cursor.getString(2))
+                assertEquals(4, cursor.getInt(3))
+            }
+        }
+    }
+
     companion object {
         private const val DATABASE = "migration-test"
         private const val FAILED_DATABASE = "migration-failed-repair-test"
         private const val PRIVACY_DATABASE = "migration-route-privacy-test"
+        private const val CONFLICT_DATABASE = "migration-conflict-review-test"
     }
 }

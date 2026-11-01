@@ -181,6 +181,7 @@ fun UploadStateChip(state: UploadState, modifier: Modifier = Modifier) {
         UploadState.Queued -> "오프라인 대기"
         UploadState.Uploading -> "업로드 중"
         UploadState.Failed -> "재시도 필요"
+        UploadState.NeedsConflictReview -> "버전 검토 필요"
         UploadState.Published -> "게시 완료"
     }
     Surface(modifier.clip(CircleShape), color = MaterialTheme.colorScheme.secondaryContainer) {

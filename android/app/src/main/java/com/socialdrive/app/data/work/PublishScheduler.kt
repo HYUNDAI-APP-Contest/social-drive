@@ -36,6 +36,10 @@ class PublishScheduler(
             whenNotParked = { queue.pauseRecoverableForMotion() },
             whenParked = {
                 queue.recoverable().forEach { item ->
+                    if (queue.isPublishOnlyConflictReplay(item.draftId)) {
+                        chainEnqueuer.replacePublishOnly(item.draftId)
+                        return@forEach
+                    }
                     val policy = when (PublishRecoveryPolicy.recoveryEnqueueMode(item.status, item.stage, item.lastErrorCode)) {
                         RecoveryEnqueueMode.REPLACE -> ExistingWorkPolicy.REPLACE
                         RecoveryEnqueueMode.KEEP -> ExistingWorkPolicy.KEEP
@@ -54,10 +58,22 @@ class PublishScheduler(
 
 fun interface PublishRescheduler {
     fun replaceFromUpload(draftId: String)
+
+    fun replacePublishOnly(draftId: String) = replaceFromUpload(draftId)
 }
 
 class PublishWorkChainEnqueuer(private val workManager: WorkManager) : PublishRescheduler {
     override fun replaceFromUpload(draftId: String) = enqueue(draftId, ExistingWorkPolicy.REPLACE)
+
+    override fun replacePublishOnly(draftId: String) {
+        val input = Data.Builder().putString(StagedPublishWorker.KEY_DRAFT_ID, draftId).build()
+        val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
+        workManager.enqueueUniqueWork(
+            PublishScheduler.uniqueName(draftId),
+            ExistingWorkPolicy.REPLACE,
+            request<PublishDriveWorker>(input, constraints, draftId),
+        )
+    }
 
     fun enqueue(draftId: String, policy: ExistingWorkPolicy) {
         val input = Data.Builder().putString(StagedPublishWorker.KEY_DRAFT_ID, draftId).build()

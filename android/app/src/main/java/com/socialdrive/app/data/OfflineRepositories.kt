@@ -24,6 +24,7 @@ sealed interface EnqueueResult {
     data class Enqueued(val draftId: String, val clientRequestId: String) : EnqueueResult
     data object AlreadyQueued : EnqueueResult
     data object AlreadyPublished : EnqueueResult
+    data object NeedsConflictReview : EnqueueResult
     data class Rejected(val message: String) : EnqueueResult
     data object MissingDraft : EnqueueResult
 }
@@ -99,7 +100,11 @@ class PublishQueueRepository(
             null -> UploadState.Draft
             LocalState.QUEUED -> UploadState.Queued
             LocalState.RUNNING -> UploadState.Uploading
-            LocalState.FAILED -> UploadState.Failed
+            LocalState.FAILED -> if (item.lastErrorCode == LocalState.VERSION_CONFLICT) {
+                UploadState.NeedsConflictReview
+            } else {
+                UploadState.Failed
+            }
             LocalState.PAUSED_MOTION -> UploadState.Queued
             LocalState.PUBLISHED -> UploadState.Published
             else -> UploadState.Draft
@@ -114,6 +119,9 @@ class PublishQueueRepository(
             val draft = database.draftDao().find(draftId) ?: return@withTransaction EnqueueResult.MissingDraft
             if (draft.state == LocalState.PUBLISHED) return@withTransaction EnqueueResult.AlreadyPublished
             val existing = database.uploadQueueDao().find(draftId)
+            if (existing?.lastErrorCode == LocalState.VERSION_CONFLICT) {
+                return@withTransaction EnqueueResult.NeedsConflictReview
+            }
             if (existing != null && existing.status != LocalState.FAILED) return@withTransaction EnqueueResult.AlreadyQueued
             val now = clock()
             database.draftDao().updateRemoteState(draft.id, LocalState.QUEUED, draft.remoteDriveId, draft.remoteVersion, now)
@@ -135,6 +143,9 @@ class PublishQueueRepository(
     }
 
     suspend fun recoverable(): List<UploadQueueEntity> = database.uploadQueueDao().recoverable()
+
+    suspend fun isPublishOnlyConflictReplay(draftId: String): Boolean =
+        database.publishConflictDao().find(draftId)?.state == com.socialdrive.app.data.local.ConflictState.REPLAY_QUEUED
 
     suspend fun pauseRecoverableForMotion() {
         val now = clock()

@@ -330,6 +330,24 @@ class CloudDriveClientTest {
         assertEquals("BearerToken([REDACTED])", BearerToken.inMemory("secret").toString())
     }
 
+    @Test
+    fun `conflict review adapter returns only bounded snapshot and hides owner absence`() = runBlocking {
+        val harness = Harness()
+        harness.api.responses += HttpResponse(
+            200,
+            body = """{"drive":${driveJson(extra = ",\"coverUrl\":\"https://read.example.test/private-cover\",\"routeUrl\":\"https://read.example.test/private-route\",\"routeSchemaVersion\":1")}}""".toByteArray(),
+        )
+        val snapshot = CloudRemoteConflictReviewApi(harness.client).getOwnedDrive("drive-remote-0001")
+        assertEquals("drive-remote-0001", snapshot.remoteDriveId)
+        assertFalse(snapshot.toString().contains("read.example"))
+
+        harness.api.responses += errorResponse(404, "NOT_FOUND", retryable = false)
+        val missing = assertFailsWith<RemoteDriveException> {
+            CloudRemoteConflictReviewApi(harness.client).getOwnedDrive("drive-remote-0001")
+        }
+        assertEquals(RemoteFailureCode.NOT_FOUND, missing.code)
+    }
+
     private class Harness {
         val coverBytes = byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0xd9.toByte())
         private val routeBytes = """{"schemaVersion":1,"path":[]}""".toByteArray()

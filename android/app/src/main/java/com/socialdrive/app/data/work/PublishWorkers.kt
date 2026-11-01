@@ -7,8 +7,10 @@ import androidx.work.ListenableWorker
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import com.socialdrive.app.data.DraftSnapshot
+import com.socialdrive.app.data.local.ConflictState
 import com.socialdrive.app.data.local.DraftEntity
 import com.socialdrive.app.data.local.LocalState
+import com.socialdrive.app.data.local.PublishConflictEntity
 import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.local.UploadQueueEntity
 import com.socialdrive.app.data.remote.RemoteDriveApi
@@ -17,6 +19,8 @@ import com.socialdrive.app.data.remote.assetUploads
 import com.socialdrive.app.safety.ParkedExecutionGate
 import com.socialdrive.app.safety.ParkedExecutionResult
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 
 data class PublishWorkerDependencies(
     val database: SocialDriveDatabase,
@@ -214,12 +218,16 @@ class PublishDriveWorker(
                     if (dependencies.database.uploadQueueDao().completePublishStage(id, lease.attempt, now) != 1) {
                         throw StaleWorkerTransition()
                     }
+                    dependencies.database.publishConflictDao().resolveReplay(id, now)
                 }
             } catch (_: StaleWorkerTransition) { return Result.success() }
             Result.success()
         } catch (error: CancellationException) {
             throw error
         } catch (error: RemoteDriveException) {
+            if (error.code == com.socialdrive.app.data.remote.RemoteFailureCode.VERSION_CONFLICT) {
+                return persistVersionConflict(id, draft, remoteId, expectedVersion, lease)
+            }
             val action = PublishRecoveryPolicy.decide(error.code, queue.uploadRewindCount)
             if (action == PublishFailureAction.STOP_PERMANENT) {
                 if (error.code == com.socialdrive.app.data.remote.RemoteFailureCode.UPLOAD_INCOMPLETE) {
@@ -267,6 +275,56 @@ class PublishDriveWorker(
         } else {
             Result.failure()
         }
+    }
+
+    private suspend fun persistVersionConflict(
+        id: String,
+        draft: DraftEntity,
+        remoteId: String,
+        expectedVersion: Int,
+        lease: WorkerStageLease,
+    ): Result = withContext(NonCancellable) {
+        val now = dependencies.clock()
+        val committed = try {
+            dependencies.database.withTransaction {
+                if (dependencies.database.uploadQueueDao().failVersionConflictCas(id, lease.attempt, now) != 1) {
+                    throw StaleWorkerTransition()
+                }
+                dependencies.database.publishConflictDao().insertIfAbsent(
+                    PublishConflictEntity(
+                        draftId = id,
+                        clientRequestId = draft.clientRequestId,
+                        remoteDriveId = remoteId,
+                        attemptedVersion = expectedVersion,
+                        latestVersion = null,
+                        latestStatus = null,
+                        latestTitle = null,
+                        latestSummary = null,
+                        state = ConflictState.DETECTED,
+                        replayCount = 0,
+                        fetchGeneration = 0,
+                        detectedAtEpochMs = now,
+                        fetchedAtEpochMs = null,
+                        resolvedAtEpochMs = null,
+                        lastFetchErrorCode = null,
+                    ),
+                )
+                val reviewable = dependencies.database.publishConflictDao().redetectPreservingReplayCount(
+                    id,
+                    draft.clientRequestId,
+                    remoteId,
+                    expectedVersion,
+                    now,
+                ) == 1
+                if (!reviewable) dependencies.database.publishConflictDao().markUnreviewablePreservingReplayCount(id, now)
+                val currentQueue = dependencies.database.uploadQueueDao().find(id) ?: throw StaleWorkerTransition()
+                if (currentQueue.clientRequestId != draft.clientRequestId) throw StaleWorkerTransition()
+            }
+            true
+        } catch (_: StaleWorkerTransition) {
+            false
+        }
+        if (committed) Result.failure() else Result.success()
     }
 
 }

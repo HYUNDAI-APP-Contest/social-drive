@@ -4,12 +4,15 @@ import android.app.Application
 import androidx.work.Configuration
 import androidx.work.WorkManager
 import com.socialdrive.app.data.DraftRepository
+import com.socialdrive.app.data.ConflictReviewRepository
+import com.socialdrive.app.data.ConflictReplayScheduler
 import com.socialdrive.app.data.PublishQueueRepository
 import com.socialdrive.app.data.RecordingRepository
 import com.socialdrive.app.data.RoutePrivacyRepository
 import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.remote.FlavorRemoteDriveApiFactory
 import com.socialdrive.app.data.remote.RemoteDriveApi
+import com.socialdrive.app.data.remote.FlavorRemoteConflictReviewApiFactory
 import com.socialdrive.app.data.work.PublishScheduler
 import com.socialdrive.app.data.work.PublishRescheduler
 import com.socialdrive.app.data.work.PublishWorkerDependencies
@@ -49,6 +52,16 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
     val publishScheduler: PublishScheduler by lazy {
         PublishScheduler(WorkManager.getInstance(this), publishQueueRepository, parkedExecutionGate)
     }
+    val conflictReviewRepository: ConflictReviewRepository by lazy {
+        ConflictReviewRepository(
+            database,
+            FlavorRemoteConflictReviewApiFactory.create(),
+            parkedExecutionGate,
+            ConflictReplayScheduler { draftId ->
+                PublishWorkChainEnqueuer(WorkManager.getInstance(this)).replacePublishOnly(draftId)
+            },
+        )
+    }
     private val publishWorkerFactory by lazy {
         val deferredRescheduler = PublishRescheduler { draftId ->
             PublishWorkChainEnqueuer(WorkManager.getInstance(this)).replaceFromUpload(draftId)
@@ -86,6 +99,9 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
     }
 
     protected open fun recoverQueuedWork() {
-        applicationScope.launch { publishScheduler.recoverAfterProcessRestart() }
+        applicationScope.launch {
+            conflictReviewRepository.recoverInterruptedFetches()
+            publishScheduler.recoverAfterProcessRestart()
+        }
     }
 }

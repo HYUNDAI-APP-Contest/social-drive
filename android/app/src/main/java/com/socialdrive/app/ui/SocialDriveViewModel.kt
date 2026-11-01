@@ -8,6 +8,9 @@ import com.socialdrive.app.data.DraftSnapshot
 import com.socialdrive.app.data.EnqueueResult
 import com.socialdrive.app.data.local.RecordingEntity
 import com.socialdrive.app.domain.MotionState
+import com.socialdrive.app.domain.ConflictReviewDecision
+import com.socialdrive.app.domain.ConflictReviewUiState
+import com.socialdrive.app.domain.ConflictUiPhase
 import com.socialdrive.app.domain.LiveUnavailableReason
 import com.socialdrive.app.domain.NavigationRequest
 import com.socialdrive.app.domain.NavigationRequestResult
@@ -40,6 +43,17 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     val uploadState: StateFlow<UploadState> = latestDraft
         .flatMapLatest { draft -> draft?.let { app.publishQueueRepository.observeState(it.id) } ?: flowOf(UploadState.Draft) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UploadState.Draft)
+
+    val conflictReview: StateFlow<ConflictReviewUiState> = latestDraft
+        .flatMapLatest { draft ->
+            draft?.let { app.conflictReviewRepository.observe(it.id) }
+                ?: flowOf(ConflictReviewUiState(ConflictUiPhase.Hidden))
+        }
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            ConflictReviewUiState(ConflictUiPhase.Hidden),
+        )
 
     val vehicleMotion: StateFlow<VehicleMotionStatus> = app.vehicleMotionSource.status
     val navigationState: StateFlow<NavigationState> = app.navigationGateway.state
@@ -76,6 +90,15 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
 
     suspend fun enqueuePublish(motionState: MotionState): EnqueueResult =
         latestDraft.value?.let { app.publishScheduler.enqueue(it.id, motionState) } ?: EnqueueResult.MissingDraft
+
+    suspend fun fetchConflictLatest(): ConflictReviewDecision =
+        latestDraft.value?.let { app.conflictReviewRepository.fetchLatest(it.id) } ?: ConflictReviewDecision.Missing
+
+    suspend fun keepConflictLocal(): ConflictReviewDecision =
+        latestDraft.value?.let { app.conflictReviewRepository.keepLocal(it.id) } ?: ConflictReviewDecision.Missing
+
+    suspend fun adoptConflictLatest(): ConflictReviewDecision =
+        latestDraft.value?.let { app.conflictReviewRepository.adoptLatestAndReplay(it.id) } ?: ConflictReviewDecision.Missing
 
     suspend fun requestDemoMotion(motionState: MotionState): Boolean =
         app.vehicleMotionSource.requestSimulation(motionState)

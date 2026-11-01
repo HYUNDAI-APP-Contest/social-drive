@@ -6,7 +6,12 @@ import com.socialdrive.app.domain.MotionState
 data class SafetyDecision(val allowed: Boolean, val reason: String? = null)
 
 object SafetyPolicy {
-    private val parkedOnly = setOf(AppDestination.Detail, AppDestination.Publish, AppDestination.Settings)
+    private val parkedOnly = setOf(
+        AppDestination.Detail,
+        AppDestination.Publish,
+        AppDestination.ConflictReview,
+        AppDestination.Settings,
+    )
 
     fun canNavigate(destination: AppDestination, motion: MotionState): SafetyDecision {
         if (destination !in parkedOnly) return SafetyDecision(allowed = true)

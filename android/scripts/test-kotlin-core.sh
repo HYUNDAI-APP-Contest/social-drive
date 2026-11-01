@@ -20,11 +20,13 @@ classpath="$kotlin_home/lib/kotlin-test.jar:$kotlin_home/lib/kotlin-test-junit.j
   "$android_root/app/src/main/java/com/socialdrive/app/domain/Models.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/domain/IntegrationContracts.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/domain/RoutePrivacy.kt" \
+  "$android_root/app/src/main/java/com/socialdrive/app/domain/ConflictReview.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/DraftSnapshot.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/remote/JsonCodec.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/remote/CloudDriveContracts.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/remote/CloudDriveClient.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/remote/RemoteDriveApi.kt" \
+  "$android_root/app/src/main/java/com/socialdrive/app/data/remote/RemoteConflictReviewApi.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/remote/CloudRemoteDriveApi.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/work/PublishRecoveryPolicy.kt" \
   "$android_root/app/src/demo/java/com/socialdrive/app/data/remote/FakeRemoteDriveApi.kt" \
@@ -32,6 +34,7 @@ classpath="$kotlin_home/lib/kotlin-test.jar:$kotlin_home/lib/kotlin-test-junit.j
   "$android_root/app/src/main/java/com/socialdrive/app/integration/NavigationGatewayCoordinator.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/domain/IntegrationContractsTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/domain/RoutePrivacyTest.kt" \
+  "$android_root/app/src/test/java/com/socialdrive/app/domain/ConflictReviewTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/data/remote/CloudDriveClientTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/data/work/PublishRecoveryPolicyTest.kt" \
   "$android_root/app/src/testDemo/java/com/socialdrive/app/data/remote/RemoteDriveApiTest.kt" \

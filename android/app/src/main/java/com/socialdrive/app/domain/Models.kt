@@ -1,6 +1,6 @@
 package com.socialdrive.app.domain
 
-enum class AppDestination { Home, Detail, Recording, Publish, Settings }
+enum class AppDestination { Home, Detail, Recording, Publish, ConflictReview, Settings }
 
 enum class MotionState { Parked, Driving, Unknown }
 
@@ -22,7 +22,7 @@ sealed interface ContentState<out T> {
     data class Retry(val message: String) : ContentState<Nothing>
 }
 
-enum class UploadState { Draft, Queued, Uploading, Failed, Published }
+enum class UploadState { Draft, Queued, Uploading, Failed, NeedsConflictReview, Published }
 
 data class RoutePoint(val horizontal: Float, val vertical: Float)
 

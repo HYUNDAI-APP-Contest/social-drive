@@ -43,6 +43,7 @@ fun PublishScreen(
     canAct: Boolean = canEdit,
     editingRestriction: String = "주차 상태를 확인한 뒤 게시물을 편집할 수 있어요.",
     routeSource: RouteSource = RouteSource.DemoPreset,
+    onReviewConflict: () -> Unit = {},
 ) {
     var title by remember(initialTitle) { mutableStateOf(initialTitle) }
     var description by remember(initialDescription) { mutableStateOf(initialDescription) }
@@ -116,6 +117,7 @@ fun PublishScreen(
                     UploadState.Published -> Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("피드에서 확인하기") }
                     UploadState.Uploading -> Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("안전하게 업로드 중…") }
                     UploadState.Failed -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canAct && consent, modifier = Modifier.fillMaxWidth()) { Text("업로드 다시 시도") }
+                    UploadState.NeedsConflictReview -> Button(onClick = onReviewConflict, enabled = canAct, modifier = Modifier.fillMaxWidth()) { Text("서버 버전 검토") }
                     UploadState.Queued -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("네트워크 연결을 기다리는 중") }
                     UploadState.Draft -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canEdit && consent, modifier = Modifier.fillMaxWidth()) { Text("안전하게 게시하기") }
                 }
@@ -129,5 +131,6 @@ private fun UploadState.shortLabel() = when (this) {
     UploadState.Queued -> "오프라인"
     UploadState.Uploading -> "업로드"
     UploadState.Failed -> "실패"
+    UploadState.NeedsConflictReview -> "검토"
     UploadState.Published -> "완료"
 }

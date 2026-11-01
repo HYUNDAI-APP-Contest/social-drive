@@ -83,6 +83,20 @@ interface DraftDao {
         publishedVersion: Int,
         now: Long,
     ): Int
+
+    @Query("""
+        UPDATE drive_drafts SET remoteVersion = :latestVersion, updatedAtEpochMs = :now
+        WHERE id = :draftId AND state = 'QUEUED' AND remoteDriveId = :remoteDriveId
+          AND remoteVersion = :attemptedVersion AND clientRequestId = :clientRequestId
+    """)
+    suspend fun adoptConflictVersionCas(
+        draftId: String,
+        remoteDriveId: String,
+        attemptedVersion: Int,
+        latestVersion: Int,
+        clientRequestId: String,
+        now: Long,
+    ): Int
 }
 
 @Dao
@@ -177,6 +191,21 @@ interface UploadQueueDao {
     suspend fun failRunningStage(draftId: String, stage: String, attempts: Int, lastErrorCode: String, now: Long): Int
 
     @Query("""
+        UPDATE upload_queue SET status = 'FAILED', lastErrorCode = 'VERSION_CONFLICT',
+            nextAttemptAtEpochMs = :now, updatedAtEpochMs = :now
+        WHERE draftId = :draftId AND stage = 'PUBLISH' AND status = 'RUNNING' AND attempts = :attempts
+    """)
+    suspend fun failVersionConflictCas(draftId: String, attempts: Int, now: Long): Int
+
+    @Query("""
+        UPDATE upload_queue SET status = 'QUEUED', lastErrorCode = NULL,
+            nextAttemptAtEpochMs = :now, updatedAtEpochMs = :now
+        WHERE draftId = :draftId AND stage = 'PUBLISH' AND status = 'FAILED'
+          AND lastErrorCode = 'VERSION_CONFLICT' AND clientRequestId = :clientRequestId
+    """)
+    suspend fun queueConflictReplayCas(draftId: String, clientRequestId: String, now: Long): Int
+
+    @Query("""
         UPDATE upload_queue
         SET stage = 'UPLOAD', status = 'QUEUED', attempts = :attempts,
             nextAttemptAtEpochMs = :now, lastErrorCode = 'UPLOAD_INCOMPLETE',
@@ -237,4 +266,128 @@ interface RoutePrivacyDao {
 
     @Query("SELECT * FROM published_delete_requests WHERE draftId = :draftId")
     fun observeDeleteRequest(draftId: String): Flow<PublishedDeleteRequestEntity?>
+}
+
+@Dao
+interface PublishConflictDao {
+    @Query("SELECT * FROM publish_conflicts WHERE draftId = :draftId")
+    suspend fun find(draftId: String): PublishConflictEntity?
+
+    @Query("SELECT * FROM publish_conflicts WHERE draftId = :draftId")
+    fun observe(draftId: String): Flow<PublishConflictEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(conflict: PublishConflictEntity): Long
+
+    @Query("""
+        UPDATE publish_conflicts SET remoteDriveId = :remoteDriveId,
+            attemptedVersion = :attemptedVersion, latestVersion = NULL, latestStatus = NULL,
+            latestTitle = NULL, latestSummary = NULL, state = 'DETECTED',
+            fetchGeneration = fetchGeneration + 1,
+            detectedAtEpochMs = :now, fetchedAtEpochMs = NULL, resolvedAtEpochMs = NULL,
+            lastFetchErrorCode = NULL
+        WHERE draftId = :draftId AND clientRequestId = :clientRequestId
+    """)
+    suspend fun redetectPreservingReplayCount(
+        draftId: String,
+        clientRequestId: String,
+        remoteDriveId: String,
+        attemptedVersion: Int,
+        now: Long,
+    ): Int
+
+    @Query("""
+        UPDATE publish_conflicts SET state = 'UNREVIEWABLE', latestVersion = NULL,
+            latestStatus = NULL, latestTitle = NULL, latestSummary = NULL,
+            resolvedAtEpochMs = NULL, lastFetchErrorCode = 'IDENTITY_UNAVAILABLE',
+            detectedAtEpochMs = :now
+        WHERE draftId = :draftId
+    """)
+    suspend fun markUnreviewablePreservingReplayCount(draftId: String, now: Long): Int
+
+    @Query("""
+        UPDATE publish_conflicts SET state = 'FETCHING', fetchGeneration = fetchGeneration + 1,
+            lastFetchErrorCode = NULL
+        WHERE draftId = :draftId AND remoteDriveId = :remoteDriveId
+          AND attemptedVersion = :attemptedVersion AND clientRequestId = :clientRequestId
+          AND state IN ('DETECTED', 'FETCH_FAILED')
+    """)
+    suspend fun claimFetch(draftId: String, clientRequestId: String, remoteDriveId: String, attemptedVersion: Int): Int
+
+    @Query("""
+        UPDATE publish_conflicts SET state = 'SNAPSHOT_READY', latestVersion = :latestVersion,
+            latestStatus = :latestStatus, latestTitle = :latestTitle, latestSummary = :latestSummary,
+            fetchedAtEpochMs = :now, lastFetchErrorCode = NULL
+        WHERE draftId = :draftId AND remoteDriveId = :remoteDriveId
+          AND attemptedVersion = :attemptedVersion AND clientRequestId = :clientRequestId
+          AND fetchGeneration = :fetchGeneration AND state = 'FETCHING'
+    """)
+    suspend fun storeSnapshotCas(
+        draftId: String,
+        clientRequestId: String,
+        remoteDriveId: String,
+        attemptedVersion: Int,
+        fetchGeneration: Int,
+        latestVersion: Int,
+        latestStatus: String,
+        latestTitle: String,
+        latestSummary: String,
+        now: Long,
+    ): Int
+
+    @Query("""
+        UPDATE publish_conflicts SET state = 'FETCH_FAILED', lastFetchErrorCode = :errorCode
+        WHERE draftId = :draftId AND remoteDriveId = :remoteDriveId
+          AND attemptedVersion = :attemptedVersion AND clientRequestId = :clientRequestId
+          AND fetchGeneration = :fetchGeneration AND state = 'FETCHING'
+    """)
+    suspend fun failFetchCas(
+        draftId: String,
+        clientRequestId: String,
+        remoteDriveId: String,
+        attemptedVersion: Int,
+        fetchGeneration: Int,
+        errorCode: String,
+    ): Int
+
+    @Query("""
+        UPDATE publish_conflicts SET state = 'FETCH_FAILED', lastFetchErrorCode = 'INTERRUPTED'
+        WHERE state = 'FETCHING'
+    """)
+    suspend fun normalizeInterruptedFetches(): Int
+
+    @Query("""
+        UPDATE publish_conflicts SET state = 'KEPT_LOCAL', resolvedAtEpochMs = :now
+        WHERE draftId = :draftId AND remoteDriveId = :remoteDriveId
+          AND attemptedVersion = :attemptedVersion AND clientRequestId = :clientRequestId
+          AND state IN ('DETECTED', 'SNAPSHOT_READY', 'FETCH_FAILED')
+    """)
+    suspend fun keepLocalCas(draftId: String, clientRequestId: String, remoteDriveId: String, attemptedVersion: Int, now: Long): Int
+
+    @Query("""
+        UPDATE publish_conflicts SET state = 'REPLAY_QUEUED', replayCount = replayCount + 1,
+            resolvedAtEpochMs = NULL
+        WHERE draftId = :draftId AND remoteDriveId = :remoteDriveId
+          AND attemptedVersion = :attemptedVersion AND clientRequestId = :clientRequestId
+          AND state = 'SNAPSHOT_READY'
+          AND latestVersion = :latestVersion AND latestStatus = 'DRAFT'
+          AND latestVersion > attemptedVersion AND replayCount < :maxReplays
+    """)
+    suspend fun queueReplayCas(
+        draftId: String,
+        clientRequestId: String,
+        remoteDriveId: String,
+        attemptedVersion: Int,
+        latestVersion: Int,
+        maxReplays: Int,
+    ): Int
+
+    @Query("SELECT * FROM publish_conflicts WHERE state = 'REPLAY_QUEUED'")
+    suspend fun replayQueued(): List<PublishConflictEntity>
+
+    @Query("""
+        UPDATE publish_conflicts SET state = 'RESOLVED', resolvedAtEpochMs = :now
+        WHERE draftId = :draftId AND state = 'REPLAY_QUEUED'
+    """)
+    suspend fun resolveReplay(draftId: String, now: Long): Int
 }

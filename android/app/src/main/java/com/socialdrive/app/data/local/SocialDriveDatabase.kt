@@ -15,8 +15,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         RoutePrivacyEntity::class,
         NormalizedRoutePointEntity::class,
         PublishedDeleteRequestEntity::class,
+        PublishConflictEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 abstract class SocialDriveDatabase : RoomDatabase() {
@@ -24,6 +25,7 @@ abstract class SocialDriveDatabase : RoomDatabase() {
     abstract fun draftDao(): DraftDao
     abstract fun uploadQueueDao(): UploadQueueDao
     abstract fun routePrivacyDao(): RoutePrivacyDao
+    abstract fun publishConflictDao(): PublishConflictDao
 
     companion object {
         fun create(context: Context): SocialDriveDatabase = Room.databaseBuilder(
@@ -96,5 +98,49 @@ object RoomMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+    val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("""
+                CREATE TABLE IF NOT EXISTS publish_conflicts (
+                    draftId TEXT NOT NULL,
+                    clientRequestId TEXT NOT NULL,
+                    remoteDriveId TEXT NOT NULL,
+                    attemptedVersion INTEGER NOT NULL,
+                    latestVersion INTEGER,
+                    latestStatus TEXT,
+                    latestTitle TEXT,
+                    latestSummary TEXT,
+                    state TEXT NOT NULL,
+                    replayCount INTEGER NOT NULL,
+                    fetchGeneration INTEGER NOT NULL,
+                    detectedAtEpochMs INTEGER NOT NULL,
+                    fetchedAtEpochMs INTEGER,
+                    resolvedAtEpochMs INTEGER,
+                    lastFetchErrorCode TEXT,
+                    PRIMARY KEY(draftId)
+                )
+            """.trimIndent())
+            database.execSQL("""
+                INSERT OR IGNORE INTO publish_conflicts (
+                    draftId, clientRequestId, remoteDriveId, attemptedVersion, latestVersion, latestStatus,
+                    latestTitle, latestSummary, state, replayCount, fetchGeneration, detectedAtEpochMs,
+                    fetchedAtEpochMs, resolvedAtEpochMs, lastFetchErrorCode
+                )
+                SELECT q.draftId, d.clientRequestId, COALESCE(d.remoteDriveId, ''), COALESCE(d.remoteVersion, 0),
+                    NULL, NULL, NULL, NULL,
+                    CASE WHEN d.remoteDriveId IS NULL OR d.remoteVersion IS NULL
+                              OR d.clientRequestId != q.clientRequestId
+                         THEN 'UNREVIEWABLE' ELSE 'DETECTED' END,
+                    0, 0, q.updatedAtEpochMs, NULL, NULL,
+                    CASE WHEN d.remoteDriveId IS NULL OR d.remoteVersion IS NULL
+                              OR d.clientRequestId != q.clientRequestId
+                         THEN 'IDENTITY_UNAVAILABLE' ELSE NULL END
+                FROM upload_queue q JOIN drive_drafts d ON d.id = q.draftId
+                WHERE q.stage = 'PUBLISH' AND q.status = 'FAILED'
+                  AND q.lastErrorCode = 'VERSION_CONFLICT'
+            """.trimIndent())
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 }

@@ -22,6 +22,7 @@ import com.socialdrive.app.data.local.LocalState
 import com.socialdrive.app.domain.AppDestination
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.ContentState
+import com.socialdrive.app.domain.ConflictReviewDecision
 import com.socialdrive.app.domain.DemoContentMode
 import com.socialdrive.app.domain.DriveSessionState
 import com.socialdrive.app.domain.MotionState
@@ -32,6 +33,7 @@ import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.domain.PublishedDeleteDecision
 import com.socialdrive.app.safety.SafetyPolicy
 import com.socialdrive.app.ui.screens.DetailScreen
+import com.socialdrive.app.ui.screens.ConflictReviewScreen
 import com.socialdrive.app.ui.screens.HomeScreen
 import com.socialdrive.app.ui.screens.PublishScreen
 import com.socialdrive.app.ui.screens.RecordingScreen
@@ -49,6 +51,7 @@ fun SocialDriveApp(
     val activeRecording by offlineViewModel.activeRecording.collectAsStateWithLifecycle()
     val latestDraft by offlineViewModel.latestDraft.collectAsStateWithLifecycle()
     val persistedUploadState by offlineViewModel.uploadState.collectAsStateWithLifecycle()
+    val conflictReview by offlineViewModel.conflictReview.collectAsStateWithLifecycle()
     val vehicleMotion by offlineViewModel.vehicleMotion.collectAsStateWithLifecycle()
     val navigationState by offlineViewModel.navigationState.collectAsStateWithLifecycle()
     val navigationCapability by offlineViewModel.navigationCapability.collectAsStateWithLifecycle()
@@ -175,6 +178,7 @@ fun SocialDriveApp(
                                     when (val result = offlineViewModel.enqueuePublish(motion)) {
                                         is EnqueueResult.Rejected -> blockedMessage = result.message
                                         EnqueueResult.MissingDraft -> blockedMessage = "게시할 초안을 찾지 못했어요. 기록은 삭제하지 않았습니다."
+                                        EnqueueResult.NeedsConflictReview -> navigate(AppDestination.ConflictReview)
                                         else -> Unit
                                     }
                                 }
@@ -196,6 +200,38 @@ fun SocialDriveApp(
                             "주차 상태를 확인한 뒤 게시물을 편집할 수 있어요."
                         },
                         routeSource = routePrivacy.displayedSource,
+                        onReviewConflict = { navigate(AppDestination.ConflictReview) },
+                    )
+                    AppDestination.ConflictReview -> ConflictReviewScreen(
+                        state = conflictReview,
+                        motion = motion,
+                        onFetch = {
+                            scope.launch {
+                                when (offlineViewModel.fetchConflictLatest()) {
+                                    ConflictReviewDecision.NotParked -> blockedMessage = "주차 상태가 다시 확인되지 않아 최신 버전을 요청하지 않았어요."
+                                    ConflictReviewDecision.IdentityMismatch,
+                                    ConflictReviewDecision.Missing -> blockedMessage = "충돌 정보를 안전하게 확인할 수 없어 로컬 초안을 유지합니다."
+                                    else -> Unit
+                                }
+                            }
+                        },
+                        onAdopt = {
+                            scope.launch {
+                                when (offlineViewModel.adoptConflictLatest()) {
+                                    ConflictReviewDecision.Applied -> navigate(AppDestination.Publish)
+                                    ConflictReviewDecision.NotParked -> blockedMessage = "주차 상태가 다시 확인되지 않아 재게시를 시작하지 않았어요."
+                                    else -> blockedMessage = "서버 버전을 적용하지 않았어요. 로컬 초안은 그대로 있습니다."
+                                }
+                            }
+                        },
+                        onKeepLocal = {
+                            scope.launch {
+                                if (offlineViewModel.keepConflictLocal() == ConflictReviewDecision.NotParked) {
+                                    blockedMessage = "주차 상태가 다시 확인되지 않아 변경하지 않았어요."
+                                }
+                            }
+                        },
+                        onBack = { navigate(AppDestination.Publish) },
                     )
                     AppDestination.Settings -> SettingsScreen(
                         motion = motion,
