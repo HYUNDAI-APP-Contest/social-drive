@@ -30,6 +30,8 @@ Globals:
         APP_ENV: !Ref Environment
         TABLE_NAME: !Ref SocialDriveTable
         MEDIA_BUCKET: !Ref MediaBucket
+        UPLOAD_URL_TTL_SECONDS: '600'
+        READ_URL_TTL_SECONDS: '300'
 
 Resources:
   UserPool:
@@ -100,6 +102,14 @@ Resources:
 
   ApiFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        EntryPoints: [app.mjs]
+        Format: esm
+        Minify: true
+        Sourcemap: false
+        Target: es2022
     Properties:
       FunctionName: !Sub social-drive-api-${Environment}
       CodeUri: functions/api/
@@ -109,12 +119,12 @@ Resources:
         - Version: '2012-10-17'
           Statement:
             - Effect: Allow
-              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:Query, dynamodb:UpdateItem]
+              Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:Query, dynamodb:UpdateItem, dynamodb:TransactWriteItems]
               Resource:
                 - !GetAtt SocialDriveTable.Arn
                 - !Sub ${SocialDriveTable.Arn}/index/*
             - Effect: Allow
-              Action: [s3:GetObject, s3:PutObject]
+              Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
               Resource: !Sub ${MediaBucket.Arn}/*
       Events:
         CurrentUser:
@@ -130,6 +140,48 @@ Resources:
             ApiId: !Ref HttpApi
             Method: GET
             Path: /feed
+            PayloadFormatVersion: '2.0'
+        CreateDrive:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /drives
+            PayloadFormatVersion: '2.0'
+        RefreshDriveUploads:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /drives/{driveId}/uploads
+            PayloadFormatVersion: '2.0'
+        PublishDrive:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: POST
+            Path: /drives/{driveId}/publish
+            PayloadFormatVersion: '2.0'
+        GetDrive:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: GET
+            Path: /drives/{driveId}
+            PayloadFormatVersion: '2.0'
+        UpdateDrive:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: PATCH
+            Path: /drives/{driveId}
+            PayloadFormatVersion: '2.0'
+        DeleteDrive:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Method: DELETE
+            Path: /drives/{driveId}
             PayloadFormatVersion: '2.0'
 
   ApiFunctionLogGroup:
@@ -150,6 +202,9 @@ Resources:
         SSEEnabled: true
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
+      TimeToLiveSpecification:
+        AttributeName: expiresAtEpoch
+        Enabled: true
       AttributeDefinitions:
         - { AttributeName: PK, AttributeType: S }
         - { AttributeName: SK, AttributeType: S }

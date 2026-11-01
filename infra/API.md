@@ -1,0 +1,36 @@
+# Social Drive MVP API
+
+All routes use the Cognito JWT authorizer. The API accepts only parked, user-confirmed publication metadata; driving traces and raw vehicle state remain local. Responses never include DynamoDB keys, S3 object keys, AWS identifiers, or user email.
+
+## Offline-safe publication
+
+1. The app persists one `clientDraftId` and `Idempotency-Key` per local draft.
+2. `POST /drives` creates one remote draft and returns 10-minute presigned PUT URLs.
+3. `POST /drives/{driveId}/uploads` refreshes URLs only when the manifest exactly matches the draft.
+4. The app uploads the consented cover and sanitized route assets directly to private S3. The MVP route schema contains only normalized 0–1 artwork points and highlight progress; geographic coordinates and raw vehicle fields are rejected before publish.
+5. `POST /drives/{driveId}/publish` verifies object type, size, and checksum before a conditional `DRAFT → PUBLISHED` transition.
+6. Repeating create or publish after a lost response returns the same resource rather than duplicating it.
+
+`GET /feed` uses a random opaque cursor. The server stores only its SHA-256 hash with the DynamoDB continuation key and a 15-minute TTL, so a client never receives a raw LastEvaluatedKey. The table also expires idempotency and cursor records through `expiresAtEpoch`.
+
+## Routes
+
+- `GET /users/me`
+- `POST /drives`
+- `POST /drives/{driveId}/uploads`
+- `POST /drives/{driveId}/publish`
+- `GET /feed?limit=20&cursor=...`
+- `GET /drives/{driveId}`
+- `PATCH /drives/{driveId}`
+- `DELETE /drives/{driveId}`
+
+Create, refresh, publish, update, and delete are owner-scoped. Non-owner draft access returns `404` to avoid existence disclosure. Delete is idempotent and removes the item from the public feed before best-effort media cleanup.
+
+## Build and test
+
+```bash
+npm --prefix infra run build:function
+npm --prefix infra test
+```
+
+AWS SDK v3 packages are exact-version locked under `functions/api/package-lock.json`. The deployment host runs `npm ci --omit=dev --ignore-scripts` inside the function directory before CloudFormation packaging. Tests use in-memory adapters and never call AWS.
