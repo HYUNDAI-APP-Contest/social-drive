@@ -24,10 +24,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -42,24 +38,9 @@ import com.socialdrive.app.ui.components.RouteRibbon
 import com.socialdrive.app.ui.theme.LocalRouteMemoryColors
 
 @Composable
-fun RecordingScreen(snapshot: RecordingSnapshot, motion: MotionState, onHighlight: () -> Unit, onStop: () -> Unit) {
+fun RecordingScreen(snapshot: RecordingSnapshot, onHighlight: () -> Unit, onRequestStop: () -> Unit) {
     val colors = LocalRouteMemoryColors.current
     val haptics = LocalHapticFeedback.current
-    var confirmStop by remember { mutableStateOf(false) }
-    if (confirmStop) {
-        AlertDialog(
-            onDismissRequest = { confirmStop = false },
-            title = { Text("기록을 종료할까요?") },
-            text = {
-                Text(
-                    if (motion == MotionState.Parked) "기록을 안전한 초안으로 저장한 뒤 게시 화면으로 이동합니다."
-                    else "기록은 초안으로 보존됩니다. 게시와 편집은 주차 상태가 확인된 후에만 가능합니다.",
-                )
-            },
-            confirmButton = { TextButton(onClick = { confirmStop = false; onStop() }) { Text("초안으로 저장") } },
-            dismissButton = { TextButton(onClick = { confirmStop = false }) { Text("계속 기록") } },
-        )
-    }
     Box(
         Modifier.fillMaxSize().background(
             Brush.linearGradient(listOf(colors.brand, MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.surfaceVariant)),
@@ -97,7 +78,7 @@ fun RecordingScreen(snapshot: RecordingSnapshot, motion: MotionState, onHighligh
                     Text(" 방금 좋았어 (${snapshot.highlights})", style = MaterialTheme.typography.titleLarge)
                 }
                 Button(
-                    onClick = { confirmStop = true },
+                    onClick = onRequestStop,
                     modifier = Modifier.weight(1f).heightIn(min = 72.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 ) {
@@ -107,6 +88,22 @@ fun RecordingScreen(snapshot: RecordingSnapshot, motion: MotionState, onHighligh
             }
         }
     }
+}
+
+@Composable
+fun RecordingStopDialog(motion: MotionState, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("기록을 종료할까요?") },
+        text = {
+            Text(
+                if (motion == MotionState.Parked) "기록을 안전한 초안으로 저장한 뒤 게시 화면으로 이동합니다."
+                else "기록은 초안으로 보존됩니다. 게시와 편집은 주차 상태가 확인된 후에만 가능합니다.",
+            )
+        },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("초안으로 저장") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("계속 기록") } },
+    )
 }
 
 @Composable

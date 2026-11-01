@@ -43,10 +43,9 @@ fun HomeScreen(
     onSettings: () -> Unit,
     onRetry: () -> Unit,
     onDemoModeChange: (DemoContentMode) -> Unit,
-    onDemoParked: () -> Unit,
 ) {
     if (motion != MotionState.Parked) {
-        DrivingHome(motion, blockedMessage, onRecord, onDemoParked)
+        DrivingHome(motion, blockedMessage, onRecord)
         return
     }
     Column(Modifier.fillMaxSize()) {
@@ -97,7 +96,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun DrivingHome(motion: MotionState, blockedMessage: String?, onRecord: () -> Unit, onDemoParked: () -> Unit) {
+private fun DrivingHome(motion: MotionState, blockedMessage: String?, onRecord: () -> Unit) {
     Column(
         Modifier.fillMaxSize().padding(32.dp),
         verticalArrangement = Arrangement.Center,
@@ -117,7 +116,6 @@ private fun DrivingHome(motion: MotionState, blockedMessage: String?, onRecord: 
             Icon(Icons.Rounded.FiberManualRecord, contentDescription = null)
             Text(" 안전 기록 화면 열기", style = MaterialTheme.typography.titleLarge)
         }
-        OutlinedButton(onClick = onDemoParked, Modifier.padding(top = 12.dp)) { Text("DEMO · 주차 상태로 전환") }
     }
 }
 

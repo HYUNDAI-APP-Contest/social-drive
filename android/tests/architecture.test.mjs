@@ -29,17 +29,31 @@ test("Gradle bootstrap pins and verifies its distribution", () => {
 
 test("driving home returns before parked feed and settings UI", () => {
   const home = read("app/src/main/java/com/socialdrive/app/ui/screens/HomeScreen.kt");
-  assert.match(home, /if \(motion != MotionState\.Parked\) \{\s*DrivingHome\(motion, blockedMessage, onRecord, onDemoParked\)\s*return\s*\}/);
+  assert.match(home, /if \(motion != MotionState\.Parked\) \{\s*DrivingHome\(motion, blockedMessage, onRecord\)\s*return\s*\}/);
+  assert.doesNotMatch(home, /onDemoParked|주차 상태로 전환/);
   assert.match(home, /private fun DriveGrid[\s\S]*LazyVerticalGrid/);
 });
 
 test("recording stop is confirmed and non-parked drafts cannot auto-publish", () => {
   const recording = read("app/src/main/java/com/socialdrive/app/ui/screens/RecordingScreen.kt");
   const app = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
-  assert.match(recording, /AlertDialog/);
+  assert.match(recording, /fun RecordingStopDialog[\s\S]*AlertDialog/);
   assert.match(recording, /초안으로 저장/);
+  assert.match(app, /BackHandler[\s\S]*destination == AppDestination\.Recording\) stopConfirmationRequested = true/);
+  assert.match(app, /onRequestStop = \{ stopConfirmationRequested = true \}/);
+  assert.match(app, /onConfirm = ::completeRecording/);
   assert.match(app, /DriveSessionState\.DraftReady/);
   assert.match(app, /if \(motion == MotionState\.Parked\)[\s\S]*AppDestination\.Publish[\s\S]*초안으로 안전하게 보존/);
+});
+
+test("instrumented safety suite covers lock back confirmation and parked publish", () => {
+  const relative = "app/src/androidTest/java/com/socialdrive/app/AutomotiveSafetyUiTest.kt";
+  assert.equal(fs.existsSync(path.join(root, relative)), true);
+  const ui = read(relative);
+  for (const marker of [
+    "MotionState.Driving", "MotionState.Unknown", "assertDoesNotExist", "pressBack()",
+    "기록을 종료할까요?", "parkedUserCanReachPublishThroughDetailOnly", "드라이브 게시",
+  ]) assert.ok(ui.includes(marker), marker);
 });
 
 test("content and upload states are observable in the demo", () => {

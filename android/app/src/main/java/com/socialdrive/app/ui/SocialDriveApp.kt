@@ -28,6 +28,7 @@ import com.socialdrive.app.ui.screens.DetailScreen
 import com.socialdrive.app.ui.screens.HomeScreen
 import com.socialdrive.app.ui.screens.PublishScreen
 import com.socialdrive.app.ui.screens.RecordingScreen
+import com.socialdrive.app.ui.screens.RecordingStopDialog
 import com.socialdrive.app.ui.screens.SettingsScreen
 import com.socialdrive.app.ui.theme.SocialDriveTheme
 
@@ -42,6 +43,7 @@ fun SocialDriveApp(repository: FakeDriveRepository = remember { FakeDriveReposit
     var demoContentMode by rememberSaveable { mutableStateOf(DemoContentMode.Content) }
     var sessionState by rememberSaveable { mutableStateOf(DriveSessionState.Idle) }
     var uploadState by rememberSaveable { mutableStateOf(UploadState.Draft) }
+    var stopConfirmationRequested by rememberSaveable { mutableStateOf(false) }
 
     fun navigate(target: AppDestination) {
         val decision = SafetyPolicy.canNavigate(target, motion)
@@ -54,11 +56,33 @@ fun SocialDriveApp(repository: FakeDriveRepository = remember { FakeDriveReposit
         }
     }
 
-    BackHandler(destination != AppDestination.Home) { destination = AppDestination.Home }
+    fun completeRecording() {
+        stopConfirmationRequested = false
+        sessionState = DriveSessionState.DraftReady
+        uploadState = UploadState.Draft
+        if (motion == MotionState.Parked) {
+            navigate(AppDestination.Publish)
+        } else {
+            blockedMessage = "기록을 초안으로 안전하게 보존했습니다. 주차 상태가 확인되면 게시할 수 있어요."
+            destination = AppDestination.Home
+        }
+    }
+
+    BackHandler(destination != AppDestination.Home) {
+        if (destination == AppDestination.Recording) stopConfirmationRequested = true
+        else destination = AppDestination.Home
+    }
 
     SocialDriveTheme(theme) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Box(Modifier.fillMaxSize()) {
+                if (destination == AppDestination.Recording && stopConfirmationRequested) {
+                    RecordingStopDialog(
+                        motion = motion,
+                        onDismiss = { stopConfirmationRequested = false },
+                        onConfirm = ::completeRecording,
+                    )
+                }
                 when (destination) {
                     AppDestination.Home -> HomeScreen(
                         state = demoContentState(demoContentMode, repository),
@@ -70,7 +94,6 @@ fun SocialDriveApp(repository: FakeDriveRepository = remember { FakeDriveReposit
                         onSettings = { navigate(AppDestination.Settings) },
                         onRetry = { demoContentMode = DemoContentMode.Content },
                         onDemoModeChange = { demoContentMode = it },
-                        onDemoParked = { motion = MotionState.Parked; blockedMessage = null },
                     )
                     AppDestination.Detail -> DetailScreen(
                         drive = requireNotNull(repository.drive(selectedDrive)),
@@ -86,18 +109,8 @@ fun SocialDriveApp(repository: FakeDriveRepository = remember { FakeDriveReposit
                             gps = CapabilityState.Available,
                             vehicle = CapabilityState.Unavailable,
                         ),
-                        motion = motion,
                         onHighlight = { highlights += 1 },
-                        onStop = {
-                            sessionState = DriveSessionState.DraftReady
-                            uploadState = UploadState.Draft
-                            if (motion == MotionState.Parked) {
-                                navigate(AppDestination.Publish)
-                            } else {
-                                blockedMessage = "기록을 초안으로 안전하게 보존했습니다. 주차 상태가 확인되면 게시할 수 있어요."
-                                destination = AppDestination.Home
-                            }
-                        },
+                        onRequestStop = { stopConfirmationRequested = true },
                     )
                     AppDestination.Publish -> PublishScreen(
                         canEdit = SafetyPolicy.canEdit(motion),

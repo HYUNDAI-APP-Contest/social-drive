@@ -37,7 +37,7 @@ private fun DrivingHomePreview() = SocialDriveTheme(ThemeMode.Night) {
         motion = MotionState.Driving,
         demoMode = DemoContentMode.Content,
         blockedMessage = null,
-        onDetail = {}, onRecord = {}, onSettings = {}, onRetry = {}, onDemoModeChange = {}, onDemoParked = {},
+        onDetail = {}, onRecord = {}, onSettings = {}, onRetry = {}, onDemoModeChange = {},
     )
 }
 
@@ -46,9 +46,8 @@ private fun DrivingHomePreview() = SocialDriveTheme(ThemeMode.Night) {
 private fun RecordingPreview() = SocialDriveTheme(ThemeMode.Night) {
     RecordingScreen(
         snapshot = RecordingSnapshot("01:24:17", "64.2 km", 3, CapabilityState.Available, CapabilityState.Unavailable),
-        motion = MotionState.Driving,
         onHighlight = {},
-        onStop = {},
+        onRequestStop = {},
     )
 }
 
@@ -71,6 +70,6 @@ private fun PreviewHome(state: ContentState<List<com.socialdrive.app.domain.Driv
         motion = MotionState.Parked,
         demoMode = mode,
         blockedMessage = null,
-        onDetail = {}, onRecord = {}, onSettings = {}, onRetry = {}, onDemoModeChange = {}, onDemoParked = {},
+        onDetail = {}, onRecord = {}, onSettings = {}, onRetry = {}, onDemoModeChange = {},
     )
 }
