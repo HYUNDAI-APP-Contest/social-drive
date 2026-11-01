@@ -239,6 +239,7 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.match(host, /fun observe\([\s\S]*homePidBefore: String,[\s\S]*dump: String,[\s\S]*homePidAfter: String,[\s\S]*currentUserId: Int\?/);
   assert.match(host, /PleosOrganizerSnapshot\(after, ids\.map \{ it\.single\(\) \}\)/);
   assert.match(host, /TASK_HEADER[\s\S]*ACTIVITY_RECORD/);
+  assert.ok(host.includes('^\\\\s*\\\\*\\\\s+Task\\\\{'));
   assert.match(host, /mVisible=\(true\|false\)/);
   assert.match(host, /state=\(CREATED\|STARTED\|RESUMED\|PAUSED\|STOPPED\|DESTROYED\)/);
   assert.match(host, /groupBy\(TaskBlock::id\)/);
@@ -276,6 +277,8 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.match(hostTest, /DrivingViewActivity t99/);
   assert.match(hostTest, /capturedStyleDump/);
   assert.match(hostTest, /Hist  #0/);
+  assert.match(hostTest, /rootOfTask=true task=Task/);
+  assert.match(hostTest, /topDisplayFocusedRootTask=Task/);
   assert.match(hostTest, /replace\("Hist  #", "Hist #"\)/);
   assert.match(hostTest, /1000299[\s\S]*1000318[\s\S]*1000304/);
   assert.match(hostTest, /drivingVisible = false/);

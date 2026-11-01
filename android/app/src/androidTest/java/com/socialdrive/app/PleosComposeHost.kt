@@ -240,7 +240,7 @@ internal object PleosReadinessParser {
         val active: Set<String>,
     )
 
-    private val TASK_HEADER = Regex("\\bTask\\{[^\\n]*#([0-9]+)\\b")
+    private val TASK_HEADER = Regex("^\\s*\\*\\s+Task\\{[^\\n]*#([0-9]+)\\b")
     private val ACTIVITY_RECORD = Regex("ActivityRecord\\{[^\\n]*\\su([0-9]+)\\s+([A-Za-z0-9_.]+)/([A-Za-z0-9_.$]+)\\s+t([0-9]+)")
     private val HIST_RECORD = Regex("\\bHist\\s+#[0-9]+:")
     private val HIST_ZERO = Regex("\\bHist\\s+#0:")

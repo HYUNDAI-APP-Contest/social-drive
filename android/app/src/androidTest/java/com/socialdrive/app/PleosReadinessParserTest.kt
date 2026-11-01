@@ -107,6 +107,8 @@ class PleosReadinessParserTest {
     ): String = """
         * Task{abc #$id type=standard}
           * Hist  #0: ActivityRecord{def u$userId $component t$id}
+            rootOfTask=true task=Task{c9 #$id type=standard}
+            topDisplayFocusedRootTask=Task{focus #$id type=standard}
             mVisibleRequested=$visible mVisible=$visible mClientVisible=$visible
             state=$state stopped=${state == "STOPPED"}
     """.trimIndent() + "\n"
