@@ -1,0 +1,19 @@
+package com.socialdrive.app.ui.theme
+
+import androidx.compose.ui.graphics.Color
+
+val HyundaiNavy = Color(0xFF002C5F)
+val RouteBlue = Color(0xFF3B82F6)
+val HighlightMint = Color(0xFF35D0BA)
+val MomentAmber = Color(0xFFFFB547)
+val NightSurface = Color(0xFF0B1220)
+val NightSurfaceRaised = Color(0xFF131E30)
+val DaySurface = Color(0xFFF5F7FA)
+val DaySurfaceRaised = Color(0xFFFFFFFF)
+val TextNightPrimary = Color(0xFFF7FAFF)
+val TextNightSecondary = Color(0xFFA9B7CC)
+val TextDayPrimary = Color(0xFF101828)
+val TextDaySecondary = Color(0xFF5D6878)
+val RouteError = Color(0xFFFF6B6B)
+val NightOutline = Color(0xFF35445B)
+val DayOutline = Color(0xFFD5DAE2)
