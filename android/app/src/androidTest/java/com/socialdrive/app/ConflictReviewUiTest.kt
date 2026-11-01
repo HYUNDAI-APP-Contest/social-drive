@@ -1,7 +1,8 @@
 package com.socialdrive.app
 
+import androidx.activity.compose.setContent
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import com.socialdrive.app.domain.ConflictReviewUiState
 import com.socialdrive.app.domain.ConflictUiPhase
@@ -13,7 +14,7 @@ import org.junit.Rule
 import org.junit.Test
 
 class ConflictReviewUiTest {
-    @get:Rule val compose = createComposeRule()
+    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
 
     @Test fun parkedReadyShowsSafeCopyAndExplicitActions() {
         content(MotionState.Parked, ConflictReviewUiState(ConflictUiPhase.SnapshotReady, 8, "서버 제목", "서버 요약", 0))
@@ -38,11 +39,14 @@ class ConflictReviewUiTest {
     }
 
     private fun content(motion: MotionState, state: ConflictReviewUiState) {
-        compose.setContent {
-            SocialDriveTheme(ThemeMode.Night) {
-                ConflictReviewScreen(state, motion, {}, {}, {}, {})
+        compose.runOnUiThread {
+            compose.activity.setContent {
+                SocialDriveTheme(ThemeMode.Night) {
+                    ConflictReviewScreen(state, motion, {}, {}, {}, {})
+                }
             }
         }
+        compose.waitForIdle()
     }
 
     private fun assertMotionLock(motion: MotionState) {

@@ -220,6 +220,10 @@ test("instrumented safety suite covers lock back confirmation and parked publish
     "기록을 종료할까요?", "parkedUserCanReachPublishThroughDetailOnly", "드라이브 게시",
   ]) assert.ok(ui.includes(marker), marker);
   for (const source of [ui, conflictUi]) {
+    assert.match(source, /createAndroidComposeRule<MainActivity>\(\)/);
+    assert.match(source, /compose\.runOnUiThread[\s\S]*compose\.activity\.setContent/);
+    assert.match(source, /compose\.waitForIdle\(\)/);
+    assert.doesNotMatch(source, /createComposeRule/);
     assert.doesNotMatch(
       source,
       /import androidx\.compose\.ui\.test\.assertDoesNotExist/,

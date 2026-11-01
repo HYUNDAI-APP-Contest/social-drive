@@ -1,8 +1,8 @@
 package com.socialdrive.app
 
+import androidx.activity.compose.setContent
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -22,7 +22,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class HomeSafetyUiTest {
     @get:Rule
-    val compose = createComposeRule()
+    val compose = createAndroidComposeRule<MainActivity>()
 
     @Test
     fun drivingHomeHidesFeedFiltersAndSettings() {
@@ -43,17 +43,20 @@ class HomeSafetyUiTest {
 
     private fun showRestrictedHome(motion: MotionState) {
         val drives = FakeDriveRepository().drives()
-        compose.setContent {
-            SocialDriveTheme(ThemeMode.Night) {
-                HomeScreen(
-                    state = ContentState.Content(drives),
-                    motion = motion,
-                    demoMode = DemoContentMode.Content,
-                    blockedMessage = null,
-                    onDetail = {}, onRecord = {}, onSettings = {}, onRetry = {}, onDemoModeChange = {},
-                )
+        compose.runOnUiThread {
+            compose.activity.setContent {
+                SocialDriveTheme(ThemeMode.Night) {
+                    HomeScreen(
+                        state = ContentState.Content(drives),
+                        motion = motion,
+                        demoMode = DemoContentMode.Content,
+                        blockedMessage = null,
+                        onDetail = {}, onRecord = {}, onSettings = {}, onRetry = {}, onDemoModeChange = {},
+                    )
+                }
             }
         }
+        compose.waitForIdle()
     }
 }
 
