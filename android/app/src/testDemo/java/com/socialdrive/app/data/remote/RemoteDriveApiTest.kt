@@ -7,6 +7,7 @@ import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import com.socialdrive.app.domain.DeleteFailureCode
 
 class RemoteDriveApiTest {
     private val draft = DraftSnapshot(
@@ -49,5 +50,23 @@ class RemoteDriveApiTest {
         val error = assertFailsWith<RemoteDriveException> { api.uploadAssets(remote.id, listOf(conflict, commands.last())) }
         assertEquals(RemoteFailureCode.REJECTED, error.code)
         assertEquals(false, error.retryable)
+    }
+
+    @Test
+    fun `delete replay with the same stable hash is idempotent`() = runBlocking {
+        val api = FakeRemoteDeleteApi()
+        val key = "a".repeat(64)
+        assertEquals(RemoteDeleteConfirmed, api.deletePublishedDrive("drive-delete-0001", key))
+        assertEquals(RemoteDeleteConfirmed, api.deletePublishedDrive("drive-delete-0001", key))
+    }
+
+    @Test
+    fun `delete replay with a changed stable hash fails closed`() = runBlocking {
+        val api = FakeRemoteDeleteApi()
+        api.deletePublishedDrive("drive-delete-0001", "a".repeat(64))
+        val error = assertFailsWith<RemoteDeleteException> {
+            api.deletePublishedDrive("drive-delete-0001", "b".repeat(64))
+        }
+        assertEquals(DeleteFailureCode.VERSION_CONFLICT, error.failureCode)
     }
 }

@@ -152,9 +152,15 @@ class CloudDriveClient(
         return parseDrive(root.requiredObject("drive"))
     }
 
-    suspend fun deleteDrive(driveId: String) {
+    suspend fun deleteDrive(driveId: String, stableKeyHash: String) {
         requireSafeId(driveId)
-        api(HttpMethod.DELETE, "/drives/$driveId", expectedStatuses = setOf(204))
+        require(stableKeyHash.matches(Regex("[a-f0-9]{64}")))
+        api(
+            HttpMethod.DELETE,
+            "/drives/$driveId",
+            headers = mapOf("Idempotency-Key" to stableKeyHash),
+            expectedStatuses = setOf(204),
+        )
     }
 
     private suspend fun api(
@@ -203,6 +209,7 @@ class CloudDriveClient(
         val requestId = envelope?.get("requestId")?.let { (it as? JsonValue.StringValue)?.value }
         val kind = when {
             response.status == 401 -> CloudFailureKind.AUTHENTICATION
+            response.status == 403 -> CloudFailureKind.FORBIDDEN
             response.status == 404 -> CloudFailureKind.NOT_FOUND
             code == "IDEMPOTENCY_CONFLICT" -> CloudFailureKind.IDEMPOTENCY_CONFLICT
             response.status == 409 && code in setOf("VERSION_CONFLICT", "CONFLICT") -> CloudFailureKind.VERSION_CONFLICT

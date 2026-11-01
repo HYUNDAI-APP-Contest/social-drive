@@ -11,9 +11,12 @@ import com.socialdrive.app.data.RecordingRepository
 import com.socialdrive.app.data.RoutePrivacyRepository
 import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.remote.FlavorRemoteDriveApiFactory
+import com.socialdrive.app.data.remote.FlavorRemoteDeleteApiFactory
 import com.socialdrive.app.data.remote.RemoteDriveApi
 import com.socialdrive.app.data.remote.FlavorRemoteConflictReviewApiFactory
 import com.socialdrive.app.data.work.PublishScheduler
+import com.socialdrive.app.data.work.DeleteWorkScheduler
+import com.socialdrive.app.data.work.DeleteWorkerDependencies
 import com.socialdrive.app.data.work.PublishRescheduler
 import com.socialdrive.app.data.work.PublishWorkerDependencies
 import com.socialdrive.app.data.work.PublishWorkerFactory
@@ -33,6 +36,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
 
     val database: SocialDriveDatabase by lazy { SocialDriveDatabase.create(this) }
     val remoteDriveApi: RemoteDriveApi by lazy { FlavorRemoteDriveApiFactory.create() }
+    val remoteDeleteApi by lazy { FlavorRemoteDeleteApiFactory.create() }
     val integrationBundle by lazy { FlavorIntegrationFactory.create(this) }
     val vehicleMotionSource get() = integrationBundle.vehicleMotionSource
     val navigationGateway get() = integrationBundle.navigationGateway
@@ -47,7 +51,14 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
                 WorkManager.getInstance(this).cancelAllWorkByTag(PublishScheduler.ROUTE_UPLOAD_TAG)
             },
             currentMotion = { vehicleMotionSource.status.value.motion },
+            onDeletePending = { draftId ->
+                WorkManager.getInstance(this).cancelUniqueWork(PublishScheduler.uniqueName(draftId))
+                deleteWorkScheduler.enqueue(draftId)
+            },
         )
+    }
+    val deleteWorkScheduler: DeleteWorkScheduler by lazy {
+        DeleteWorkScheduler(WorkManager.getInstance(this), database, parkedExecutionGate)
     }
     val publishScheduler: PublishScheduler by lazy {
         PublishScheduler(WorkManager.getInstance(this), publishQueueRepository, parkedExecutionGate)
@@ -66,7 +77,10 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
         val deferredRescheduler = PublishRescheduler { draftId ->
             PublishWorkChainEnqueuer(WorkManager.getInstance(this)).replaceFromUpload(draftId)
         }
-        PublishWorkerFactory(PublishWorkerDependencies(database, remoteDriveApi, parkedExecutionGate, deferredRescheduler))
+        PublishWorkerFactory(
+            PublishWorkerDependencies(database, remoteDriveApi, parkedExecutionGate, deferredRescheduler),
+            DeleteWorkerDependencies(database, remoteDeleteApi, parkedExecutionGate),
+        )
     }
 
     override val workManagerConfiguration: Configuration
@@ -85,6 +99,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
             vehicleMotionSource.status.collect { status ->
                 parkedExecutionGate.transitionTo(status.motion)
                 if (status.motion == MotionState.Parked) {
+                    deleteWorkScheduler.resumeWhenParked()
                     publishScheduler.recoverAfterProcessRestart()
                 }
             }
@@ -101,6 +116,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
     protected open fun recoverQueuedWork() {
         applicationScope.launch {
             conflictReviewRepository.recoverInterruptedFetches()
+            deleteWorkScheduler.recoverAfterProcessRestart()
             publishScheduler.recoverAfterProcessRestart()
         }
     }

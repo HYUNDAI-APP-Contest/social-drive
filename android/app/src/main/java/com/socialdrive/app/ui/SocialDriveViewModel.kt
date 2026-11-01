@@ -22,6 +22,7 @@ import com.socialdrive.app.domain.RouteConsentState
 import com.socialdrive.app.domain.RoutePrivacyStatus
 import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.WithdrawalReceipt
+import com.socialdrive.app.domain.DeleteRequestState
 import com.socialdrive.app.domain.VehicleMotionStatus
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -70,12 +71,17 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
             ),
         )
 
-    val deletePending: StateFlow<Boolean> = latestDraft
+    val deleteRequestState: StateFlow<DeleteRequestState?> = latestDraft
         .flatMapLatest { draft ->
-            draft?.let { app.database.routePrivacyDao().observeDeleteRequest(it.id).map { request -> request != null } }
-                ?: flowOf(false)
+            draft?.let {
+                app.database.publishedDeleteDao().observe(it.id).map { request ->
+                    request?.state?.let { state ->
+                        runCatching { DeleteRequestState.valueOf(state) }.getOrDefault(DeleteRequestState.LEGACY_UNREVIEWABLE)
+                    }
+                }
+            } ?: flowOf(null)
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     suspend fun startRecording() = app.recordingRepository.start()
 

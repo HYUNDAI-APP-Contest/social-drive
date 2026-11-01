@@ -107,7 +107,12 @@ interface UploadQueueDao {
     @Query("SELECT * FROM upload_queue WHERE draftId = :draftId")
     suspend fun find(draftId: String): UploadQueueEntity?
 
-    @Query("SELECT * FROM upload_queue WHERE status IN ('QUEUED', 'RUNNING', 'PAUSED_MOTION') ORDER BY updatedAtEpochMs")
+    @Query("""
+        SELECT * FROM upload_queue q
+        WHERE status IN ('QUEUED', 'RUNNING', 'PAUSED_MOTION')
+          AND NOT EXISTS (SELECT 1 FROM published_delete_requests d WHERE d.draftId = q.draftId)
+        ORDER BY updatedAtEpochMs
+    """)
     suspend fun recoverable(): List<UploadQueueEntity>
 
     @Upsert
@@ -131,6 +136,10 @@ interface UploadQueueDao {
           AND attempts = :expectedAttempts
           AND :expectedStatus IN ('QUEUED', 'FAILED', 'PAUSED_MOTION')
           AND NOT (:expectedStatus = 'FAILED' AND COALESCE(lastErrorCode, '') = 'VERSION_CONFLICT')
+          AND NOT EXISTS (
+              SELECT 1 FROM published_delete_requests d
+              WHERE d.draftId = upload_queue.draftId
+          )
     """)
     suspend fun claimStage(
         draftId: String,
@@ -259,14 +268,89 @@ interface RoutePrivacyDao {
     @Query("DELETE FROM normalized_route_points WHERE publicationState != 'PUBLISHED'")
     suspend fun purgeUnpublishedPoints(): Int
 
-    @Upsert
-    suspend fun upsertDeleteRequest(request: PublishedDeleteRequestEntity)
+}
+
+@Dao
+interface PublishedDeleteDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(request: PublishedDeleteRequestEntity): Long
 
     @Query("SELECT * FROM published_delete_requests WHERE draftId = :draftId")
-    suspend fun findDeleteRequest(draftId: String): PublishedDeleteRequestEntity?
+    suspend fun find(draftId: String): PublishedDeleteRequestEntity?
 
     @Query("SELECT * FROM published_delete_requests WHERE draftId = :draftId")
-    fun observeDeleteRequest(draftId: String): Flow<PublishedDeleteRequestEntity?>
+    fun observe(draftId: String): Flow<PublishedDeleteRequestEntity?>
+
+    @Query("""
+        SELECT * FROM published_delete_requests
+        WHERE state IN ('DELETE_PENDING', 'RETRY_WAIT', 'RUNNING')
+        ORDER BY requestedAtEpochMs
+    """)
+    suspend fun recoverable(): List<PublishedDeleteRequestEntity>
+
+    @Query("""
+        UPDATE published_delete_requests SET state = 'RUNNING', attempts = :runningAttempt,
+            lastErrorCode = NULL, updatedAtEpochMs = :now
+        WHERE draftId = :draftId AND clientRequestId = :clientRequestId
+          AND remoteDriveId = :remoteDriveId AND idempotencyKeyHash = :idempotencyKeyHash
+          AND state = :expectedState AND attempts = :expectedAttempts
+          AND :expectedState IN ('DELETE_PENDING', 'RETRY_WAIT')
+          AND :runningAttempt <= 4
+          AND nextAttemptAtEpochMs <= :now
+    """)
+    suspend fun claim(
+        draftId: String,
+        clientRequestId: String,
+        remoteDriveId: String,
+        idempotencyKeyHash: String,
+        expectedState: String,
+        expectedAttempts: Int,
+        runningAttempt: Int,
+        now: Long,
+    ): Int
+
+    @Query("""
+        UPDATE published_delete_requests SET state = 'DELETE_PENDING', attempts = :restoredAttempts,
+            nextAttemptAtEpochMs = :now, lastErrorCode = 'MOTION_NOT_PARKED', updatedAtEpochMs = :now
+        WHERE draftId = :draftId AND state = 'RUNNING' AND attempts = :runningAttempt
+    """)
+    suspend fun pauseForMotionCas(draftId: String, runningAttempt: Int, restoredAttempts: Int, now: Long): Int
+
+    @Query("""
+        UPDATE published_delete_requests SET state = :nextState,
+            nextAttemptAtEpochMs = :nextAttemptAtEpochMs, lastErrorCode = :errorCode,
+            updatedAtEpochMs = :now
+        WHERE draftId = :draftId AND state = 'RUNNING' AND attempts = :runningAttempt
+    """)
+    suspend fun failCas(
+        draftId: String,
+        runningAttempt: Int,
+        nextState: String,
+        nextAttemptAtEpochMs: Long,
+        errorCode: String,
+        now: Long,
+    ): Int
+
+    @Query("""
+        UPDATE published_delete_requests SET state = 'CONFIRMED', nextAttemptAtEpochMs = 0,
+            lastErrorCode = NULL, updatedAtEpochMs = :now, confirmedAtEpochMs = :now
+        WHERE draftId = :draftId AND state = 'RUNNING' AND attempts = :runningAttempt
+    """)
+    suspend fun confirmCas(draftId: String, runningAttempt: Int, now: Long): Int
+
+    @Query("""
+        UPDATE published_delete_requests SET state = 'RETRY_WAIT',
+            nextAttemptAtEpochMs = :now, lastErrorCode = 'INTERRUPTED', updatedAtEpochMs = :now
+        WHERE state = 'RUNNING' AND attempts < 4
+    """)
+    suspend fun normalizeInterrupted(now: Long): Int
+
+    @Query("""
+        UPDATE published_delete_requests SET state = 'FAILED_PERMANENT',
+            nextAttemptAtEpochMs = 0, lastErrorCode = 'RETRY_EXHAUSTED', updatedAtEpochMs = :now
+        WHERE state IN ('RUNNING', 'RETRY_WAIT', 'DELETE_PENDING') AND attempts >= 4
+    """)
+    suspend fun failAtLimit(now: Long): Int
 }
 
 @Dao
@@ -312,6 +396,10 @@ interface PublishConflictDao {
         WHERE draftId = :draftId AND remoteDriveId = :remoteDriveId
           AND attemptedVersion = :attemptedVersion AND clientRequestId = :clientRequestId
           AND state IN ('DETECTED', 'FETCH_FAILED')
+          AND NOT EXISTS (
+              SELECT 1 FROM published_delete_requests d
+              WHERE d.draftId = publish_conflicts.draftId
+          )
     """)
     suspend fun claimFetch(draftId: String, clientRequestId: String, remoteDriveId: String, attemptedVersion: Int): Int
 
@@ -322,6 +410,10 @@ interface PublishConflictDao {
         WHERE draftId = :draftId AND remoteDriveId = :remoteDriveId
           AND attemptedVersion = :attemptedVersion AND clientRequestId = :clientRequestId
           AND fetchGeneration = :fetchGeneration AND state = 'FETCHING'
+          AND NOT EXISTS (
+              SELECT 1 FROM published_delete_requests d
+              WHERE d.draftId = publish_conflicts.draftId
+          )
     """)
     suspend fun storeSnapshotCas(
         draftId: String,
@@ -362,6 +454,10 @@ interface PublishConflictDao {
         WHERE draftId = :draftId AND remoteDriveId = :remoteDriveId
           AND attemptedVersion = :attemptedVersion AND clientRequestId = :clientRequestId
           AND state IN ('DETECTED', 'SNAPSHOT_READY', 'FETCH_FAILED')
+          AND NOT EXISTS (
+              SELECT 1 FROM published_delete_requests d
+              WHERE d.draftId = publish_conflicts.draftId
+          )
     """)
     suspend fun keepLocalCas(draftId: String, clientRequestId: String, remoteDriveId: String, attemptedVersion: Int, now: Long): Int
 
@@ -373,6 +469,10 @@ interface PublishConflictDao {
           AND state = 'SNAPSHOT_READY'
           AND latestVersion = :latestVersion AND latestStatus = 'DRAFT'
           AND latestVersion > attemptedVersion AND replayCount < :maxReplays
+          AND NOT EXISTS (
+              SELECT 1 FROM published_delete_requests d
+              WHERE d.draftId = publish_conflicts.draftId
+          )
     """)
     suspend fun queueReplayCas(
         draftId: String,

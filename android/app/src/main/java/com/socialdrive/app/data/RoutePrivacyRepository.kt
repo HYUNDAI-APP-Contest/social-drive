@@ -6,6 +6,7 @@ import com.socialdrive.app.data.local.PublishedDeleteRequestEntity
 import com.socialdrive.app.data.local.RoutePrivacyEntity
 import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.domain.FutureRouteCollector
+import com.socialdrive.app.domain.DeleteLifecyclePolicy
 import com.socialdrive.app.domain.LiveUnavailableReason
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.PendingRouteUploadCanceller
@@ -28,6 +29,7 @@ class RoutePrivacyRepository(
     private val currentMotion: () -> MotionState,
     private val collector: FutureRouteCollector = UnavailableFutureRouteCollector,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val onDeletePending: (String) -> Unit = {},
 ) {
     private val liveUnavailable = RouteSource.LiveUnavailable(LiveUnavailableReason.SDK_COMING_SOON)
     private val mutationMutex = Mutex()
@@ -48,12 +50,15 @@ class RoutePrivacyRepository(
 
     suspend fun requestPublishedDelete(draftId: String, confirmed: Boolean): PublishedDeleteDecision = mutationMutex.withLock {
         val draft = database.draftDao().find(draftId)
-        coordinator().requestPublishedDelete(
+        val decision = coordinator().requestPublishedDelete(
             draftId = draftId,
             isPublished = draft?.state == LocalState.PUBLISHED,
             confirmed = confirmed,
             currentMotion = currentMotion,
         )
+        // The Room tombstone is authoritative; startup recovery repairs a failed enqueue.
+        if (decision == PublishedDeleteDecision.DeletePending) runCatching { onDeletePending(draftId) }
+        decision
     }
 
     private suspend fun coordinator(): RoutePrivacyCoordinator {
@@ -82,10 +87,33 @@ private class RoomRoutePrivacyMutationStore(
         WithdrawalReceipt(purged, database.uploadQueueDao().privacyWithdrawnDraftIds().toSet())
     }
 
-    override suspend fun markPublishedDeletePending(draftId: String) {
-        database.routePrivacyDao().upsertDeleteRequest(
-            PublishedDeleteRequestEntity(draftId, LocalState.DELETE_PENDING, clock()),
+    override suspend fun markPublishedDeletePending(draftId: String): Boolean = database.withTransaction {
+        val draft = database.draftDao().find(draftId) ?: return@withTransaction false
+        val remoteId = draft.remoteDriveId ?: return@withTransaction false
+        if (draft.state != LocalState.PUBLISHED) return@withTransaction false
+        val stableKeyHash = runCatching {
+            DeleteLifecyclePolicy.stableKeyHash(draft.clientRequestId, remoteId)
+        }.getOrNull() ?: return@withTransaction false
+        val now = clock()
+        val request = PublishedDeleteRequestEntity(
+            draftId = draftId,
+            clientRequestId = draft.clientRequestId,
+            remoteDriveId = remoteId,
+            idempotencyKeyHash = stableKeyHash,
+            state = LocalState.DELETE_PENDING,
+            attempts = 0,
+            nextAttemptAtEpochMs = now,
+            lastErrorCode = null,
+            requestedAtEpochMs = now,
+            updatedAtEpochMs = now,
+            confirmedAtEpochMs = null,
         )
+        val inserted = database.publishedDeleteDao().insertIfAbsent(request)
+        inserted != -1L || database.publishedDeleteDao().find(draftId)?.let {
+            it.clientRequestId == request.clientRequestId &&
+                it.remoteDriveId == request.remoteDriveId &&
+                it.idempotencyKeyHash == request.idempotencyKeyHash
+        } == true
     }
 }
 

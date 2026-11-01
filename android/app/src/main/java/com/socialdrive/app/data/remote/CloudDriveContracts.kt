@@ -148,6 +148,7 @@ data class UploadSession(val drive: DriveResource, val uploads: List<UploadInstr
 
 enum class CloudFailureKind {
     AUTHENTICATION,
+    FORBIDDEN,
     NOT_FOUND,
     IDEMPOTENCY_CONFLICT,
     VERSION_CONFLICT,

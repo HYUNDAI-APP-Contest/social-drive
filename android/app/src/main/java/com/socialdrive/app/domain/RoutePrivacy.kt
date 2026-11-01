@@ -90,7 +90,7 @@ interface RoutePrivacyMutationStore {
     suspend fun withdrawAndPurge(): WithdrawalReceipt
 
     /** Persists only a local DELETE_PENDING marker. This contract performs no network call. */
-    suspend fun markPublishedDeletePending(draftId: String)
+    suspend fun markPublishedDeletePending(draftId: String): Boolean
 }
 
 fun interface PendingRouteUploadCanceller {
@@ -102,6 +102,7 @@ sealed interface PublishedDeleteDecision {
     data object NotPublished : PublishedDeleteDecision
     data class MotionRejected(val motion: MotionState) : PublishedDeleteDecision
     data object DeletePending : PublishedDeleteDecision
+    data object IdentityUnavailable : PublishedDeleteDecision
 }
 
 @OptIn(TestOnlyLiveRouteCapability::class)
@@ -145,7 +146,7 @@ class RoutePrivacyCoordinator(
         // Read the authoritative source at the mutation boundary, never the dialog's captured UI state.
         val motion = currentMotion()
         if (motion != MotionState.Parked) return@withLock PublishedDeleteDecision.MotionRejected(motion)
-        store.markPublishedDeletePending(draftId)
-        PublishedDeleteDecision.DeletePending
+        if (store.markPublishedDeletePending(draftId)) PublishedDeleteDecision.DeletePending
+        else PublishedDeleteDecision.IdentityUnavailable
     }
 }

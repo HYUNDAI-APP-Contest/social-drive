@@ -218,6 +218,7 @@ class ConflictReviewRepository(
     }
 
     private suspend fun validatedIdentity(draftId: String, expected: ConflictIdentity? = null): ConflictIdentity? {
+        if (database.publishedDeleteDao().find(draftId) != null) return null
         val conflict = database.publishConflictDao().find(draftId) ?: return null
         val draft = database.draftDao().find(draftId) ?: return null
         val queue = database.uploadQueueDao().find(draftId) ?: return null

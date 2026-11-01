@@ -28,7 +28,7 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   const database = read("app/src/main/java/com/socialdrive/app/data/local/SocialDriveDatabase.kt");
   for (const table of ["recording_sessions", "drive_drafts", "upload_queue"]) assert.match(entities, new RegExp(table));
   assert.match(database, /exportSchema\s*=\s*true/);
-  assert.match(database, /version\s*=\s*5/);
+  assert.match(database, /version\s*=\s*6/);
   assert.match(database, /Migration\(1, 2\)/);
   assert.match(database, /Migration\(2, 3\)/);
   assert.match(database, /Migration\(3, 4\)/);
@@ -46,11 +46,13 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   const schema3 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/3.json"));
   const schema4 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/4.json"));
   const schema5 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/5.json"));
+  const schema6 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/6.json"));
   assert.equal(schema1.database.version, 1);
   assert.equal(schema2.database.version, 2);
   assert.equal(schema3.database.version, 3);
   assert.equal(schema4.database.version, 4);
   assert.equal(schema5.database.version, 5);
+  assert.equal(schema6.database.version, 6);
   const queue1 = schema1.database.entities.find((entity) => entity.tableName === "upload_queue");
   const queue2 = schema2.database.entities.find((entity) => entity.tableName === "upload_queue");
   assert.equal(queue1.fields.some((field) => field.columnName === "lastErrorCode"), false);
@@ -79,6 +81,12 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   }
   assert.match(database, /Migration\(4, 5\)/);
   assert.match(migrationTest, /migrateFourToFiveBackfillsReviewableAndUnreviewableConflictsWithoutChangingDrafts/);
+  const delete6 = schema6.database.entities.find((entity) => entity.tableName === "published_delete_requests");
+  for (const column of ["clientRequestId", "remoteDriveId", "idempotencyKeyHash", "attempts", "nextAttemptAtEpochMs", "lastErrorCode", "confirmedAtEpochMs"]) {
+    assert.ok(delete6.fields.some((field) => field.columnName === column), column);
+  }
+  assert.match(database, /Migration\(5, 6\)/);
+  assert.match(migrationTest, /migrateFiveToSixMakesLegacyDeletePendingFailClosed/);
 });
 
 test("publish queue is stable restart-safe and keeps ephemeral credentials out of Room", () => {
@@ -306,7 +314,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 63/);
+  assert.match(coreRunner, /expectedTests = 71/);
   assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 
@@ -521,6 +529,44 @@ test("demo route source remains visible across every route surface", () => {
   const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
   assert.match(settings, /enabled = motion == MotionState\.Parked/);
   assert.match(settings, /SDK 준비 중 · Coming Soon/);
+});
+
+test("published delete is parked durable idempotent bounded and fail closed", () => {
+  const lifecycle = read("app/src/main/java/com/socialdrive/app/domain/DeleteLifecycle.kt");
+  const entity = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
+  const dao = read("app/src/main/java/com/socialdrive/app/data/local/Daos.kt");
+  const worker = read("app/src/main/java/com/socialdrive/app/data/work/DeleteWork.kt");
+  const client = read("app/src/main/java/com/socialdrive/app/data/remote/CloudDriveClient.kt");
+  const remote = read("app/src/main/java/com/socialdrive/app/data/remote/RemoteDeleteApi.kt");
+  const app = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
+  const actualFactory = read("app/src/pleos/java/com/socialdrive/app/data/remote/FlavorRemoteDeleteApiFactory.kt");
+  const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
+  const androidTest = read("app/src/androidTest/java/com/socialdrive/app/PublishedDeleteWorkTest.kt");
+  assert.match(lifecycle, /MAX_ATTEMPTS = 4/);
+  assert.match(lifecycle, /NOT_FOUND_UNCONFIRMED/);
+  assert.match(lifecycle, /AUTHENTICATION, DeleteFailureCode\.FORBIDDEN/);
+  assert.match(lifecycle, /stableKeyHash/);
+  assert.match(entity, /idempotencyKeyHash/);
+  assert.doesNotMatch(entity, /deleteReceipt|bearer|token|presigned|authorization/i);
+  assert.match(dao, /state = 'RUNNING'.*attempts = :runningAttempt/s);
+  assert.match(dao, /NOT EXISTS \([\s\S]*published_delete_requests/);
+  assert.match(worker, /executionGate\.execute/);
+  assert.match(worker, /RemoteDeleteConfirmed|confirmCas/);
+  assert.match(worker, /local original draft is deliberately retained/);
+  assert.match(client, /"Idempotency-Key" to stableKeyHash/);
+  assert.match(remote, /404 must be surfaced as NOT_FOUND/);
+  assert.match(app, /deleteWorkScheduler\.recoverAfterProcessRestart\(\)[\s\S]*publishScheduler\.recoverAfterProcessRestart\(\)/);
+  assert.match(actualFactory, /UnavailableRemoteDeleteApi/);
+  assert.doesNotMatch(actualFactory, /FakeRemoteDeleteApi/);
+  assert.match(settings, /삭제 완료로 간주하지 않았습니다/);
+  assert.match(settings, /로컬 원본은 유지/);
+  for (const marker of [
+    "backend204ConfirmsTombstoneAndRetainsLocalOriginal",
+    "backend404IsNotTreatedAsDeletionReceipt",
+    "motionChangeBeforeExecutionMakesZeroRemoteCallsAndRestoresAttempt",
+    "tombstoneBlocksPublishClaimEvenIfQueueRowExists",
+    "processRestartNormalizesRunningLeaseBeforeUniqueRecovery",
+  ]) assert.ok(androidTest.includes(marker), marker);
 });
 
 test("fake data fixtures contain no precise geographic coordinates or credentials", () => {

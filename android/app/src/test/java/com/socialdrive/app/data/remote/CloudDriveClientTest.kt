@@ -12,6 +12,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
+import com.socialdrive.app.domain.DeleteFailureCode
 
 class CloudDriveClientTest {
     @Test
@@ -286,15 +287,16 @@ class CloudDriveClientTest {
         assertEquals(CloudFailureKind.VERSION_CONFLICT, conflict.kind)
 
         harness.api.responses += HttpResponse(204)
-        harness.client.deleteDrive("drive-remote-0001")
+        harness.client.deleteDrive("drive-remote-0001", "d".repeat(64))
         assertEquals(HttpMethod.DELETE, harness.api.requests.last().method)
+        assertEquals("d".repeat(64), harness.api.requests.last().headers["Idempotency-Key"])
     }
 
     @Test
     fun `missing owner resource stays indistinguishable and idempotency conflict is typed`() = runBlocking {
         val harness = Harness()
         harness.api.responses += errorResponse(404, "NOT_FOUND", retryable = false)
-        val missing = assertFailsWith<CloudDriveException> { harness.client.deleteDrive("drive-remote-0001") }
+        val missing = assertFailsWith<CloudDriveException> { harness.client.deleteDrive("drive-remote-0001", "e".repeat(64)) }
         assertEquals(CloudFailureKind.NOT_FOUND, missing.kind)
         assertEquals("NOT_FOUND", missing.code)
 
@@ -313,6 +315,40 @@ class CloudDriveClientTest {
             harness.client.publishDrive("drive-remote-0001", 1)
         }
         assertEquals(CloudFailureKind.UPLOAD_INCOMPLETE, incomplete.kind)
+    }
+
+    @Test
+    fun `delete auth conflict and server responses preserve bounded retry policy inputs`() = runBlocking {
+        val harness = Harness()
+        val key = "f".repeat(64)
+        harness.api.responses += errorResponse(403, "FORBIDDEN", retryable = false)
+        assertEquals(
+            CloudFailureKind.FORBIDDEN,
+            assertFailsWith<CloudDriveException> { harness.client.deleteDrive("drive-remote-0001", key) }.kind,
+        )
+        harness.api.responses += errorResponse(409, "VERSION_CONFLICT", retryable = false)
+        assertEquals(
+            CloudFailureKind.VERSION_CONFLICT,
+            assertFailsWith<CloudDriveException> { harness.client.deleteDrive("drive-remote-0001", key) }.kind,
+        )
+        harness.api.responses += errorResponse(503, "SERVER_BUSY", retryable = true)
+        val busy = assertFailsWith<CloudDriveException> { harness.client.deleteDrive("drive-remote-0001", key) }
+        assertEquals(CloudFailureKind.RETRYABLE, busy.kind)
+        assertEquals(true, busy.retryable)
+    }
+
+    @Test
+    fun `worker delete adapter accepts only 204 and preserves ambiguous 404`() = runBlocking {
+        val harness = Harness()
+        val adapter = CloudRemoteDeleteApi(harness.client)
+        val key = "1".repeat(64)
+        harness.api.responses += HttpResponse(204)
+        assertEquals(RemoteDeleteConfirmed, adapter.deletePublishedDrive("drive-remote-0001", key))
+        harness.api.responses += errorResponse(404, "NOT_FOUND", retryable = false)
+        val missing = assertFailsWith<RemoteDeleteException> {
+            adapter.deletePublishedDrive("drive-remote-0001", key)
+        }
+        assertEquals(DeleteFailureCode.NOT_FOUND, missing.failureCode)
     }
 
     @Test

@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PublishedDeleteRequestEntity::class,
         PublishConflictEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class SocialDriveDatabase : RoomDatabase() {
@@ -25,6 +25,7 @@ abstract class SocialDriveDatabase : RoomDatabase() {
     abstract fun draftDao(): DraftDao
     abstract fun uploadQueueDao(): UploadQueueDao
     abstract fun routePrivacyDao(): RoutePrivacyDao
+    abstract fun publishedDeleteDao(): PublishedDeleteDao
     abstract fun publishConflictDao(): PublishConflictDao
 
     companion object {
@@ -142,5 +143,32 @@ object RoomMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+    val MIGRATION_5_6 = object : Migration(5, 6) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("""
+                CREATE TABLE IF NOT EXISTS published_delete_requests_v6 (
+                    draftId TEXT NOT NULL, clientRequestId TEXT NOT NULL,
+                    remoteDriveId TEXT NOT NULL, idempotencyKeyHash TEXT NOT NULL,
+                    state TEXT NOT NULL, attempts INTEGER NOT NULL,
+                    nextAttemptAtEpochMs INTEGER NOT NULL, lastErrorCode TEXT,
+                    requestedAtEpochMs INTEGER NOT NULL, updatedAtEpochMs INTEGER NOT NULL,
+                    confirmedAtEpochMs INTEGER, PRIMARY KEY(draftId)
+                )
+            """.trimIndent())
+            database.execSQL("""
+                INSERT INTO published_delete_requests_v6 (
+                    draftId, clientRequestId, remoteDriveId, idempotencyKeyHash, state,
+                    attempts, nextAttemptAtEpochMs, lastErrorCode, requestedAtEpochMs,
+                    updatedAtEpochMs, confirmedAtEpochMs
+                )
+                SELECT draftId, '', '', '', 'LEGACY_UNREVIEWABLE', 0, 0,
+                    'IDENTITY_UNAVAILABLE', requestedAtEpochMs, requestedAtEpochMs, NULL
+                FROM published_delete_requests
+            """.trimIndent())
+            database.execSQL("DROP TABLE published_delete_requests")
+            database.execSQL("ALTER TABLE published_delete_requests_v6 RENAME TO published_delete_requests")
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 }

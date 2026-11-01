@@ -37,6 +37,7 @@ import com.socialdrive.app.domain.LiveUnavailableReason
 import com.socialdrive.app.domain.RouteConsentState
 import com.socialdrive.app.domain.RoutePrivacyStatus
 import com.socialdrive.app.domain.RouteSource
+import com.socialdrive.app.domain.DeleteRequestState
 import com.socialdrive.app.ui.components.IntegrationStatusChip
 import com.socialdrive.app.ui.components.RouteSourceBadge
 import com.socialdrive.app.ui.components.SafetyRestrictionBanner
@@ -59,7 +60,7 @@ fun SettingsScreen(
     onRequestLiveConsent: () -> Unit = {},
     onWithdrawConsent: () -> Unit = {},
     hasPublishedDraft: Boolean = false,
-    deletePending: Boolean = false,
+    deleteRequestState: DeleteRequestState? = null,
     onConfirmPublishedDelete: () -> Unit = {},
 ) {
     var showDeleteConfirmation by remember { mutableStateOf(false) }
@@ -67,7 +68,7 @@ fun SettingsScreen(
         AlertDialog(
             onDismissRequest = { showDeleteConfirmation = false },
             title = { Text("게시된 기록 삭제를 요청할까요?") },
-            text = { Text("로컬에는 삭제 대기 상태만 안전하게 저장합니다. 실제 서버 삭제는 연결 후 별도 확인이 필요합니다.") },
+            text = { Text("삭제 요청을 기기에 먼저 저장합니다. 서버가 204로 확인하기 전에는 삭제 완료로 표시하지 않고 로컬 원본도 유지합니다.") },
             confirmButton = {
                 TextButton(onClick = { showDeleteConfirmation = false; onConfirmPublishedDelete() }) { Text("삭제 대기 등록") }
             },
@@ -124,9 +125,12 @@ fun SettingsScreen(
                     if (hasPublishedDraft) {
                         Button(
                             onClick = { showDeleteConfirmation = true },
-                            enabled = motion == MotionState.Parked && !deletePending,
-                        ) { Text(if (deletePending) "삭제 대기 중" else "게시 기록 삭제 요청") }
+                            enabled = motion == MotionState.Parked && deleteRequestState == null,
+                        ) { Text(deleteRequestState?.buttonLabel() ?: "게시 기록 삭제 요청") }
                     }
+                }
+                deleteRequestState?.let { state ->
+                    Text(state.statusLabel(), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 if (privacyMessage != null) SafetyRestrictionBanner(privacyMessage)
             }
@@ -180,6 +184,24 @@ private fun LiveUnavailableReason.userLabel() = when (this) {
     LiveUnavailableReason.SDK_COMING_SOON -> "SDK 준비 중 · Coming Soon"
     LiveUnavailableReason.PERMISSION_DENIED -> "권한이 거부됨"
     LiveUnavailableReason.CAPABILITY_MISSING -> "차량 기능 미지원"
+}
+
+private fun DeleteRequestState.buttonLabel() = when (this) {
+    DeleteRequestState.DELETE_PENDING, DeleteRequestState.RUNNING, DeleteRequestState.RETRY_WAIT -> "삭제 처리 대기 중"
+    DeleteRequestState.CONFIRMED -> "서버 삭제 확인됨"
+    else -> "삭제 자동 처리 중지됨"
+}
+
+private fun DeleteRequestState.statusLabel() = when (this) {
+    DeleteRequestState.DELETE_PENDING -> "삭제 요청을 기기에 저장했습니다. 연결되면 안전하게 전송합니다."
+    DeleteRequestState.RUNNING -> "삭제 확인을 요청하고 있습니다."
+    DeleteRequestState.RETRY_WAIT -> "연결을 확인한 뒤 최대 4회 안에서 다시 시도합니다."
+    DeleteRequestState.CONFIRMED -> "서버가 삭제를 확인했습니다. 로컬 원본은 기기에 유지됩니다."
+    DeleteRequestState.NOT_FOUND_UNCONFIRMED -> "서버에서 기록을 찾지 못했습니다. 삭제 완료로 간주하지 않았습니다."
+    DeleteRequestState.AUTH_REQUIRED -> "로그인 또는 권한 확인이 필요해 자동 재시도를 중지했습니다."
+    DeleteRequestState.VERSION_CONFLICT -> "서버 변경이 있어 자동 삭제를 중지했습니다."
+    DeleteRequestState.FAILED_PERMANENT -> "최대 시도 횟수에 도달했습니다. 로컬 원본은 유지됩니다."
+    DeleteRequestState.LEGACY_UNREVIEWABLE -> "이전 삭제 요청은 안전 식별 정보가 없어 자동 전송하지 않습니다."
 }
 
 private fun RouteConsentState.userLabel() = when (this) {

@@ -32,7 +32,10 @@ data class PublishWorkerDependencies(
 
 private class StaleWorkerTransition : Exception()
 
-class PublishWorkerFactory(private val dependencies: PublishWorkerDependencies) : WorkerFactory() {
+class PublishWorkerFactory(
+    private val dependencies: PublishWorkerDependencies,
+    private val deleteDependencies: DeleteWorkerDependencies? = null,
+) : WorkerFactory() {
     override fun createWorker(
         appContext: Context,
         workerClassName: String,
@@ -41,6 +44,9 @@ class PublishWorkerFactory(private val dependencies: PublishWorkerDependencies) 
         CreateDriveWorker::class.java.name -> CreateDriveWorker(appContext, workerParameters, dependencies)
         UploadAssetsWorker::class.java.name -> UploadAssetsWorker(appContext, workerParameters, dependencies)
         PublishDriveWorker::class.java.name -> PublishDriveWorker(appContext, workerParameters, dependencies)
+        DeletePublishedDriveWorker::class.java.name -> deleteDependencies?.let {
+            DeletePublishedDriveWorker(appContext, workerParameters, it)
+        }
         else -> null
     }
 }

@@ -162,6 +162,9 @@ class RoutePrivacyTest {
             events += "store:withdraw"
             return WithdrawalReceipt(count, setOf("draft-1"))
         }
-        override suspend fun markPublishedDeletePending(draftId: String) { deleteEvents += "delete-pending:$draftId" }
+        override suspend fun markPublishedDeletePending(draftId: String): Boolean {
+            deleteEvents += "delete-pending:$draftId"
+            return true
+        }
     }
 }

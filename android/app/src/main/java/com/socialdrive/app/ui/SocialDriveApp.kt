@@ -31,6 +31,7 @@ import com.socialdrive.app.domain.RecordingSnapshot
 import com.socialdrive.app.domain.ThemeMode
 import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.domain.PublishedDeleteDecision
+import com.socialdrive.app.domain.DeleteRequestState
 import com.socialdrive.app.safety.SafetyPolicy
 import com.socialdrive.app.ui.screens.DetailScreen
 import com.socialdrive.app.ui.screens.ConflictReviewScreen
@@ -56,7 +57,7 @@ fun SocialDriveApp(
     val navigationState by offlineViewModel.navigationState.collectAsStateWithLifecycle()
     val navigationCapability by offlineViewModel.navigationCapability.collectAsStateWithLifecycle()
     val routePrivacy by offlineViewModel.routePrivacy.collectAsStateWithLifecycle()
-    val deletePending by offlineViewModel.deletePending.collectAsStateWithLifecycle()
+    val deleteRequestState by offlineViewModel.deleteRequestState.collectAsStateWithLifecycle()
     var destination by rememberSaveable { mutableStateOf(AppDestination.Home) }
     val motion = vehicleMotion.motion
     var theme by rememberSaveable { mutableStateOf(ThemeMode.Night) }
@@ -271,13 +272,14 @@ fun SocialDriveApp(
                             }
                         },
                         hasPublishedDraft = latestDraft?.state == LocalState.PUBLISHED,
-                        deletePending = deletePending,
+                        deleteRequestState = deleteRequestState,
                         onConfirmPublishedDelete = {
                             scope.launch {
                                 privacyMessage = when (offlineViewModel.requestPublishedDelete(confirmed = true)) {
-                                    PublishedDeleteDecision.DeletePending -> "삭제 대기를 저장했어요. 실제 서버 삭제는 연결 구현 후 별도 실행됩니다."
+                                    PublishedDeleteDecision.DeletePending -> "삭제 요청을 안전하게 저장했어요. 서버의 204 확인 전까지 로컬 원본을 유지합니다."
                                     PublishedDeleteDecision.ConfirmationRequired -> "삭제 확인이 필요해요."
                                     PublishedDeleteDecision.NotPublished -> "게시된 기록만 삭제 요청할 수 있어요."
+                                    PublishedDeleteDecision.IdentityUnavailable -> "삭제할 게시 기록의 안전한 식별 정보를 확인할 수 없어요. 로컬 원본은 유지됩니다."
                                     is PublishedDeleteDecision.MotionRejected -> "주차 상태가 다시 확인되지 않아 삭제 대기를 저장하지 않았어요."
                                 }
                             }

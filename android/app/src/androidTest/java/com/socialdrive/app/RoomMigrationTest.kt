@@ -201,10 +201,40 @@ class RoomMigrationTest {
         }
     }
 
+    @Test
+    fun migrateFiveToSixMakesLegacyDeletePendingFailClosed() {
+        helper.createDatabase(DELETE_DATABASE, 5).apply {
+            execSQL("INSERT INTO published_delete_requests VALUES ('draft-legacy-delete','DELETE_PENDING',900)")
+            close()
+        }
+
+        helper.runMigrationsAndValidate(DELETE_DATABASE, 6, true, RoomMigrations.MIGRATION_5_6).use { database ->
+            database.query("""
+                SELECT state, clientRequestId, remoteDriveId, idempotencyKeyHash, attempts,
+                       nextAttemptAtEpochMs, lastErrorCode, requestedAtEpochMs, updatedAtEpochMs,
+                       confirmedAtEpochMs
+                FROM published_delete_requests WHERE draftId='draft-legacy-delete'
+            """.trimIndent()).use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("LEGACY_UNREVIEWABLE", cursor.getString(0))
+                assertEquals("", cursor.getString(1))
+                assertEquals("", cursor.getString(2))
+                assertEquals("", cursor.getString(3))
+                assertEquals(0, cursor.getInt(4))
+                assertEquals(0, cursor.getLong(5))
+                assertEquals("IDENTITY_UNAVAILABLE", cursor.getString(6))
+                assertEquals(900L, cursor.getLong(7))
+                assertEquals(900L, cursor.getLong(8))
+                assertNull(cursor.getString(9))
+            }
+        }
+    }
+
     companion object {
         private const val DATABASE = "migration-test"
         private const val FAILED_DATABASE = "migration-failed-repair-test"
         private const val PRIVACY_DATABASE = "migration-route-privacy-test"
         private const val CONFLICT_DATABASE = "migration-conflict-review-test"
+        private const val DELETE_DATABASE = "migration-delete-lifecycle-test"
     }
 }

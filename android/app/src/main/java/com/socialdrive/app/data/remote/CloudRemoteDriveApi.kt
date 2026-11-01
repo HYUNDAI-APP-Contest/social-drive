@@ -73,6 +73,7 @@ class CloudRemoteDriveApi(
         throw RemoteDriveException(
             code = when (failure.kind) {
                 CloudFailureKind.AUTHENTICATION -> RemoteFailureCode.AUTHENTICATION
+                CloudFailureKind.FORBIDDEN -> RemoteFailureCode.REJECTED
                 CloudFailureKind.NOT_FOUND -> RemoteFailureCode.NOT_FOUND
                 CloudFailureKind.VERSION_CONFLICT -> RemoteFailureCode.VERSION_CONFLICT
                 CloudFailureKind.UPLOAD_INCOMPLETE -> RemoteFailureCode.UPLOAD_INCOMPLETE

@@ -74,8 +74,16 @@ data class NormalizedRoutePointEntity(
 @Entity(tableName = "published_delete_requests")
 data class PublishedDeleteRequestEntity(
     @PrimaryKey val draftId: String,
+    val clientRequestId: String,
+    val remoteDriveId: String,
+    val idempotencyKeyHash: String,
     val state: String,
+    val attempts: Int,
+    val nextAttemptAtEpochMs: Long,
+    val lastErrorCode: String?,
     val requestedAtEpochMs: Long,
+    val updatedAtEpochMs: Long,
+    val confirmedAtEpochMs: Long?,
 )
 
 @Entity(tableName = "publish_conflicts")
