@@ -32,12 +32,12 @@
 
 좋은 드라이브 코스를 발견하는 곳과 실제로 주행하는 곳이 분리되어 있다. SNS에서 사진이나 후기를 발견해도 지도에서 장소를 다시 찾고, 차량 내비게이션에 목적지와 경유지를 다시 입력해야 한다. 반대로 운전 중 좋았던 순간을 메모하거나 자세히 기록하려는 행동은 주의 분산과 충돌한다.
 
-Social Drive는 다음 경험을 제출 목표로 한다. Vehicle/NaviHelper adapter는 최초 `6475287` 1차 반려 후 `98a2978`에서 수정됐지만 현재 독립 재검토 진행 중이며 main 병합·Gradle·AVD 검증 전이다. 실제 위치·경로점 수집은 아직 구현되지 않았다.
+Social Drive는 다음 경험을 제출 목표로 한다. Vehicle/NaviHelper adapter 최종 커밋은 `6e930d6`이며 독립 정적 검토 `APPROVE`, npm 21/21, blocker 없음 상태다. 그러나 main 미병합이고 DNS/wrapper 제약으로 Gradle/Kotlin/assemble·AVD runtime은 미검증이다. 실제 위치·경로점 수집은 아직 구현되지 않았다.
 
 1. 주행 중에는 기록 시작·종료와 `방금 좋았어` 한 번의 터치만 제공한다.
 2. recording session, `highlightCount`, draft, pending queue와 preset reference를 로컬 DB에 보존한다.
 3. 제목·설명·공개 범위 확인은 주차 후에만 허용한다.
-4. NaviHelper adapter의 독립 재검토 통과·main 통합·AVD 검증을 마친 뒤 공개 코스의 목적지와 경유지를 차량 Navigation 앱으로 전달한다.
+4. NaviHelper adapter를 main에 통합하고 Gradle/AVD 검증을 마친 뒤 공개 코스의 목적지와 경유지를 차량 Navigation 앱으로 전달한다.
 
 실제 위치 샘플과 경로점 수집, 위치정보 동의·철회 UI는 아직 미구현이다. preset 경로는 실제 위치가 아니라 `데모 데이터`다.
 
@@ -69,11 +69,11 @@ Social Drive는 모바일 SNS를 차량 화면으로 옮긴 앱이 아니다.
 
 ### 차량 상태가 UX를 결정하는 구조를 구현한다
 
-Vehicle adapter의 목표는 Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unknown`을 판정하는 것이다. 서비스 오류, 권한 부족, 오래된 값처럼 안전을 증명할 수 없는 경우는 `Unknown`으로 처리해 편집과 게시를 차단한다. adapter는 1차 반려 후 수정 커밋 `98a2978`에 있지만 독립 재검토 진행 중, main 미병합, Gradle·Pleos AVD 검증 전이므로 실제 Vehicle 상태 연동으로 표현하지 않는다.
+Vehicle adapter의 목표는 Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unknown`을 판정하는 것이다. 서비스 오류, 권한 부족, 오래된 값처럼 안전을 증명할 수 없는 경우는 `Unknown`으로 처리해 편집과 게시를 차단한다. 최종 `6e930d6`은 독립 정적 검토 `APPROVE`지만 main 미병합, Gradle/Kotlin/assemble·Pleos AVD 검증 전이므로 실제 Vehicle 상태 연동으로 표현하지 않는다.
 
 ### 콘텐츠가 실제 주행으로 완결된다
 
-완성 목표에서는 사용자가 주차 상태에서 `이 코스 따라가기`를 누르면 NaviHelper에 목적지와 경유지를 전달하여 차량 Navigation 앱의 경로 안내로 이어진다. NaviHelper adapter는 1차 반려 후 수정 커밋 `98a2978`에 있지만 독립 재검토 진행 중, main 미병합, Gradle·AVD callback 검증 전이다.
+완성 목표에서는 사용자가 주차 상태에서 `이 코스 따라가기`를 누르면 NaviHelper에 목적지와 경유지를 전달하여 차량 Navigation 앱의 경로 안내로 이어진다. 최종 `6e930d6`은 독립 정적 검토 `APPROVE`지만 main 미병합, Gradle/Kotlin/assemble·AVD callback 검증 전이다.
 
 ### 주행과 정차의 역할을 분리한다
 
@@ -88,7 +88,7 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 
 - “이 카페가 좋다”에서 “이 길의 이 구간이 좋았다”로 공유 단위를 바꾼다.
 - 순간 표시와 설명 작성을 주행/주차로 분리하여 안전과 표현력을 함께 확보한다.
-- NaviHelper 독립 재검토 통과·통합·AVD 검증 후 콘텐츠 소비를 실제 주행으로 연결한다.
+- NaviHelper main 통합·Gradle/AVD 검증 후 콘텐츠 소비를 실제 주행으로 연결한다.
 - 따라 달린 사용자가 새로운 하이라이트와 코스를 만들면서 콘텐츠가 순환한다.
 
 ## 7. 3개 핵심 사용자 여정
@@ -119,10 +119,10 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 1. 피드에서 드라이브를 선택한다.
 2. 목적지·경유지·하이라이트를 미리 본다.
 3. 주차 상태에서 `이 코스 따라가기`를 누른다.
-4. NaviHelper 독립 재검토 통과·통합·AVD 검증 후 목적지와 경유지를 전달한다.
+4. NaviHelper main 통합·Gradle/AVD 검증 후 목적지와 경유지를 전달한다.
 5. 실제 callback이 확인된 경우에만 차량 Navigation 앱 안내 시작을 시연한다.
 
-현재 증거: UI와 fake 흐름은 별도 Android 작업 브랜치에 있으므로 `데모 데이터`다. NaviHelper adapter는 1차 반려 후 수정 커밋 `98a2978`에 `코드 존재(미통합)` 상태이며 독립 재검토 진행 중이다. 3.0.5 Gradle 성공 로그와 initialize/request/callback 영상은 없다.
+현재 증거: UI와 fake 흐름은 별도 Android 작업 브랜치에 있으므로 `데모 데이터`다. NaviHelper adapter 최종 `6e930d6`은 독립 정적 검토 `APPROVE`지만 `코드 존재(미통합)` 상태다. 3.0.5 Gradle/Kotlin/assemble 성공 로그와 initialize/request/callback 영상은 없다.
 
 ## 8. 기술 활용성과 구현 상태
 
@@ -133,8 +133,8 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 | motion 재검증 Worker | 주행 중 원격 게시 차단 | Android 별도 브랜치에 코드 존재, Pleos motion 연동 전 | `코드 존재(미통합)` |
 | 실제 경로점·위치 수집과 동의·철회 UI | 실제 코스 생성과 개인정보 통제 | 확인된 구현 증거 없음 | `미구현` |
 | Cognito/DynamoDB/S3 API | 사용자·피드·비공개 업로드 | 백엔드 별도 브랜치에 코드 존재, 배포·앱 통합 전 | `코드 존재(미통합)` |
-| Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | 1차 반려 후 수정 `98a2978`, 독립 재검토 진행 중, main 미병합·Gradle/AVD 미검증 | `코드 존재(미통합)` |
-| NaviHelper 3.0.5 | 목적지·경유지 전달 | 1차 반려 후 수정 `98a2978`, 독립 재검토 진행 중, main 미병합·Gradle/AVD 미검증 | `코드 존재(미통합)` |
+| Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | 최종 `6e930d6`, 정적 검토 `APPROVE`, npm 21/21, blocker 없음; main 미병합·Gradle/Kotlin/assemble·AVD 미검증 | `코드 존재(미통합)` |
+| NaviHelper 3.0.5 | 목적지·경유지 전달 | 최종 `6e930d6`, 정적 검토 `APPROVE`, npm 21/21, blocker 없음; main 미병합·Gradle/Kotlin/assemble·AVD 미검증 | `코드 존재(미통합)` |
 | preset route/motion | 전체 흐름 시연 보조 | 데모 전용 | `데모 데이터` |
 | FusedLocation/STT/TTS/Vehicle Control | 향후 자연스러운 입력·안내 | 공식 Coming Soon | `향후 기능` |
 
@@ -145,7 +145,7 @@ Vehicle State와 NaviHelper는 현재 Ready to Use지만, FusedLocation·STT·TT
 ### 현재 확인된 코드 증거
 
 - 별도 Android 작업 브랜치에 recording session, `highlightCount`, draft, pending queue와 preset reference 코드가 존재한다.
-- 별도 Android 작업 브랜치의 queue는 motion gate 구조를 포함한다. Vehicle adapter는 1차 반려 후 수정 `98a2978`에 있으나 독립 재검토 진행 중, main 미병합·Gradle/AVD 미검증이다.
+- 별도 Android 작업 브랜치의 queue는 motion gate 구조를 포함한다. Vehicle adapter 최종 `6e930d6`은 정적 검토 `APPROVE`지만 main 미병합·Gradle/Kotlin/assemble·AVD 미검증이다.
 - 실제 경로점·위치 샘플 수집과 위치정보 동의·철회 UI는 아직 미구현이다.
 
 ### 구현·검증해야 할 요구사항

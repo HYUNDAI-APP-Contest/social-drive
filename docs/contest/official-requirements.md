@@ -91,8 +91,8 @@ Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-o
 
 | 기능 | 공식 상태 | 2026-11-01 저장소 등급 | 승격 조건/금지 사항 |
 |---|---|---|---|
-| Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | `코드 존재(미통합)` | 최초 `6475287` 1차 반려 후 race/lifecycle/permission 수정 `98a2978`; 독립 재검토 진행 중, main 미병합, Gradle·AVD 미검증. capability/callback 증거 후에만 `실제 SDK` |
-| NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | `코드 존재(미통합)` | 최초 `6475287` 1차 반려 후 수정 `98a2978`; 독립 재검토 진행 중, main 미병합, Gradle·AVD 미검증. 실제 route callback 증거 후에만 `실제 SDK` |
+| Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | `코드 존재(미통합)` | 최종 `6e930d6` 독립 정적 검토 `APPROVE`, npm 21/21, blocker 없음. main 미병합, DNS/wrapper 제약으로 Gradle/Kotlin/assemble·AVD 미검증. capability/callback 증거 후에만 `실제 SDK` |
+| NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | `코드 존재(미통합)` | 최종 `6e930d6` 독립 정적 검토 `APPROVE`, npm 21/21, blocker 없음. main 미병합, Gradle/Kotlin/assemble·AVD 미검증. 실제 route callback 증거 후에만 `실제 SDK` |
 | FusedLocation | Coming Soon | `향후 기능` | 실제 위치·경로점 수집 기능으로 주장하거나 MVP 필수 의존성으로 사용 금지 |
 | SpeechToText | Coming Soon | `향후 기능` | 실제 음성 인식 기능으로 주장 금지 |
 | TextToSpeech | Coming Soon | `향후 기능` | 실제 음성 합성 기능으로 주장 금지 |
@@ -122,7 +122,7 @@ Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-o
 | Android recording/draft/queue 기반 | `agent/issue-android-foundation` 별도 작업 브랜치 | `코드 존재(미통합)`. 확인된 증거는 recording session, `highlightCount`, draft, pending queue, preset reference뿐임 |
 | 실제 경로점·위치 수집 | 확인된 구현 증거 없음 | `미구현`. RoutePoint 또는 실제 위치 샘플 수집·동의·철회가 구현됐다고 주장 금지 |
 | AWS 최소 API | `agent/issue-backend-mvp` 별도 작업 브랜치 | `코드 존재(미통합)`. main 병합·배포·Android E2E 전 |
-| Vehicle/NaviHelper adapter | PLEOS 별도 브랜치 커밋 `98a2978` (`6475287` 위 수정) | `코드 존재(미통합)`. 1차 반려 후 수정 완료, 독립 재검토 진행 중, main 미병합, Gradle·Pleos AVD 미검증. 아직 `APPROVE` 또는 실제 SDK 동작 증거가 아님 |
+| Vehicle/NaviHelper adapter | PLEOS 최종 커밋 `6e930d6` (`98a2978` 위 보완) | `코드 존재(미통합)`. 독립 정적 검토 `APPROVE`, npm 21/21, blocker 없음. main 미병합, DNS/wrapper 제약으로 Gradle/Kotlin/assemble·Pleos AVD runtime 미검증. `실제 SDK` 동작 증거 아님 |
 | root `readme.md` | 앱 소개·실행 방법·테스트 환경/설정·APK 목표 경로를 문서화 | 문서 준비 완료. Android/main 미병합·빌드/AVD 미검증·APK 생성 전 상태를 명시함 |
 | release APK | 없음 | `미구현`. 제출 가능 상태 아님 |
 | 시연 영상 | 없음 | `미구현`. 선택 가산점 산출물 준비 전 |
