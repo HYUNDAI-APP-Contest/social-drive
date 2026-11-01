@@ -9,10 +9,12 @@ import org.junit.Test
 
 class PleosReadinessParserTest {
     @Test fun shortAndFullComponentsMapToOneVisibleGeneration() {
-        val short = PleosReadinessParser.observe("42\n", fixture(), "42\n")
-        val full = PleosReadinessParser.observe("42", fixture(fullComponents = true), "42")
+        val short = PleosReadinessParser.observe("42\n", fixture(), "42\n", 10)
+        val full = PleosReadinessParser.observe("42", fixture(fullComponents = true), "42", 10)
         assertEquals(listOf("10", "20", "30"), requireNotNull(short.snapshot).taskIds)
         assertEquals(short.snapshot, full.snapshot)
+        val repeatedSections = PleosReadinessParser.observe("42", fixture() + fixture(), "42", 10)
+        assertEquals(listOf("10", "20", "30"), requireNotNull(repeatedSections.snapshot).taskIds)
     }
 
     @Test fun duplicateInvisibleMissingAndPidFlipFailClosed() {
@@ -30,6 +32,10 @@ class PleosReadinessParserTest {
         assertTrue(PleosReadinessParser.observe("42", fixture(includeNavi = false), "42").reason.startsWith("task_cardinality="))
         assertEquals("home_generation_changed", PleosReadinessParser.observe("42", fixture(), "43").reason)
         assertEquals("home_pid_missing_or_multiple", PleosReadinessParser.observe("42 43", fixture(), "43").reason)
+        val inconsistent = fixture() + task("20", "ai.umos.drivingview/.DrivingViewActivity", state = "STOPPED")
+        assertEquals("task_representation_inconsistent", PleosReadinessParser.observe("42", inconsistent, "42", 10).reason)
+        val otherUserDuplicate = fixture() + task("21", "ai.umos.drivingview/.DrivingViewActivity", userId = 0)
+        assertNotNull(PleosReadinessParser.observe("42", otherUserDuplicate, "42", 10).snapshot)
     }
 
     @Test fun stableTrackerRequiresTwoCoherentObservationsAndResetsOnNullOrChange() {
@@ -83,9 +89,10 @@ class PleosReadinessParserTest {
         component: String,
         visible: Boolean = true,
         state: String = if (visible) "RESUMED" else "STOPPED",
+        userId: Int = 10,
     ): String = """
         * Task{abc #$id type=standard}
-          * Hist #0: ActivityRecord{def u10 $component t$id}
+          * Hist #0: ActivityRecord{def u$userId $component t$id}
             mVisibleRequested=$visible mVisible=$visible mClientVisible=$visible
             state=$state stopped=${state == "STOPPED"}
     """.trimIndent() + "\n"

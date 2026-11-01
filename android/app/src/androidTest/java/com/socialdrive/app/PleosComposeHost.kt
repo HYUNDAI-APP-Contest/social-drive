@@ -82,7 +82,12 @@ internal object PleosReadinessParser {
     private const val NAVI = "ai.umos.maps.android.navigation.app/ai.umos.maps.android.navigation.app.MainActivity"
     private val required = listOf(HOME, DRIVING, NAVI)
 
-    fun observe(homePidBefore: String, dump: String, homePidAfter: String): PleosObservation {
+    fun observe(
+        homePidBefore: String,
+        dump: String,
+        homePidAfter: String,
+        currentUserId: Int? = null,
+    ): PleosObservation {
         val before = numericPid(homePidBefore)
         val after = numericPid(homePidAfter)
         if (before == null || after == null) return PleosObservation(null, "home_pid_missing_or_multiple")
@@ -90,7 +95,8 @@ internal object PleosReadinessParser {
         if (dump.isBlank() || dump.contains("Permission Denial", ignoreCase = true)) {
             return PleosObservation(null, "activity_dump_unavailable")
         }
-        val tasks = parseTasks(dump)
+        val tasks = canonicalize(parseTasks(dump), currentUserId)
+            ?: return PleosObservation(null, "task_representation_inconsistent")
         val ids = required.map { component -> tasks.filter { component in it.components }.map { it.id }.toSet() }
         val cardinalities = ids.joinToString(",") { it.size.toString() }
         if (ids.any { it.size != 1 }) return PleosObservation(null, "task_cardinality=$cardinalities")
@@ -119,15 +125,52 @@ internal object PleosReadinessParser {
                 activity = null
             }
             ACTIVITY_RECORD.find(line)?.let { match ->
-                activity = normalize(match.groupValues[1], match.groupValues[2])
-                task?.components?.add(requireNotNull(activity))
+                activity = normalize(match.groupValues[2], match.groupValues[3])
+                val active = requireNotNull(activity)
+                task?.components?.add(active)
+                task?.users?.getOrPut(active, ::mutableSetOf)?.add(match.groupValues[1].toInt())
             }
             val active = activity
-            if (active != null && VISIBLE.containsMatchIn(line)) task?.visible?.add(active)
-            if (active != null && RESUMED.containsMatchIn(line)) task?.resumed?.add(active)
-            if (active != null && ACTIVE.containsMatchIn(line)) task?.active?.add(active)
+            if (active != null) {
+                VISIBILITY.find(line)?.groupValues?.get(1)?.toBooleanStrictOrNull()?.let { visible ->
+                    task?.visibility?.getOrPut(active, ::mutableSetOf)?.add(visible)
+                }
+                LIFECYCLE.find(line)?.groupValues?.get(1)?.let { state ->
+                    task?.lifecycle?.getOrPut(active, ::mutableSetOf)?.add(state)
+                }
+            }
         }
         return tasks
+    }
+
+    private fun canonicalize(raw: List<TaskBlock>, currentUserId: Int?): List<CanonicalTask>? {
+        val scoped = raw.mapNotNull { block ->
+            val components = block.components.filterTo(mutableSetOf()) { component ->
+                val users = block.users[component].orEmpty()
+                currentUserId == null || users == setOf(currentUserId)
+            }
+            block.takeIf { components.isNotEmpty() }?.copy(components = components)
+        }
+        return scoped.groupBy(TaskBlock::id).map { (id, representations) ->
+            val componentSets = representations.map(TaskBlock::components).distinct()
+            if (componentSets.size != 1) return null
+            val components = componentSets.single()
+            val visibility = components.associateWith { component ->
+                representations.flatMap { it.visibility[component].orEmpty() }.toSet()
+            }
+            val lifecycle = components.associateWith { component ->
+                representations.flatMap { it.lifecycle[component].orEmpty() }.toSet()
+            }
+            // Never OR stale/inconsistent representations into an apparently ready task.
+            if (visibility.values.any { it.size > 1 } || lifecycle.values.any { it.size > 1 }) return null
+            CanonicalTask(
+                id = id,
+                components = components,
+                visible = visibility.filterValues { it == setOf(true) }.keys,
+                resumed = lifecycle.filterValues { it == setOf("RESUMED") }.keys,
+                active = lifecycle.filterValues { it.singleOrNull() in setOf("STARTED", "RESUMED") }.keys,
+            )
+        }
     }
 
     private fun normalize(packageName: String, className: String): String {
@@ -138,16 +181,23 @@ internal object PleosReadinessParser {
     private data class TaskBlock(
         val id: String,
         val components: MutableSet<String> = mutableSetOf(),
-        val visible: MutableSet<String> = mutableSetOf(),
-        val resumed: MutableSet<String> = mutableSetOf(),
-        val active: MutableSet<String> = mutableSetOf(),
+        val users: MutableMap<String, MutableSet<Int>> = mutableMapOf(),
+        val visibility: MutableMap<String, MutableSet<Boolean>> = mutableMapOf(),
+        val lifecycle: MutableMap<String, MutableSet<String>> = mutableMapOf(),
+    )
+
+    private data class CanonicalTask(
+        val id: String,
+        val components: Set<String>,
+        val visible: Set<String>,
+        val resumed: Set<String>,
+        val active: Set<String>,
     )
 
     private val TASK_HEADER = Regex("\\bTask\\{[^\\n]*#([0-9]+)\\b")
-    private val ACTIVITY_RECORD = Regex("ActivityRecord\\{[^\\n]*\\s([A-Za-z0-9_.]+)/([A-Za-z0-9_.$]+)\\s+t[0-9]+")
-    private val VISIBLE = Regex("(?:^|\\s)(?:mVisible|visible)=true(?:\\s|$)")
-    private val RESUMED = Regex("(?:^|\\s)state=RESUMED(?:\\s|$)")
-    private val ACTIVE = Regex("(?:^|\\s)state=(?:STARTED|RESUMED)(?:\\s|$)")
+    private val ACTIVITY_RECORD = Regex("ActivityRecord\\{[^\\n]*\\su([0-9]+)\\s+([A-Za-z0-9_.]+)/([A-Za-z0-9_.$]+)\\s+t[0-9]+")
+    private val VISIBILITY = Regex("(?:^|\\s)mVisible=(true|false)(?:\\s|$)")
+    private val LIFECYCLE = Regex("(?:^|\\s)state=(CREATED|STARTED|RESUMED|PAUSED|STOPPED|DESTROYED)(?:\\s|$)")
 }
 
 internal class StableOrganizerGeneration {
@@ -227,6 +277,7 @@ private object PleosTaskReadiness {
         }
         val logGuard = PleosFatalLogGuard(System.currentTimeMillis() / 1_000.0, relevantPackages)
         val generation = StableOrganizerGeneration()
+        val currentUserId = android.os.Process.myUserHandle().identifier
         val deadline = SystemClock.elapsedRealtime() + READINESS_TIMEOUT_MILLIS
         var lastReason = "not_observed"
         while (SystemClock.elapsedRealtime() < deadline) {
@@ -234,7 +285,7 @@ private object PleosTaskReadiness {
             inspectLogs(logGuard, pidBefore)
             val dump = shell(ACTIVITY_COMMAND)
             val pidAfter = shell(PID_COMMAND)
-            val observation = PleosReadinessParser.observe(pidBefore, dump, pidAfter)
+            val observation = PleosReadinessParser.observe(pidBefore, dump, pidAfter, currentUserId)
             lastReason = observation.reason
             inspectLogs(logGuard, pidAfter)
             if (generation.record(observation)) {

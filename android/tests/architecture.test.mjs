@@ -236,18 +236,21 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   }
   assert.match(host, /awaitStableGeneration\(\)[\s\S]*ActivityScenario\.launch\(MainActivity::class\.java\)/);
   assert.match(host, /moveToState\(Lifecycle\.State\.RESUMED\)/);
-  assert.match(host, /observe\(homePidBefore: String, dump: String, homePidAfter: String\)/);
+  assert.match(host, /fun observe\([\s\S]*homePidBefore: String,[\s\S]*dump: String,[\s\S]*homePidAfter: String,[\s\S]*currentUserId: Int\?/);
   assert.match(host, /PleosOrganizerSnapshot\(after, ids\.map \{ it\.single\(\) \}\)/);
   assert.match(host, /TASK_HEADER[\s\S]*ACTIVITY_RECORD/);
-  assert.match(host, /\(\?:mVisible\|visible\)=true/);
-  assert.match(host, /state=\(\?:STARTED\|RESUMED\)/);
+  assert.match(host, /mVisible=\(true\|false\)/);
+  assert.match(host, /state=\(CREATED\|STARTED\|RESUMED\|PAUSED\|STOPPED\|DESTROYED\)/);
+  assert.match(host, /groupBy\(TaskBlock::id\)/);
+  assert.match(host, /task_representation_inconsistent/);
+  assert.match(host, /myUserHandle\(\)\.identifier/);
   assert.match(host, /default_task_not_visible_active/);
   assert.match(host, /if \(current == previous\) return true/);
   assert.match(host, /pidof ai\.umos\.homescreen/);
   assert.doesNotMatch(host, /pidof ai\.umos\.(?:drivingview|maps)/);
   assert.match(host, /dumpsys activity activities/);
   assert.match(host, /logcat -d -v epoch -T/);
-  assert.doesNotMatch(host, /logcat -c|force-stop|\bsu\b|adoptShellPermissionIdentity/);
+  assert.doesNotMatch(host, /logcat -c|force-stop|\bsu\s+-c\b|adoptShellPermissionIdentity/);
   assert.match(host, /duplicate_listener/);
   assert.match(host, /setContent[\s\S]*withHealthCheck/);
   assert.match(host, /fun close\(\)[\s\S]*withHealthCheck[\s\S]*Lifecycle\.State\.DESTROYED/);
@@ -261,6 +264,8 @@ test("instrumented safety suite covers lock back confirmation and parked publish
     "fatalGuardIgnoresOldBaselineAndRejectsNewRelevantFatalOrDuplicate",
   ]) assert.ok(hostTest.includes(marker), marker);
   assert.match(hostTest, /Task with ID 20 not found/);
+  assert.match(hostTest, /fixture\(\) \+ fixture\(\)/);
+  assert.match(hostTest, /task_representation_inconsistent/);
   assert.match(hostTest, /drivingVisible = false/);
   assert.match(hostTest, /naviState = "STOPPED"/);
 });
