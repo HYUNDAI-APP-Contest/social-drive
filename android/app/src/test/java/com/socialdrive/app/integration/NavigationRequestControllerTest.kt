@@ -20,6 +20,7 @@ class NavigationRequestControllerTest {
         assertEquals(ControllerUpdate.Awaiting, controller.routeStarted(request))
         assertEquals(ControllerUpdate.Awaiting, controller.routeStarted(request))
         assertEquals(ControllerUpdate.TerminalPending, controller.routingCompleted(request))
+        assertEquals(ControllerUpdate.Ignored, controller.timeout(request, "late timeout"))
         assertEquals(ControllerUpdate.Ignored, controller.requestError(request, "late error"))
         assertEquals(
             ControllerUpdate.Applied(NavigationState.Active("첫 경로"), terminal = true),

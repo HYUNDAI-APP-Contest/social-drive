@@ -95,7 +95,11 @@ internal class NavigationRequestController(
 
     @Synchronized
     fun timeout(token: RequestToken, userMessage: String): ControllerUpdate =
-        failImmediately(token, userMessage)
+        if (matchesActive(token) && active?.pendingTerminal == null) {
+            failImmediately(token, userMessage)
+        } else {
+            ControllerUpdate.Ignored
+        }
 
     @Synchronized
     fun endQuarantine(token: RequestToken): ControllerUpdate {
@@ -120,6 +124,10 @@ internal class NavigationRequestController(
 
     @Synchronized
     fun state(): NavigationState = currentState
+
+    @Synchronized
+    fun isInitializing(token: LifecycleToken): Boolean =
+        token.epoch == lifecycleEpoch && initializingEpoch == token.epoch
 
     private fun markTerminalPending(token: RequestToken, state: NavigationState): ControllerUpdate {
         if (!matchesActive(token) || active?.pendingTerminal != null) return ControllerUpdate.Ignored
