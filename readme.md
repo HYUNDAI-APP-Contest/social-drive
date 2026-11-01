@@ -7,11 +7,12 @@
 2026-11-01 현재 이 저장소의 `main`에는 Android 앱과 Pleos 연동 브랜치가 병합되지 않았습니다. 이 작업공간에도 실행할 `android/` 디렉터리와 release APK가 없습니다.
 
 - Vehicle SDK 2.3.2와 NaviHelper 3.0.5 adapter의 최초 구현 커밋은 `6475287`이며 1차 독립 검토에서 `CHANGES_REQUIRED`였습니다.
-- race/lifecycle/permission 지적은 `98a2978`과 `6e930d6`에서 보완됐고, PLEOS 기준 커밋 `89078a0` 위에 cloud contract를 통합한 최신 Android HEAD는 `0d31576`입니다.
-- `0d31576`은 독립 검토 `APPROVE`이며 production core Kotlin 테스트 41/41, npm 테스트 23/23, `수동 SQLite predicate/migration PASS` 증거가 있습니다. 이는 Room instrumentation 결과가 아닙니다. P0-1은 정적·core 계약 범위에서 완료됐습니다.
-- 이 `APPROVE`는 실제 SDK나 cloud runtime 성공을 뜻하지 않습니다. `main` 미병합이며 concrete Cognito/API host 및 no-redirect HTTP adapter 설정이 없어 actual cloud는 사용할 수 없습니다. Gradle·Android instrumentation·vendor adapter·APK·Pleos AVD·AWS E2E도 아직 검증되지 않았습니다.
-- 현재 확인된 Android 영속 데이터 범위는 recording session, `highlightCount`, draft, pending queue, preset reference입니다.
-- 실제 위치·경로점 수집과 위치정보 동의·철회 UI는 아직 구현되지 않았습니다.
+- race/lifecycle/permission 지적은 `98a2978`과 `6e930d6`에서 보완됐고, PLEOS `89078a0`과 cloud contract `0d31576` 위에 route-consent 안전 경계를 통합한 최신 Android HEAD는 `b1c33a2`입니다.
+- `b1c33a2`는 Sentinel 독립 검토 `APPROVE`이며 core Kotlin 51/51, npm 25/25, Room schema v4와 `수동 SQLite predicate/migration PASS` 증거가 있습니다. 이는 Room instrumentation 결과가 아닙니다. P0-1과 P0-2는 정적·core 범위에서 완료됐습니다.
+- 이 `APPROVE`는 실제 SDK나 cloud runtime 성공을 뜻하지 않습니다. `main` 미병합이며 concrete Cognito/API host 및 no-redirect HTTP adapter 설정이 없어 actual cloud는 사용할 수 없습니다. Gradle·Android instrumentation·vendor adapter·APK·Pleos AVD·AWS E2E도 아직 실행되지 않았습니다.
+- 최신 코드에는 recording session, `highlightCount`, draft, pending queue, preset reference와 route source·consent/withdraw·로컬 `DELETE_PENDING` 상태가 포함됩니다.
+- 실제 위치·경로점 수집은 여전히 구현되지 않았습니다. 게시물 삭제도 주차 상태의 로컬 `DELETE_PENDING`까지만 구현됐고 network `DELETE`·retry는 아직 없습니다.
+- 다음 작업은 P0-3 build/runtime 검증이지만 현재 Gradle·dependency/DNS·emulator 차단 상태입니다.
 - preset route와 fake motion은 실제 차량 데이터가 아닌 데모 데이터입니다.
 
 따라서 현재 저장소만 clone해서는 앱을 실행할 수 없습니다. 아래 명령은 Android/Pleos 브랜치가 `main`에 병합되고 실제로 빌드·실행 검증된 뒤 사용할 **예정 실행 절차**입니다.
@@ -48,10 +49,10 @@ Social Drive의 목표 흐름은 다음과 같습니다.
 | 등급 | 기능 | 2026-11-01 증거 |
 |---|---|---|
 | `실제 SDK` | 없음 | Pleos AVD callback과 release 증거가 아직 없음 |
-| `코드 존재(미통합)` | Vehicle/NaviHelper adapter + Cognito/API/S3 contract | 통합 HEAD `0d31576` (`89078a0` 포함); 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, `수동 SQLite predicate/migration PASS`. `main` 미병합, actual cloud configuration·Gradle·Room/Android instrumentation·vendor adapter·APK·AVD·AWS E2E 미검증 |
-| `코드 존재(미통합)` | recording session, `highlightCount`, draft, pending queue, preset reference | 별도 Android 작업 코드에 존재하나 제출 브랜치 통합·실행 증거 전 |
+| `코드 존재(미통합)` | Vehicle/NaviHelper + cloud contract + route-consent 안전 경계 | 최신 `b1c33a2`; Sentinel `APPROVE`, core Kotlin 51/51, npm 25/25, Room v4·`수동 SQLite predicate/migration PASS`. `main` 미병합, Gradle·Room/Android instrumentation·vendor adapter·APK·AVD·AWS E2E 미실행 |
+| `코드 존재(미통합)` | session/draft/queue, route source, consent/withdraw, local delete state | 실제 위치 수집 없이 demo/unavailable을 분리하고 게시물 삭제는 parked-only local `DELETE_PENDING`까지만 구현 |
 | `데모 데이터` | preset route / fake motion | 실제 위치나 실제 Vehicle callback이 아님 |
-| `미구현` | 실제 위치·경로점 수집, 위치 동의·철회 UI, release APK | 구현 또는 검증 증거 없음 |
+| `미구현` | 실제 위치·경로점 수집, network `DELETE`·retry, release APK | 구현 또는 검증 증거 없음 |
 | `향후 기능` | FusedLocation, SpeechToText, TextToSpeech, Vehicle Control | 공식 Coming Soon이며 이번 MVP의 실제 기능으로 사용하지 않음 |
 
 SDK 제공 상태는 [Pleos 프로젝트 및 SDK 상태 가이드](https://document.pleos.ai/en/docs/pleos-only/create-my-project)를 기준으로 하며, Vehicle과 NaviHelper의 구현 가능 여부와 앱에서 실제 검증됐는지는 별개입니다.
@@ -102,13 +103,15 @@ adb install -r app/build/outputs/apk/demo/debug/app-demo-debug.apk
 | 항목 | 제출 목표 | 현재 검증 상태 |
 |---|---|---|
 | OS | macOS 개발 환경 | 로컬 호스트 사용 중 |
-| JDK | JDK 17 | Android 브랜치 빌드 미검증 |
-| Android | minSdk 28 이상, API 34 Pleos AVD | AVD 실행 미검증 |
-| Gradle | 프로젝트 Gradle Wrapper, Gradle 8 이상 | core Kotlin 41/41은 별도 compiler/test harness로 검증됨. Gradle assemble·Android instrumentation·vendor adapter compile은 미검증 |
-| Emulator | Pleos Connect Emulator 2.1.0, Cold Boot, RAM 4GB | 설치·부팅·앱 실행 증거 없음 |
-| Vehicle | Vehicle SDK 2.3.2 / Vehicle Service 대응 버전 | `0d31576`이 PLEOS `89078a0`을 포함하고 core 검토 통과; vendor adapter·Gradle·AVD callback 미검증 |
-| Navigation | NaviHelper 3.0.5 | `0d31576`이 PLEOS `89078a0`을 포함하고 core 검토 통과; vendor adapter·Gradle·route callback 미검증 |
-| AWS | Cognito JWT, DynamoDB, private S3 기반 목표 | backend `ddbd61f` 계약을 `0d31576` core에 통합. concrete Cognito/API host·no-redirect HTTP adapter 설정이 없어 actual cloud unavailable; AWS E2E 미검증 |
+| JDK | JDK 17 | 17.0.13 설치 확인; Android Gradle build는 미실행 |
+| Android | minSdk 28 이상, API 34 Pleos AVD | SDK platform 34와 Pleos API34/arm64 AVD 정의 확인; boot 미성공 |
+| Gradle | 프로젝트 Gradle Wrapper, Gradle 8 이상 | 8.14.3 cache 존재하나 worker sandbox에서 native library 초기화 실패. assemble·instrumentation·vendor compile 미실행 |
+| Emulator | Pleos Connect Emulator 2.1.0, Cold Boot, RAM 4GB | AVD/system image와 RAM 4GB 확인. sandbox CPU feature 제약으로 `emulator -version` 실패; boot·앱 실행 증거 없음 |
+| Vehicle | Vehicle SDK 2.3.2 / Vehicle Service 대응 버전 | `b1c33a2`가 PLEOS `89078a0` 포함; vendor adapter·Gradle·AVD callback 미실행 |
+| Navigation | NaviHelper 3.0.5 | `b1c33a2`가 PLEOS `89078a0` 포함; vendor adapter·Gradle·route callback 미실행 |
+| AWS | Cognito JWT, DynamoDB, private S3 기반 목표 | backend `ddbd61f` 계약 포함. concrete Cognito/API host·no-redirect HTTP adapter 설정 부재로 actual cloud unavailable; AWS E2E 미실행 |
+
+P0-3 로컬 점검에서는 worker sandbox의 DNS/HTTP HEAD가 모두 실패했고 AGP·Kotlin Gradle plugin·Pleos vendor artifact cache도 확인되지 않았다. 따라서 build나 emulator 성공을 주장할 수 없으며, 일반 호스트 터미널에서 JDK 17·Gradle·emulator를 먼저 재검증해야 한다. signing secret과 keystore는 조회하지 않았다.
 
 ### Pleos variant에 필요한 설정
 

@@ -32,14 +32,14 @@
 
 좋은 드라이브 코스를 발견하는 곳과 실제로 주행하는 곳이 분리되어 있다. SNS에서 사진이나 후기를 발견해도 지도에서 장소를 다시 찾고, 차량 내비게이션에 목적지와 경유지를 다시 입력해야 한다. 반대로 운전 중 좋았던 순간을 메모하거나 자세히 기록하려는 행동은 주의 분산과 충돌한다.
 
-Social Drive는 다음 경험을 제출 목표로 한다. PLEOS `89078a0`과 cloud contract를 포함한 Android 통합 HEAD `0d31576`은 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, `수동 SQLite predicate/migration PASS` 상태다. 이는 Room instrumentation 결과가 아니다. P0-1은 정적·core 범위에서 완료됐지만 main 미병합이며 concrete Cognito/API host·no-redirect HTTP adapter 설정이 없어 actual cloud는 사용할 수 없다. Gradle·Android instrumentation·vendor adapter·APK·Pleos AVD·AWS E2E도 미검증이고, 실제 위치·경로점 수집은 아직 구현되지 않았다.
+Social Drive는 다음 경험을 제출 목표로 한다. PLEOS·cloud·route-consent 경계를 포함한 Android HEAD `b1c33a2`는 Sentinel 독립 검토 `APPROVE`, core Kotlin 51/51, npm 25/25, Room v4·`수동 SQLite predicate/migration PASS` 상태다. 이는 Room instrumentation 결과가 아니다. P0-1/P0-2는 정적·core 범위에서 완료됐지만 main 미병합이며 actual cloud·Gradle·instrumentation·vendor adapter·APK·Pleos AVD·AWS E2E는 실행되지 않았다. 실제 위치·경로점 수집도 아직 구현되지 않았다.
 
 1. 주행 중에는 기록 시작·종료와 `방금 좋았어` 한 번의 터치만 제공한다.
 2. recording session, `highlightCount`, draft, pending queue와 preset reference를 로컬 DB에 보존한다.
 3. 제목·설명·공개 범위 확인은 주차 후에만 허용한다.
 4. NaviHelper adapter를 main에 통합하고 Gradle/AVD 검증을 마친 뒤 공개 코스의 목적지와 경유지를 차량 Navigation 앱으로 전달한다.
 
-실제 위치 샘플과 경로점 수집, 위치정보 동의·철회 UI는 아직 미구현이다. preset 경로는 실제 위치가 아니라 `데모 데이터`다.
+위치 동의·철회와 route source 안전 경계는 `코드 존재(미통합)`이지만 실제 위치 샘플·경로점 수집은 미구현이다. preset 경로는 실제 위치가 아니라 `데모 데이터`다. 게시물 삭제도 주차 상태의 local `DELETE_PENDING`까지만 존재하며 network `DELETE`·retry는 없다.
 
 ### 핵심 타깃
 
@@ -59,7 +59,7 @@ Social Drive는 다음 경험을 제출 목표로 한다. PLEOS `89078a0`과 clo
 | 운전 중 메모·검색으로 주의가 분산될 수 있음 | 큰 버튼 한 번으로 하이라이트만 로컬 기록 |
 | 차량 상태와 무관하게 편집 UI가 열릴 수 있음 | Driving과 Unknown에서 편집·게시를 fail-closed 차단 |
 | 연결이 끊기면 기록·업로드를 잃을 수 있음 | Room 초안과 WorkManager 큐로 재시작·오프라인 복구 |
-| 이동 정보가 수집 즉시 외부로 전송될 수 있음 | 실제 위치 수집·동의 UI 구현 후, 게시 확정 전 로컬 보존과 선택 업로드를 적용 |
+| 이동 정보가 수집 즉시 외부로 전송될 수 있음 | consent/withdraw 안전 경계를 먼저 두고, 향후 검증된 위치 source가 생겨도 게시 확정 전 로컬 보존과 선택 업로드 적용 |
 
 ## 5. 차량특화성
 
@@ -69,11 +69,11 @@ Social Drive는 모바일 SNS를 차량 화면으로 옮긴 앱이 아니다.
 
 ### 차량 상태가 UX를 결정하는 구조를 구현한다
 
-Vehicle adapter의 목표는 Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unknown`을 판정하는 것이다. 서비스 오류, 권한 부족, 오래된 값처럼 안전을 증명할 수 없는 경우는 `Unknown`으로 처리해 편집과 게시를 차단한다. 통합 HEAD `0d31576`은 독립 검토 `APPROVE`와 core Kotlin 41/41을 통과했지만 main 미병합, vendor adapter·Gradle·Android instrumentation·Pleos AVD 검증 전이므로 실제 Vehicle 상태 연동으로 표현하지 않는다.
+Vehicle adapter의 목표는 Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unknown`을 판정하는 것이다. 서비스 오류, 권한 부족, 오래된 값처럼 안전을 증명할 수 없는 경우는 `Unknown`으로 처리해 편집과 게시를 차단한다. HEAD `b1c33a2`는 Sentinel `APPROVE`와 core Kotlin 51/51을 통과했지만 main 미병합이고 vendor adapter·Gradle·Android instrumentation·Pleos AVD가 미실행이므로 실제 Vehicle 상태 연동으로 표현하지 않는다.
 
 ### 콘텐츠가 실제 주행으로 완결된다
 
-완성 목표에서는 사용자가 주차 상태에서 `이 코스 따라가기`를 누르면 NaviHelper에 목적지와 경유지를 전달하여 차량 Navigation 앱의 경로 안내로 이어진다. 통합 HEAD `0d31576`은 PLEOS `89078a0`을 포함하고 core 검토를 통과했지만 main 미병합, vendor adapter·Gradle·AVD callback 검증 전이다.
+완성 목표에서는 사용자가 주차 상태에서 `이 코스 따라가기`를 누르면 NaviHelper에 목적지와 경유지를 전달하여 차량 Navigation 앱의 경로 안내로 이어진다. HEAD `b1c33a2`는 PLEOS `89078a0`을 포함하고 core 검토를 통과했지만 main 미병합이고 vendor adapter·Gradle·AVD callback은 미실행이다.
 
 ### 주행과 정차의 역할을 분리한다
 
@@ -101,7 +101,7 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 4. recording session과 `highlightCount`, draft, pending queue, preset reference를 Room에 저장한다.
 5. 네트워크가 없어도 세션과 초안을 보존한다.
 
-현재 증거: Android 별도 작업 브랜치에서 확인된 영속 데이터는 recording session, `highlightCount`, draft, pending queue, preset reference다. 실제 경로점·위치 샘플 수집, 위치 동의·철회 UI, Vehicle callback은 구현·AVD 증거가 없다. preset 경로는 반드시 `데모 데이터`로 표시한다.
+현재 증거: HEAD `b1c33a2`에는 session/draft/queue, preset reference, route source, consent/withdraw와 Room v4가 있다. 실제 경로점·위치 샘플 수집과 Vehicle callback은 없다. preset 경로는 반드시 `데모 데이터`로 표시한다.
 
 ### 여정 B: 주차 후 안전하게 게시하기
 
@@ -122,7 +122,7 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 4. NaviHelper main 통합·Gradle/AVD 검증 후 목적지와 경유지를 전달한다.
 5. 실제 callback이 확인된 경우에만 차량 Navigation 앱 안내 시작을 시연한다.
 
-현재 증거: UI와 fake 흐름은 별도 Android 작업 브랜치에 있으므로 `데모 데이터`다. 통합 HEAD `0d31576`은 PLEOS `89078a0`과 cloud contract를 포함하고 독립 검토 `APPROVE`지만 `코드 존재(미통합)` 상태다. NaviHelper 3.0.5 vendor adapter·Gradle assemble 성공 로그와 initialize/request/callback 영상은 없다.
+현재 증거: UI와 fake 흐름은 별도 Android 작업 브랜치에 있으므로 `데모 데이터`다. HEAD `b1c33a2`는 PLEOS·cloud·route-consent 코드를 포함하고 Sentinel `APPROVE`지만 `코드 존재(미통합)` 상태다. NaviHelper vendor adapter·Gradle assemble·initialize/request/callback은 실행되지 않았다.
 
 ## 8. 기술 활용성과 구현 상태
 
@@ -131,12 +131,16 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 | Compose 피드·상세·기록·게시 UI | 핵심 흐름 제공 | Android 별도 브랜치에 코드 존재, 제출 브랜치 통합·실행 전 | `코드 존재(미통합)` |
 | Room recording/draft/queue | 오프라인/재시작 복구 | session, `highlightCount`, draft, queue, preset reference 코드만 확인 | `코드 존재(미통합)` |
 | motion 재검증 Worker | 주행 중 원격 게시 차단 | Android 별도 브랜치에 코드 존재, Pleos motion 연동 전 | `코드 존재(미통합)` |
-| 실제 경로점·위치 수집과 동의·철회 UI | 실제 코스 생성과 개인정보 통제 | 확인된 구현 증거 없음 | `미구현` |
-| Cognito/DynamoDB/S3 API | 사용자·피드·비공개 업로드 | `0d31576`에 backend `ddbd61f` 계약 통합, P0-1 정적·core 승인 완료. concrete Cognito/API host·no-redirect HTTP adapter 설정 부재로 actual cloud unavailable; main 미병합·AWS E2E 전 | `코드 존재(미통합)` |
-| Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | `0d31576`이 PLEOS `89078a0` 포함, 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23; main 미병합·vendor adapter·Gradle·instrumentation·APK·AVD 미검증 | `코드 존재(미통합)` |
-| NaviHelper 3.0.5 | 목적지·경유지 전달 | `0d31576`이 PLEOS `89078a0` 포함, 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23; main 미병합·vendor adapter·Gradle·instrumentation·APK·AVD 미검증 | `코드 존재(미통합)` |
+| route source·동의·철회 | 개인정보 통제와 demo/live 분리 | `b1c33a2`, Sentinel `APPROVE`, Room v4·`수동 SQLite predicate/migration PASS`. 실제 위치 source는 unavailable | `코드 존재(미통합)` |
+| 실제 경로점·위치 수집 | 실제 코스 생성 | 확인된 구현 증거 없음 | `미구현` |
+| 게시물 삭제 | parked-only 삭제 요청 | local `DELETE_PENDING`까지만 구현; network `DELETE`·retry 없음 | `코드 존재(미통합)` |
+| Cognito/DynamoDB/S3 API | 사용자·피드·비공개 업로드 | `b1c33a2`에 backend `ddbd61f` 계약 포함. concrete Cognito/API host·no-redirect 설정 부재로 actual cloud unavailable | `코드 존재(미통합)` |
+| Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | `b1c33a2`가 PLEOS `89078a0` 포함, Sentinel `APPROVE`, core 51/51, npm 25/25; vendor adapter·Gradle·instrumentation·APK·AVD 미실행 | `코드 존재(미통합)` |
+| NaviHelper 3.0.5 | 목적지·경유지 전달 | `b1c33a2`가 PLEOS `89078a0` 포함, Sentinel `APPROVE`, core 51/51, npm 25/25; vendor adapter·Gradle·instrumentation·APK·AVD 미실행 | `코드 존재(미통합)` |
 | preset route/motion | 전체 흐름 시연 보조 | 데모 전용 | `데모 데이터` |
 | FusedLocation/STT/TTS/Vehicle Control | 향후 자연스러운 입력·안내 | 공식 Coming Soon | `향후 기능` |
+
+P0-3 로컬 점검에서 JDK17, SDK/API34, build-tools와 Pleos AVD 정의는 확인됐다. 그러나 worker sandbox에서 Gradle native initialization, emulator CPU feature 확인과 DNS/HTTP가 실패했고 AGP·Kotlin Gradle plugin·vendor artifact cache도 없었다. 따라서 build·boot·APK 성공 증거로 사용하지 않는다.
 
 Vehicle State와 NaviHelper는 현재 Ready to Use지만, FusedLocation·STT·TTS·Vehicle Control은 Coming Soon이다. Coming Soon 기능은 이번 MVP의 실제 기능이나 필수 의존성으로 사용하지 않는다. [공식 SDK 상태](https://document.pleos.ai/en/docs/pleos-only/create-my-project)
 
@@ -145,15 +149,15 @@ Vehicle State와 NaviHelper는 현재 Ready to Use지만, FusedLocation·STT·TT
 ### 현재 확인된 코드 증거
 
 - 별도 Android 작업 브랜치에 recording session, `highlightCount`, draft, pending queue와 preset reference 코드가 존재한다.
-- 별도 Android 통합 HEAD `0d31576`의 queue는 motion gate와 cloud contract를 포함한다. 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, `수동 SQLite predicate/migration PASS`지만 Room instrumentation과 main 병합·actual cloud config·vendor adapter·Gradle·instrumentation·APK·AVD·AWS E2E는 미검증이다.
-- 실제 경로점·위치 샘플 수집과 위치정보 동의·철회 UI는 아직 미구현이다.
+- Android HEAD `b1c33a2`는 motion gate, cloud contract, route source, consent/withdraw, Room v4와 local `DELETE_PENDING`을 포함한다. Sentinel `APPROVE`, core 51/51, npm 25/25, `수동 SQLite predicate/migration PASS`지만 Room instrumentation·Gradle·AVD·AWS E2E는 미실행이다.
+- 실제 경로점·위치 샘플 수집은 미구현이며 published delete의 network `DELETE`·retry도 없다.
 
 ### 구현·검증해야 할 요구사항
 
 - `Driving`뿐 아니라 상태를 확인할 수 없는 `Unknown`도 편집·게시 차단
 - Worker가 실제 원격 호출 직전에 motion을 다시 확인
 - 주행 중 장문 입력, 설정 변경, 게시, 동영상·자동 스크롤 금지
-- 실제 위치 수집을 구현한다면 명시적 동의·철회와 공개 범위를 먼저 구현
+- 실제 위치 수집 전 `b1c33a2`의 동의·철회·공개 범위 경계를 통합·runtime 검증하고 공식 source/permission을 별도 승인
 - 향후 수집하는 실제 위치·경로점은 게시 확정 전까지 Room에 로컬 보존
 - 향후 사용자가 게시하기로 선택한 필드만 서버 전송
 - 게시 성공 전 로컬 원본 삭제 금지
@@ -161,7 +165,7 @@ Vehicle State와 NaviHelper는 현재 Ready to Use지만, FusedLocation·STT·TT
 - 인증 토큰과 presigned URL을 Room이나 WorkManager input에 저장하지 않음
 - 좌표·주소·JWT·비밀키를 로그에 기록하지 않음
 - APK에 AWS 비밀키, 관리자 키, Client Secret을 포함하지 않음
-- 위치정보 동의·철회 UI: `미구현` — 구현·검증 후에만 스크린샷과 정책 문구 삽입
+- 위치정보 동의·철회: `코드 존재(미통합)` — actual source unavailable을 유지하고 Gradle/instrumentation 검증 후에만 `앱 구현`으로 승격
 
 ## 10. 사업성
 

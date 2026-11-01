@@ -91,8 +91,8 @@ Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-o
 
 | 기능 | 공식 상태 | 2026-11-01 저장소 등급 | 승격 조건/금지 사항 |
 |---|---|---|---|
-| Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | `코드 존재(미통합)` | Android 통합 HEAD `0d31576`이 PLEOS `89078a0`을 포함하며 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23. main 미병합, vendor adapter·Gradle·instrumentation·APK·AVD 미검증. capability/callback 증거 후에만 `실제 SDK` |
-| NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | `코드 존재(미통합)` | Android 통합 HEAD `0d31576`이 PLEOS `89078a0`을 포함하며 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23. main 미병합, vendor adapter·Gradle·instrumentation·APK·AVD 미검증. 실제 route callback 증거 후에만 `실제 SDK` |
+| Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | `코드 존재(미통합)` | Android HEAD `b1c33a2`가 PLEOS `89078a0`을 포함하며 Sentinel `APPROVE`, core Kotlin 51/51, npm 25/25. main 미병합, vendor adapter·Gradle·instrumentation·APK·AVD 미실행. capability/callback 증거 후에만 `실제 SDK` |
+| NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | `코드 존재(미통합)` | Android HEAD `b1c33a2`가 PLEOS `89078a0`을 포함하며 Sentinel `APPROVE`, core Kotlin 51/51, npm 25/25. main 미병합, vendor adapter·Gradle·instrumentation·APK·AVD 미실행. 실제 route callback 증거 후에만 `실제 SDK` |
 | FusedLocation | Coming Soon | `향후 기능` | 실제 위치·경로점 수집 기능으로 주장하거나 MVP 필수 의존성으로 사용 금지 |
 | SpeechToText | Coming Soon | `향후 기능` | 실제 음성 인식 기능으로 주장 금지 |
 | TextToSpeech | Coming Soon | `향후 기능` | 실제 음성 합성 기능으로 주장 금지 |
@@ -119,10 +119,11 @@ Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-o
 | 영역 | 현재 위치/상태 | 현재 주장 가능한 수준 |
 |---|---|---|
 | 기본 `main` | 공모전 앱 기능 브랜치가 아직 병합되지 않은 기준점 | 오케스트레이터 기반만 존재하며 완성 앱으로 주장 불가 |
-| Android recording/draft/queue 기반 | `agent/issue-android-foundation` 별도 작업 브랜치 | `코드 존재(미통합)`. 확인된 증거는 recording session, `highlightCount`, draft, pending queue, preset reference뿐임 |
-| 실제 경로점·위치 수집 | 확인된 구현 증거 없음 | `미구현`. RoutePoint 또는 실제 위치 샘플 수집·동의·철회가 구현됐다고 주장 금지 |
-| Android cloud contract | 통합 HEAD `0d31576` + backend 계약 `ddbd61f` | `코드 존재(미통합)`. P0-1 정적·core 승인 완료: core Kotlin 41/41, npm 23/23, `수동 SQLite predicate/migration PASS`. Room instrumentation은 미실행이다. concrete Cognito/API host·no-redirect HTTP adapter 설정이 없어 actual cloud unavailable. main 미병합·AWS E2E 미검증 |
-| Vehicle/NaviHelper adapter | Android 통합 HEAD `0d31576`이 PLEOS `89078a0` 포함 | `코드 존재(미통합)`. 독립 검토 `APPROVE`; main 미병합, vendor adapter·Gradle·Android instrumentation·APK·Pleos AVD runtime 미검증. `실제 SDK` 동작 증거 아님 |
+| Android local/consent 기반 | Android HEAD `b1c33a2` | `코드 존재(미통합)`. session/draft/queue, route source, consent/withdraw, Room v4, parked-only local `DELETE_PENDING` 코드. network `DELETE`·retry는 없음 |
+| 실제 경로점·위치 수집 | 확인된 구현 증거 없음 | `미구현`. consent 안전 경계가 있어도 실제 위치 샘플·route point를 수집한다고 주장 금지 |
+| Android cloud contract | Android HEAD `b1c33a2` + backend 계약 `ddbd61f` | `코드 존재(미통합)`. P0-1/P0-2 정적·core 승인: core Kotlin 51/51, npm 25/25, Room v4·`수동 SQLite predicate/migration PASS`. Room instrumentation은 미실행. concrete Cognito/API host·no-redirect HTTP adapter 설정 부재로 actual cloud unavailable |
+| Vehicle/NaviHelper adapter | Android HEAD `b1c33a2`가 PLEOS `89078a0` 포함 | `코드 존재(미통합)`. Sentinel `APPROVE`; main 미병합, vendor adapter·Gradle·Android instrumentation·APK·Pleos AVD runtime 미실행. `실제 SDK` 동작 증거 아님 |
+| P0-3 로컬 환경 | JDK 17, SDK/API34, build-tools, Pleos AVD 정의, Gradle 8.14.3 cache 존재 | 도구 존재만 확인. sandbox에서 Gradle native init·emulator CPU feature·DNS가 실패했고 AGP/Kotlin/vendor cache가 없어 build/boot 성공 증거 없음 |
 | root `readme.md` | 앱 소개·실행 방법·테스트 환경/설정·APK 목표 경로를 문서화 | 문서 준비 완료. Android/main 미병합·빌드/AVD 미검증·APK 생성 전 상태를 명시함 |
 | release APK | 없음 | `미구현`. 제출 가능 상태 아님 |
 | 시연 영상 | 없음 | `미구현`. 선택 가산점 산출물 준비 전 |

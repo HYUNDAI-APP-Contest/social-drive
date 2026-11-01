@@ -8,10 +8,10 @@
 우선순위는 다음과 같다.
 
 1. **P0-1 Android↔Cognito/API/S3 로컬 계약 통합 — 완료(정적·core 승인)**
-2. **P0-2 route source·위치 동의 안전 게이트 — 다음 작업**: FusedLocation Coming Soon 제약 아래 실제 수집을 막고 demo를 정직하게 분리
-3. **P0-3 release APK·AVD·서명·제출 증거 — 차단**: P0-2 완료와 Gradle/runtime 환경 확보 뒤 실행
+2. **P0-2 route source·위치 동의 안전 게이트 — 완료(정적·core 승인)**
+3. **P0-3 release APK·AVD·서명·제출 증거 — 다음 작업, runtime 차단**
 
-P0-1의 완료는 `0d31576`에 대한 정적·core 계약 승인이다. 이는 `main` 병합, 실제 Cognito/API/S3 연결, Gradle·instrumentation·vendor adapter, APK, Pleos AVD 또는 AWS E2E 완료를 뜻하지 않는다. P0-2는 `0d31576`을 기준으로 이어가며, P0-3는 P0-2와 Gradle/runtime 차단 조건이 해결될 때까지 시작하지 않는다.
+P0-1/P0-2 완료는 `b1c33a2`에 대한 정적·core 승인이다. 실제 위치 수집과 published delete의 network `DELETE`·retry는 포함하지 않는다. P0-3가 다음 작업이지만 Gradle native init, dependency/DNS, emulator CPU feature, vendor artifact 문제를 해결하기 전에는 build/runtime 단계로 진입할 수 없다.
 
 공식적으로 11월 15일에는 기획서가 필수이며 GitHub·APK·영상은 선택 가산점이다. 그러나 2차 PT 대상자는 실제 동작 앱을 완성해야 한다. [공식 제출 안내](https://appdevchallenge.auto-hmg.io/guide/submission), [공식 심사 안내](https://appdevchallenge.auto-hmg.io/guide/judging-awards)
 
@@ -19,24 +19,26 @@ P0-1의 완료는 `0d31576`에 대한 정적·core 계약 승인이다. 이는 `
 
 | 영역 | 확인된 증거 | 아직 증명되지 않은 것 |
 |---|---|---|
-| Android 통합 HEAD | `0d315763353a54c65352fffab2d6cb7222ec4a83`이 PLEOS `89078a0`과 cloud contract 포함; 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, `수동 SQLite predicate/migration PASS` | Room instrumentation, main 병합, Gradle, Android instrumentation, vendor adapter, APK, Pleos AVD runtime/callback |
-| Android local data | recording session, `highlightCount`, draft, pending queue, preset reference 코드가 별도 브랜치에 존재 | 실제 위치 샘플·route point 수집, 동의·철회 UI |
-| Cloud contract | backend `ddbd61fde381d09bc4605c758126ebf6ba0a5ea5` 계약이 `0d31576` core에 통합되어 P0-1 정적·core 승인 완료 | concrete Cognito/API host와 no-redirect HTTP adapter 설정이 없어 actual cloud unavailable; AWS E2E 미검증 |
+| Android 통합 HEAD | `b1c33a22b18c62806ee89337ef04635c53dd302a`; PLEOS·cloud·route-consent 포함, Sentinel `APPROVE`, core Kotlin 51/51, npm 25/25, Room v4·`수동 SQLite predicate/migration PASS` | Room instrumentation, main 병합, Gradle, vendor adapter, APK, Pleos AVD runtime/callback |
+| Android local/consent | session/draft/queue, route source, consent/withdraw, demo/unavailable 구분, parked-only local `DELETE_PENDING` | 실제 위치 샘플·route point 수집, published delete network `DELETE`·retry |
+| Cloud contract | backend `ddbd61fde381d09bc4605c758126ebf6ba0a5ea5` 계약이 `b1c33a2`에 포함 | concrete Cognito/API host와 no-redirect HTTP adapter 설정 부재로 actual cloud unavailable; AWS E2E 미실행 |
 | 현재 제출 worktree의 `infra/` | Cognito, HTTP API, DynamoDB, private S3 scaffold와 `/users/me`, `/feed` skeleton 확인 | 최신 backend branch의 전체 drive/publish/upload 계약을 대표하지 않음 |
 | SDK 가용성 | Vehicle State와 NaviHelper는 Ready to Use | Android runtime 성공 |
 | 위치 SDK | FusedLocation은 공식 Coming Soon | 실제 위치 수집을 구현·시연할 근거 |
+| P0-3 로컬 환경 | JDK17, SDK/API34, build-tools, adb, Pleos AVD/API34 정의, Gradle 8.14.3 cache 존재 | Gradle/emulator 실행 성공, AGP/Kotlin/vendor dependency, APK, AVD boot, signing, AWS E2E |
 | 제출 산출물 | truth table, 기획서/PT 초안, README 구조 존재 | Android 소스의 main 통합, release APK, 서명, AVD 영상, Android-AWS E2E |
 
 FusedLocation, TTS, STT, Vehicle Control은 현재 Not Available Yet/Coming Soon이고 Vehicle State와 NaviHelper만 Ready to Use다. [공식 SDK 상태](https://document.pleos.ai/en/docs/pleos-only/create-my-project)
 
-### 승인된 P0-1 pin과 runtime 경계
+### 승인된 P0-1/P0-2 pin과 runtime 경계
 
-현재 이 contest worktree에는 `0d31576` branch Git object가 없어 코드를 다시 실행·검사할 수 없다. 아래 pin과 결과는 host orchestrator가 전달한 최종 승인 증거이며, 이 문서는 그 범위를 넘겨 runtime 성공을 주장하지 않는다.
+현재 이 contest worktree에는 최신 Android branch Git object가 없어 코드를 다시 실행·검사할 수 없다. 아래 pin과 결과는 host orchestrator가 전달한 승인 증거이며 runtime 성공을 뜻하지 않는다.
 
 ```text
 PLEOS_BASE=89078a09dc29b0ab8346d4909bb87347f5a8efbb
 BACKEND_HEAD=ddbd61fde381d09bc4605c758126ebf6ba0a5ea5
 ANDROID_INTEGRATED_HEAD=0d315763353a54c65352fffab2d6cb7222ec4a83
+ROUTE_CONSENT_HEAD=b1c33a22b18c62806ee89337ef04635c53dd302a
 BACKEND_CONTRACT_PATH=infra/API.md
 ```
 
@@ -167,11 +169,20 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - PR 작성 전 secret scan과 test evidence 필요
 - push/PR 생성은 host orchestrator, merge는 Discord 승인 이후에만 수행
 
-## 4. GitHub Issue 초안 2 — 다음 작업
+## 4. GitHub Issue 2 — 완료(정적·core 승인)
 
 ### 제목
 
 `[P0] Coming Soon-safe route source와 위치 동의·철회 경계`
+
+### 완료 증거와 한계
+
+- latest: `b1c33a22b18c62806ee89337ef04635c53dd302a`
+- review: Sentinel `APPROVE`
+- evidence: core Kotlin 51/51, npm 25/25, Room schema v4, `수동 SQLite predicate/migration PASS`
+- status: `코드 존재(미통합)`; Gradle·Room/Android instrumentation·APK·AVD 미실행
+- actual location: unavailable이며 route point 수집 없음
+- published delete: Parked에서 local `DELETE_PENDING`만 생성; network `DELETE`·retry 없음
 
 ### 권장 label
 
@@ -197,30 +208,29 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - 실제 위치 source가 없으면 CTA는 unavailable 사유를 보여 주고 수집하지 않음
 - preset ref는 실제 route 또는 Vehicle callback으로 직렬화하지 않음
 
-### Acceptance criteria
+### 승인된 acceptance criteria와 후속 범위
 
-- [ ] FusedLocation/TTS/STT/Vehicle Control dependency와 permission이 release graph에 없음.
-- [ ] 현재 production에서 live route collection을 시작할 수 있는 code path가 없음.
-- [ ] demo preset은 DB/API/UI 모두 `DEMO` source로 식별되며 실제 위치로 표시되지 않음.
-- [ ] 위치 동의 UI는 source unavailable일 때 동의를 받아 둔 것처럼 보이지 않음.
-- [ ] 향후 test source를 연결했을 때도 explicit consent 없이는 route point 0개가 유지됨.
-- [ ] 철회 시 collector 중지, unpublished points 삭제, pending upload 취소가 transaction으로 처리됨.
-- [ ] 이미 게시된 서버 데이터 삭제는 확인 UI와 `DELETE /drives/{id}` 요청 계약을 사용하되 네트워크 실패 시 local tombstone/retry 상태를 보존함.
-- [ ] 위치·좌표·동의 상태 원문이 로그에 노출되지 않음.
-- [ ] 발표/README에서 실제 위치 수집은 계속 `미구현`, preset은 `데모 데이터`로 남음.
+- [x] source/manifest 정적 검사에서 FusedLocation/TTS/STT/Vehicle Control dependency와 permission이 없음. Gradle-resolved release graph는 미실행임.
+- [x] 현재 production에서 live route collection을 시작할 수 있는 code path가 없음.
+- [x] demo preset은 DB/API/UI에서 `DEMO` source로 구분되고 실제 위치로 표시되지 않음.
+- [x] source unavailable 상태에서 실제 위치 consent를 받아 둔 것처럼 표시하지 않음.
+- [x] explicit consent와 available source 없이는 route point 0개를 유지함.
+- [x] 철회 시 unpublished local data purge와 관련 pending work cancel을 fail-closed 처리함.
+- [x] published delete 요청은 Parked에서만 local `DELETE_PENDING`으로 보존하며 Driving/Unknown에서는 차단함.
+- [ ] local `DELETE_PENDING`을 backend `DELETE /drives/{id}`에 연결하고 네트워크 실패 retry/tombstone 수명주기를 구현함.
+- [x] 위치·좌표·동의 상태 원문이 로그에 노출되지 않음.
+- [x] 문서에서 실제 위치 수집은 `미구현`, preset은 `데모 데이터`로 유지함.
 
-### Tests
+### Tests와 미실행 경계
 
-- consent state reducer unit tests
-- no-consent/no-source produces zero route points
-- demo metadata persistence/serialization tests
-- withdrawal transaction and restart recovery tests
-- manifest/dependency static tests for forbidden SDKs and location permissions
-- UI tests for unavailable, consent, withdrawn, delete-pending 상태
+- 실행 증거: core Kotlin 51/51, npm 25/25
+- 정적·core 범위: consent reducer, no-consent/no-source zero route points, demo metadata, withdrawal/purge/cancel, forbidden dependency/permission source check
+- DB 증거: Room schema v4, `수동 SQLite predicate/migration PASS`
+- 미실행: Gradle test/lint, Room instrumentation, Android UI/instrumentation, APK/AVD runtime
 
 ### Dependencies
 
-- Android 통합 HEAD `0d31576`
+- base `0d31576`, approved result `b1c33a2`
 - P0-1에서 승인된 API DTO와 deletion error model
 - 실제 live collector는 공식 SDK 상태 변경 또는 공식 AAOS source/permission 확인을 다루는 별도 Issue가 승인되기 전까지 scope 밖
 
@@ -231,7 +241,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - AWS deploy/credential 접근 금지
 - merge는 Discord 승인 이후에만 수행
 
-## 5. GitHub Issue 초안 3 — Gradle/runtime 차단
+## 5. GitHub Issue 3 — 다음 작업, Gradle/runtime 차단
 
 ### 제목
 
@@ -245,7 +255,34 @@ BACKEND_CONTRACT_PATH=infra/API.md
 
 정적 검토 코드를 실행 가능한 APK와 재현 가능한 증거로 전환한다. signing secret을 저장소에 넣지 않고 demo와 Pleos runtime을 분리하며, 확인된 사실만 README·영상·PT에 반영한다.
 
-현재는 Gradle·Android instrumentation·vendor adapter·Pleos AVD runtime이 검증되지 않아 차단 상태다. P0-2 완료와 실행 환경 확보 전에는 release/APK 작업을 완료로 표시하지 않는다.
+P0-2는 승인됐지만 Gradle·Android instrumentation·vendor adapter·Pleos AVD runtime이 실행되지 않아 P0-3는 차단 상태다. release/APK 작업을 완료로 표시하지 않는다.
+
+### P0-3A 로컬 환경 증거
+
+권장 선행 Issue: `[P0-3A] Local Android/Pleos toolchain unblock — no signing/deploy`
+
+확인됨:
+
+- macOS 14.5 arm64, Android Studio 2026.2
+- JDK 17.0.13 설치
+- Android SDK platform 34, build-tools 36.0.0, adb 37.0.1
+- `aapt2`, `d8`, `zipalign`, `apksigner` 존재
+- `Pleos_Connect_v2.1.0` AVD와 API34 arm64 system image, RAM 4GB 정의 존재
+- Gradle 8.14.3 distribution cache와 arm64 native libraries 존재
+- 약 68GiB 디스크 여유
+
+차단 또는 미확인:
+
+- worker sandbox에서 Gradle `--version`이 native library initialization 실패
+- emulator `-version`이 CPU feature/NEON 확인 실패; sandbox `sysctl`도 거부됨
+- Gradle·Google Maven·Maven Central·Pleos 문서 DNS/HTTP HEAD 실패
+- AGP, Kotlin Gradle plugin, Pleos/Vehicle/NaviHelper artifact cache 없음
+- `sdkmanager`·`avdmanager` 없음
+- 최신 Android source object가 이 contest worktree에 없어 wrapper/variant 확인 불가
+- adb device, AVD boot, build, install, instrumentation, callback은 실행하지 않음
+- signing secret·keystore는 조회하지 않음
+
+도구와 AVD가 존재한다는 사실은 build/boot 성공 증거가 아니다. 일반 호스트 터미널에서 JDK17 Gradle과 emulator가 성공하는지 먼저 판별한다.
 
 ### 범위
 
@@ -291,8 +328,8 @@ BACKEND_CONTRACT_PATH=infra/API.md
 
 ### Dependencies
 
-- P0-1 정적·core 승인 완료(`0d31576`), P0-2는 아직 완료 필요
-- Android 통합 HEAD `0d31576`을 main 통합 후보로 사용할 수 있는 상태
+- P0-1/P0-2 정적·core 승인 완료(`b1c33a2`)
+- Android HEAD `b1c33a2`를 main 통합 후보로 사용할 수 있는 상태
 - signing material은 human/CI가 제공하며 worker는 값을 읽거나 출력하지 않음
 - Pleos SDK Maven/AVD 접근 가능 환경
 
@@ -303,35 +340,40 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - GitHub Release publish, repository APK push, merge는 별도 승인
 - AWS deploy, IAM 변경, real API smoke는 이 Issue 범위 밖
 
-## 6. P0-1 완료 기록과 P0-2 handoff
-
-### P0-1 완료 기록
+## 6. P0-1/P0-2 완료 기록과 P0-3A handoff
 
 ```text
-Integrated head: 0d315763353a54c65352fffab2d6cb7222ec4a83
-Includes: PLEOS 89078a09dc29b0ab8346d4909bb87347f5a8efbb
+Latest Android head: b1c33a22b18c62806ee89337ef04635c53dd302a
+Includes: PLEOS 89078a0 + cloud contract 0d31576 + route-consent
 Backend contract: ddbd61fde381d09bc4605c758126ebf6ba0a5ea5
-Review: APPROVE
-Core Kotlin: 41/41
-npm: 23/23
-SQLite: 수동 SQLite predicate/migration PASS
+Review: Sentinel APPROVE
+Core Kotlin: 51/51
+npm: 25/25
+Room: schema v4, 수동 SQLite predicate/migration PASS
+Runtime: Gradle/instrumentation/APK/AVD/AWS E2E unrun
 ```
 
-완료 판정은 정적·core 계약 범위에 한정한다. concrete Cognito/API host와 no-redirect HTTP adapter 설정이 없으므로 actual cloud는 unavailable이다. worker가 실제 endpoint나 credential을 추정해 채우지 않는다.
+완료 판정은 정적·core 계약 범위다. actual location은 unavailable이고 published delete는 parked-only local `DELETE_PENDING`까지만 존재한다. network `DELETE`·retry, concrete cloud 설정과 runtime은 완료 범위가 아니다.
 
-### P0-2 시작 기준
+### P0-3A 권장 시작 명령
 
-- base를 Android 통합 HEAD `0d31576`으로 고정
-- P0-1의 API DTO·deletion error model·upload queue 계약 보존
-- version conflict 후 latest GET·UI conflict·명시적 review·replay는 P0-2/P0-3 또는 별도 Issue의 미완료 acceptance로 유지
-- FusedLocation/TTS/STT/Vehicle Control을 production dependency에 추가하지 않음
-- actual route collection은 계속 unavailable로 두고 `DemoPreset`을 명시적으로 구분
-- 위치 동의·철회 상태와 purge/cancel 동작을 core/DB/UI test로 검증
-- AWS deploy, credential 접근, real vehicle/user location 수집 금지
+일반 호스트 터미널에서 먼저 sandbox 문제와 실제 호스트 문제를 분리한다.
+
+```bash
+/usr/libexec/java_home -v 17
+
+JAVA_HOME=$(/usr/libexec/java_home -v 17) \
+"/Users/yong/.gradle/wrapper/dists/gradle-8.14.3-bin/cv11ve7ro1n3o1j4so8xd9n66/gradle-8.14.3/bin/gradle" \
+--version
+
+"/Users/yong/Library/Android/sdk/emulator/emulator" -version
+"/Users/yong/Library/Android/sdk/emulator/emulator" -list-avds
+```
+
+승인된 별도 workspace가 만들어진 뒤에는 HEAD를 `b1c33a2`로 확인하고 실제 wrapper/variant를 기준으로 offline diagnostics부터 실행한다. dependency download, vendor Maven login과 signing은 별도 승인 경계를 지킨다.
 
 ### P0-3 차단 해제 조건
 
-- P0-2 독립 승인
 - Gradle dependency resolution과 assemble 가능
 - Android instrumentation 실행 가능
 - vendor adapter compile 가능
