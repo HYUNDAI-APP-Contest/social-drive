@@ -7,9 +7,11 @@ All routes use the Cognito JWT authorizer. The API accepts only parked, user-con
 1. The app persists one `clientDraftId` and `Idempotency-Key` per local draft.
 2. `POST /drives` creates one remote draft and returns 10-minute presigned PUT URLs.
 3. `POST /drives/{driveId}/uploads` refreshes URLs only when the manifest exactly matches the draft.
-4. The app uploads the consented cover and sanitized route assets directly to private S3. The MVP route schema contains only normalized 0–1 artwork points and highlight progress; geographic coordinates and raw vehicle fields are rejected before publish.
-5. `POST /drives/{driveId}/publish` verifies object type, size, and checksum before a conditional `DRAFT → PUBLISHED` transition.
+4. The app uploads the consented cover and sanitized route assets directly to private S3. The manifest `sha256` is a 64-character lowercase hexadecimal SHA-256 digest. The API converts it to RFC 4648 base64 and returns that exact value as the required `x-amz-checksum-sha256` header. Clients must send both returned headers exactly: `Content-Type` is signed and the checksum header is signed and deliberately not hoisted into the query string. The MVP route schema contains only normalized 0–1 artwork points and highlight progress; geographic coordinates and raw vehicle fields are rejected before publish.
+5. `POST /drives/{driveId}/publish` calls S3 `HeadObject` with checksum mode enabled and compares the S3-calculated SHA-256 checksum, object type, and byte size with the manifest before a conditional `DRAFT → PUBLISHED` transition. User-controlled object metadata is not accepted as checksum evidence.
 6. Repeating create or publish after a lost response returns the same resource rather than duplicating it.
+
+Concurrent create requests classify DynamoDB transaction cancellation reasons. An idempotency-record condition failure is resolved with bounded, strongly consistent reads; a transaction conflict uses bounded exponential backoff with jitter and observes a possible preceding commit before retrying. Capacity, validation, and other cancellation reasons are not reported as idempotency conflicts.
 
 `GET /feed` uses a random opaque cursor. The server stores only its SHA-256 hash with the DynamoDB continuation key and a 15-minute TTL, so a client never receives a raw LastEvaluatedKey. The table also expires idempotency and cursor records through `expiresAtEpoch`.
 
