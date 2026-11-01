@@ -24,7 +24,11 @@ An offline-first visual foundation for the Hyundai app contest with isolated `de
 - Fresh in-memory Bearer sessions per API operation and a separate presigned-object transport that cannot inherit API authorization
 - Exact-host, HTTPS, `PUT`, signed content-type, and signed RFC 4648 checksum validation before any object upload
 - Room v3 persistence of the non-secret create response version, with publish pinned to that exact optimistic-concurrency version
+- Room v4 privacy state, normalized-point retention, and confirmed published-delete pending records
 - Bounded upload recovery: two presigned-session refreshes per upload run and two durable publish-to-upload rewinds per draft
+- Explicit `데모 데이터` source badges across feed, detail, recording, publish, and privacy UI
+- Coming Soon-safe live-route consent: unavailable capabilities never persist a false granted state
+- Durable privacy withdrawal that stops the future collector boundary, purges only unpublished normalized points, tombstones pending upload work, and preserves published data until a confirmed delete request
 
 ## Run
 
@@ -50,7 +54,7 @@ In a restricted shell where Gradle, network access, or its local lock-listener s
 bash scripts/test-kotlin-core.sh
 ```
 
-This compiles the production request controller/coordinator plus the SDK-independent cloud client/worker adapter and executes their JVM tests. It does not compile Android framework code, the Pleos vendor adapter, a concrete Cognito or HTTP SDK adapter, assemble an APK, call AWS, or replace a Pleos emulator run.
+This compiles the production request controller/coordinator, route consent/withdrawal state machine, and SDK-independent cloud client/worker adapter, then executes their JVM tests. It does not compile Android framework code, Room SQL, Compose UI, the Pleos vendor adapter, a concrete Cognito or HTTP SDK adapter, assemble an APK, call AWS, or replace a Pleos emulator run.
 
 ## Real versus demo
 
@@ -60,9 +64,11 @@ This compiles the production request controller/coordinator plus the SDK-indepen
 | Motion state | Demo flavor simulation | Pleos flavor initializes Vehicle 2.3.2 but remains fail-closed `Unknown`; the public Brake API is not proof of parking |
 | Navigation | Demo feedback; fake records contain no coordinates | Pleos flavor initializes NaviHelper 3.0.5 and accepts only validated, privacy-reviewed route input |
 | Recording | Room session and draft persistence | Approved sensor adapter writing privacy-minimized samples |
+| Route source and consent | Demo presets only; Fused Location is unavailable and no location permission is requested | Inject a reviewed capability token, collector, and permission flow before live collection can exist |
 | Publish | Room/WorkManager queue; demo flavor uses an explicit fake, while the actual flavor fails closed until configured | Inject the production cloud adapter with approved Cognito/API settings and a cancellation-cooperative HTTP transport |
 
 Driving or unknown motion cannot enter detail, publish, or editable settings. AWS keys, precise coordinates, and raw vehicle state must never be added to the APK.
+Every current route is a normalized demo preset and stays visibly labeled `데모 데이터`. There is no Fused Location dependency, location permission, or live collector. `LiveAvailable` is guarded by a compile-time test-only opt-in token; production exposes `SDK_COMING_SOON` and does not save a granted consent state. Withdrawal is durable before WorkManager cancellation, so stale workers cannot overwrite the `PRIVACY_WITHDRAWN` queue tombstone. Published deletion requires explicit confirmation and persists only `DELETE_PENDING`; this implementation intentionally makes no delete network call.
 The Pleos flavor declares only `NAVI_ROUTE_SEARCH`. Vehicle is initialized and released but no permissioned Vehicle API is read, so `CAR_DRIVE` is intentionally absent. It does not include Fused Location, TTS, STT, or vehicle-control dependencies. A standard Android emulator cannot prove Pleos runtime behavior; use the matching Pleos Connect Emulator and approved SDK access before making a release claim.
 
 NaviHelper callbacks do not contain the app request id. Each request therefore installs its own listener closure carrying a lifecycle epoch and request generation. `onRouteStarted` remains non-terminal; `onRoutingCompleted` or `onError` settles the request once after the minimum feedback interval. Missing callbacks time out, remove the listener, and enter a short no-listener quarantine before the next request. Old listener callbacks, old initialization callbacks, and delayed timeout jobs cannot mutate a newer request. Release cancels every job, removes the exact listener instance, releases the helper, and a later initialize creates a new `NaviHelper` object.

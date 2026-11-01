@@ -8,10 +8,17 @@ import com.socialdrive.app.data.DraftSnapshot
 import com.socialdrive.app.data.EnqueueResult
 import com.socialdrive.app.data.local.RecordingEntity
 import com.socialdrive.app.domain.MotionState
+import com.socialdrive.app.domain.LiveUnavailableReason
 import com.socialdrive.app.domain.NavigationRequest
 import com.socialdrive.app.domain.NavigationRequestResult
 import com.socialdrive.app.domain.NavigationState
 import com.socialdrive.app.domain.UploadState
+import com.socialdrive.app.domain.PublishedDeleteDecision
+import com.socialdrive.app.domain.RouteConsentDecision
+import com.socialdrive.app.domain.RouteConsentState
+import com.socialdrive.app.domain.RoutePrivacyStatus
+import com.socialdrive.app.domain.RouteSource
+import com.socialdrive.app.domain.WithdrawalReceipt
 import com.socialdrive.app.domain.VehicleMotionStatus
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -38,6 +45,24 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     val navigationState: StateFlow<NavigationState> = app.navigationGateway.state
     val navigationCapability = app.navigationGateway.capability
 
+    val routePrivacy: StateFlow<RoutePrivacyStatus> = app.routePrivacyRepository.status
+        .stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(5_000),
+            RoutePrivacyStatus(
+                RouteSource.DemoPreset,
+                RouteSource.LiveUnavailable(LiveUnavailableReason.SDK_COMING_SOON),
+                RouteConsentState.NotAsked,
+            ),
+        )
+
+    val deletePending: StateFlow<Boolean> = latestDraft
+        .flatMapLatest { draft ->
+            draft?.let { app.database.routePrivacyDao().observeDeleteRequest(it.id).map { request -> request != null } }
+                ?: flowOf(false)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     suspend fun startRecording() = app.recordingRepository.start()
 
     suspend fun addHighlight() {
@@ -61,4 +86,12 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
         }
         return app.navigationGateway.requestRoute(request)
     }
+
+    suspend fun requestLiveRouteConsent(): RouteConsentDecision = app.routePrivacyRepository.requestLiveConsent()
+
+    suspend fun withdrawRouteConsent(): WithdrawalReceipt = app.routePrivacyRepository.withdraw()
+
+    suspend fun requestPublishedDelete(confirmed: Boolean): PublishedDeleteDecision =
+        latestDraft.value?.let { app.routePrivacyRepository.requestPublishedDelete(it.id, confirmed) }
+            ?: PublishedDeleteDecision.NotPublished
 }

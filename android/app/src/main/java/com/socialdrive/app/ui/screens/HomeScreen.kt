@@ -31,6 +31,7 @@ import com.socialdrive.app.domain.DriveSummary
 import com.socialdrive.app.domain.DemoContentMode
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.ui.components.DriveSummaryCard
+import com.socialdrive.app.ui.components.DemoDataBadge
 import com.socialdrive.app.ui.components.IntegrationStatusChip
 import com.socialdrive.app.ui.components.SafetyRestrictionBanner
 
@@ -64,6 +65,7 @@ fun HomeScreen(
                 Icon(Icons.Rounded.FiberManualRecord, contentDescription = null)
                 Text(" 기록 시작")
             }
+            DemoDataBadge(Modifier.padding(start = 12.dp))
             if (vehicleStatus != null) IntegrationStatusChip(vehicleStatus, Modifier.padding(start = 12.dp))
             IconButton(onClick = onSettings, modifier = Modifier.padding(start = 12.dp)) {
                 Icon(Icons.Rounded.Settings, contentDescription = "설정 열기")

@@ -1,0 +1,122 @@
+package com.socialdrive.app.domain
+
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlinx.coroutines.runBlocking
+
+@OptIn(TestOnlyLiveRouteCapability::class)
+class RoutePrivacyTest {
+    @Test
+    fun `unavailable source never persists or displays granted consent`() = runBlocking {
+        LiveUnavailableReason.entries.forEach { reason ->
+            val decision = RouteConsentReducer.reduce(
+                RouteConsentState.NotAsked,
+                RouteSource.LiveUnavailable(reason),
+                RouteConsentAction.Grant,
+            )
+            assertEquals(RouteConsentState.NotAsked, decision.state)
+            assertEquals(false, decision.shouldPersist)
+            assertEquals(reason, decision.unavailableReason)
+        }
+        val harness = Harness()
+        val decision = harness.coordinator.grant(RouteSource.LiveUnavailable(LiveUnavailableReason.SDK_COMING_SOON))
+        assertEquals(false, decision.shouldPersist)
+        assertEquals(RouteConsentState.NotAsked, harness.coordinator.consentState)
+        assertEquals(emptyList(), harness.events)
+    }
+
+    @Test
+    fun `consent reducer follows not asked granted withdrawn lifecycle`() {
+        val granted = RouteConsentReducer.reduce(RouteConsentState.NotAsked, RouteSource.DemoPreset, RouteConsentAction.Grant)
+        val withdrawn = RouteConsentReducer.reduce(granted.state, RouteSource.DemoPreset, RouteConsentAction.Withdraw)
+        assertEquals(RouteConsentState.Granted, granted.state)
+        assertEquals(RouteConsentState.Withdrawn, withdrawn.state)
+    }
+
+    @Test
+    fun `normalized points reject non finite and out of range values`() {
+        assertFailsWith<IllegalArgumentException> { NormalizedRoutePoint(0, Float.NaN, .5f) }
+        assertFailsWith<IllegalArgumentException> { NormalizedRoutePoint(0, -.1f, .5f) }
+        assertFailsWith<IllegalArgumentException> { NormalizedRoutePoint(0, .5f, 1.1f) }
+    }
+
+    @Test
+    fun `future fake collector receives zero points before explicit consent`() = runBlocking {
+        val harness = Harness()
+        harness.collector.offer(NormalizedRoutePoint(0, .2f, .3f))
+        assertEquals(0, harness.collector.points.size)
+
+        val source = RouteSource.LiveAvailable(LiveRouteCapabilityToken.issueForTest())
+        harness.coordinator.grant(source)
+        harness.collector.offer(NormalizedRoutePoint(0, .2f, .3f))
+        assertEquals(1, harness.collector.points.size)
+    }
+
+    @Test
+    fun `withdrawal stops collector then atomically purges and tombstones before cancel`() = runBlocking {
+        val harness = Harness()
+        harness.coordinator.grant(RouteSource.LiveAvailable(LiveRouteCapabilityToken.issueForTest()))
+        harness.collector.offer(NormalizedRoutePoint(0, .2f, .3f))
+        val receipt = harness.coordinator.withdraw()
+
+        assertEquals(listOf("consent:Granted", "collector:start", "collector:stop", "store:withdraw", "cancel:draft-1"), harness.events)
+        assertEquals(1, receipt.purgedUnpublishedPointCount)
+        assertEquals(0, harness.collector.points.size)
+        assertEquals(RouteConsentState.Withdrawn, harness.coordinator.consentState)
+    }
+
+    @Test
+    fun `late fake point after withdrawal is ignored`() = runBlocking {
+        val harness = Harness()
+        harness.coordinator.grant(RouteSource.LiveAvailable(LiveRouteCapabilityToken.issueForTest()))
+        harness.coordinator.withdraw()
+        harness.collector.offer(NormalizedRoutePoint(1, .4f, .6f))
+        assertEquals(0, harness.collector.points.size)
+    }
+
+    @Test
+    fun `published delete requires confirmation and only writes local pending state`() = runBlocking {
+        val harness = Harness()
+        assertEquals(PublishedDeleteDecision.NotPublished, harness.coordinator.requestPublishedDelete("draft-1", false, true))
+        assertEquals(PublishedDeleteDecision.ConfirmationRequired, harness.coordinator.requestPublishedDelete("draft-1", true, false))
+        assertEquals(PublishedDeleteDecision.DeletePending, harness.coordinator.requestPublishedDelete("draft-1", true, true))
+        assertEquals(listOf("delete-pending:draft-1"), harness.store.deleteEvents)
+    }
+
+    private class Harness {
+        val events = mutableListOf<String>()
+        val collector = FakeCollector(events)
+        val store = FakeStore(events, collector)
+        val coordinator = RoutePrivacyCoordinator(
+            RouteConsentState.NotAsked,
+            collector,
+            store,
+            PendingRouteUploadCanceller { ids -> events += "cancel:${ids.sorted().joinToString()}" },
+        )
+    }
+
+    private class FakeCollector(private val events: MutableList<String>) : FutureRouteCollector {
+        var active = false
+        val points = mutableListOf<NormalizedRoutePoint>()
+        override suspend fun start() { active = true; events += "collector:start" }
+        override suspend fun stopAndAwait() { active = false; events += "collector:stop" }
+        fun offer(point: NormalizedRoutePoint) { if (active) points += point }
+    }
+
+    private class FakeStore(
+        private val events: MutableList<String>,
+        private val collector: FakeCollector,
+    ) : RoutePrivacyMutationStore {
+        val deleteEvents = mutableListOf<String>()
+        override suspend fun persistConsent(state: RouteConsentState) { events += "consent:$state" }
+        override suspend fun withdrawAndPurge(): WithdrawalReceipt {
+            check(!collector.active)
+            val count = collector.points.size
+            collector.points.clear()
+            events += "store:withdraw"
+            return WithdrawalReceipt(count, setOf("draft-1"))
+        }
+        override suspend fun markPublishedDeletePending(draftId: String) { deleteEvents += "delete-pending:$draftId" }
+    }
+}

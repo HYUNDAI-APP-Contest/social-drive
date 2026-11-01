@@ -136,8 +136,39 @@ class RoomMigrationTest {
         }
     }
 
+    @Test
+    fun migrateThreeToFourAddsPrivacyStateWithoutChangingPublishRows() {
+        helper.createDatabase(PRIVACY_DATABASE, 3).apply {
+            execSQL("INSERT INTO drive_drafts VALUES ('draft-privacy','recording-privacy','request-privacy','title','description','route-memory-default','local-recording://privacy','QUEUED','remote-privacy',7,100,200,NULL)")
+            execSQL("INSERT INTO upload_queue VALUES ('draft-privacy','request-privacy','UPLOAD','QUEUED',2,200,NULL,0,200)")
+            close()
+        }
+
+        helper.runMigrationsAndValidate(PRIVACY_DATABASE, 4, true, RoomMigrations.MIGRATION_3_4).use { database ->
+            database.query("SELECT consentState, routeSource, unavailableReason FROM route_privacy_state WHERE id = 1").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("NotAsked", cursor.getString(0))
+                assertEquals("DemoPreset", cursor.getString(1))
+                assertNull(cursor.getString(2))
+            }
+            database.query("SELECT stage, status, attempts FROM upload_queue WHERE draftId = 'draft-privacy'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("UPLOAD", cursor.getString(0))
+                assertEquals("QUEUED", cursor.getString(1))
+                assertEquals(2, cursor.getInt(2))
+            }
+            for (table in listOf("normalized_route_points", "published_delete_requests")) {
+                database.query("SELECT COUNT(*) FROM $table").use { cursor ->
+                    cursor.moveToFirst()
+                    assertEquals(0, cursor.getInt(0))
+                }
+            }
+        }
+    }
+
     companion object {
         private const val DATABASE = "migration-test"
         private const val FAILED_DATABASE = "migration-failed-repair-test"
+        private const val PRIVACY_DATABASE = "migration-route-privacy-test"
     }
 }

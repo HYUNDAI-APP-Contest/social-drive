@@ -3,6 +3,7 @@ package com.socialdrive.app.data.fake
 import com.socialdrive.app.domain.DriveMoment
 import com.socialdrive.app.domain.DriveSummary
 import com.socialdrive.app.domain.RoutePoint
+import com.socialdrive.app.domain.RouteSource
 
 interface DriveRepository {
     fun drives(): List<DriveSummary>
@@ -31,6 +32,7 @@ class FakeDriveRepository : DriveRepository {
                 DriveMoment("m3", "18:41", "바다를 닮은 쉼", "고요한 파도와 나란히 달렸어요."),
                 DriveMoment("m4", "19:17", "야경이 빛나는 길", "오늘의 마지막 하이라이트예요."),
             ),
+            routeSource = RouteSource.DemoPreset,
         ),
         DriveSummary(
             id = "demo-mountain",
@@ -42,6 +44,7 @@ class FakeDriveRepository : DriveRepository {
             highlights = 3,
             route = route.reversed(),
             moments = emptyList(),
+            routeSource = RouteSource.DemoPreset,
         ),
         DriveSummary(
             id = "demo-city",
@@ -53,6 +56,7 @@ class FakeDriveRepository : DriveRepository {
             highlights = 2,
             route = route,
             moments = emptyList(),
+            routeSource = RouteSource.DemoPreset,
         ),
     )
 

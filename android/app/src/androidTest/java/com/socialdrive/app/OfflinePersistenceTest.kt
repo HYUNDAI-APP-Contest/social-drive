@@ -7,9 +7,14 @@ import com.socialdrive.app.data.EnqueueResult
 import com.socialdrive.app.data.IdFactory
 import com.socialdrive.app.data.PublishQueueRepository
 import com.socialdrive.app.data.RecordingRepository
+import com.socialdrive.app.data.RoutePrivacyRepository
 import com.socialdrive.app.data.local.LocalState
+import com.socialdrive.app.data.local.NormalizedRoutePointEntity
 import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.domain.MotionState
+import com.socialdrive.app.domain.PendingRouteUploadCanceller
+import com.socialdrive.app.domain.PublishedDeleteDecision
+import com.socialdrive.app.domain.RouteConsentState
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -167,5 +172,48 @@ class OfflinePersistenceTest {
         )
         assertEquals(LocalState.QUEUED, requireNotNull(database.draftDao().find(draft.id)).state)
         assertEquals(8, requireNotNull(database.draftDao().find(draft.id)).remoteVersion)
+    }
+
+    @Test
+    fun withdrawalPurgesOnlyUnpublishedPointsAndTombstonesPendingUpload() = runTest {
+        val values = ArrayDeque(listOf("recording-10", "draft-10", "request-10"))
+        val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 1_000L })
+        val queue = PublishQueueRepository(database, clock = { 1_000L })
+        val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
+        queue.enqueue(draft.id, MotionState.Parked)
+        database.routePrivacyDao().insertPoint(NormalizedRoutePointEntity(draft.recordingId, 0, .2f, .3f, "UNPUBLISHED"))
+        database.routePrivacyDao().insertPoint(NormalizedRoutePointEntity(draft.recordingId, 1, .4f, .5f, "PUBLISHED"))
+        var cancelled = emptySet<String>()
+        val privacy = RoutePrivacyRepository(
+            database,
+            PendingRouteUploadCanceller { cancelled = it },
+            clock = { 1_001L },
+        )
+
+        val receipt = privacy.withdraw()
+
+        assertEquals(1, receipt.purgedUnpublishedPointCount)
+        assertEquals(1, database.routePrivacyDao().pointCount())
+        assertEquals(RouteConsentState.Withdrawn.name, database.routePrivacyDao().find()?.consentState)
+        assertEquals(LocalState.CANCELLED, database.uploadQueueDao().find(draft.id)?.stage)
+        assertEquals(LocalState.PRIVACY_WITHDRAWN, database.uploadQueueDao().find(draft.id)?.status)
+        assertEquals(0, database.uploadQueueDao().claimStage(draft.id, LocalState.CANCELLED, LocalState.PRIVACY_WITHDRAWN, 0, 1, 1_002L))
+        assertEquals(0, database.uploadQueueDao().completeCreateStage(draft.id, 1, 1_002L))
+        assertEquals(setOf(draft.id), cancelled)
+    }
+
+    @Test
+    fun publishedDeleteRequiresConfirmationAndPersistsOnlyDeletePending() = runTest {
+        val values = ArrayDeque(listOf("recording-11", "draft-11", "request-11"))
+        val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 1_100L })
+        val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
+        database.draftDao().markPublished(draft.id, "remote-published", 2, 1_101L)
+        val privacy = RoutePrivacyRepository(database, PendingRouteUploadCanceller {}, clock = { 1_102L })
+
+        assertEquals(PublishedDeleteDecision.ConfirmationRequired, privacy.requestPublishedDelete(draft.id, false))
+        assertEquals(null, database.routePrivacyDao().findDeleteRequest(draft.id))
+        assertEquals(PublishedDeleteDecision.DeletePending, privacy.requestPublishedDelete(draft.id, true))
+        assertEquals(LocalState.DELETE_PENDING, database.routePrivacyDao().findDeleteRequest(draft.id)?.state)
+        assertEquals(LocalState.PUBLISHED, database.draftDao().find(draft.id)?.state)
     }
 }

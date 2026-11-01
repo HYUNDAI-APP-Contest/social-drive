@@ -53,6 +53,31 @@ data class UploadQueueEntity(
     val updatedAtEpochMs: Long,
 )
 
+@Entity(tableName = "route_privacy_state")
+data class RoutePrivacyEntity(
+    @PrimaryKey val id: Int = 1,
+    val consentState: String,
+    val routeSource: String,
+    val unavailableReason: String?,
+    val updatedAtEpochMs: Long,
+)
+
+@Entity(tableName = "normalized_route_points", primaryKeys = ["recordingId", "sequence"])
+data class NormalizedRoutePointEntity(
+    val recordingId: String,
+    val sequence: Int,
+    val horizontal: Float,
+    val vertical: Float,
+    val publicationState: String,
+)
+
+@Entity(tableName = "published_delete_requests")
+data class PublishedDeleteRequestEntity(
+    @PrimaryKey val draftId: String,
+    val state: String,
+    val requestedAtEpochMs: Long,
+)
+
 object LocalState {
     const val RECORDING = "RECORDING"
     const val DRAFTED = "DRAFTED"
@@ -66,4 +91,7 @@ object LocalState {
     const val UPLOAD = "UPLOAD"
     const val PUBLISH = "PUBLISH"
     const val COMPLETE = "COMPLETE"
+    const val CANCELLED = "CANCELLED"
+    const val PRIVACY_WITHDRAWN = "PRIVACY_WITHDRAWN"
+    const val DELETE_PENDING = "DELETE_PENDING"
 }

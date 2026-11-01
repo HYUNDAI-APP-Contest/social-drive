@@ -6,6 +6,7 @@ import androidx.work.WorkManager
 import com.socialdrive.app.data.DraftRepository
 import com.socialdrive.app.data.PublishQueueRepository
 import com.socialdrive.app.data.RecordingRepository
+import com.socialdrive.app.data.RoutePrivacyRepository
 import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.remote.FlavorRemoteDriveApiFactory
 import com.socialdrive.app.data.remote.RemoteDriveApi
@@ -16,6 +17,7 @@ import com.socialdrive.app.data.work.PublishWorkerFactory
 import com.socialdrive.app.data.work.PublishWorkChainEnqueuer
 import com.socialdrive.app.integration.FlavorIntegrationFactory
 import com.socialdrive.app.domain.MotionState
+import com.socialdrive.app.domain.PendingRouteUploadCanceller
 import com.socialdrive.app.safety.ParkedExecutionGate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,6 +37,14 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
     val recordingRepository: RecordingRepository by lazy { RecordingRepository(database) }
     val draftRepository: DraftRepository by lazy { DraftRepository(database) }
     val publishQueueRepository: PublishQueueRepository by lazy { PublishQueueRepository(database) }
+    val routePrivacyRepository: RoutePrivacyRepository by lazy {
+        RoutePrivacyRepository(
+            database,
+            PendingRouteUploadCanceller {
+                WorkManager.getInstance(this).cancelAllWorkByTag(PublishScheduler.ROUTE_UPLOAD_TAG)
+            },
+        )
+    }
     val publishScheduler: PublishScheduler by lazy {
         PublishScheduler(WorkManager.getInstance(this), publishQueueRepository, parkedExecutionGate)
     }

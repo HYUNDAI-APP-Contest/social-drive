@@ -35,6 +35,7 @@ import com.socialdrive.app.domain.RecordingSnapshot
 import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.ui.components.RouteRibbon
+import com.socialdrive.app.ui.components.RouteSourceBadge
 import com.socialdrive.app.ui.theme.LocalRouteMemoryColors
 
 @Composable
@@ -56,6 +57,7 @@ fun RecordingScreen(snapshot: RecordingSnapshot, onHighlight: () -> Unit, onRequ
                 Surface(shape = MaterialTheme.shapes.medium, color = colors.highlight.copy(alpha = .16f)) {
                     Text("●  기록 중", Modifier.padding(horizontal = 16.dp, vertical = 10.dp), style = MaterialTheme.typography.titleMedium, color = colors.highlight)
                 }
+                RouteSourceBadge(snapshot.routeSource, Modifier.padding(start = 12.dp))
                 Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
                     StatusIcon(Icons.Rounded.GpsFixed, "GPS", snapshot.gps)
                     StatusIcon(Icons.Rounded.DirectionsCar, "차량", snapshot.vehicle)

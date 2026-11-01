@@ -18,6 +18,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.socialdrive.app.data.EnqueueResult
 import com.socialdrive.app.data.fake.FakeDriveRepository
+import com.socialdrive.app.data.local.LocalState
 import com.socialdrive.app.domain.AppDestination
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.ContentState
@@ -28,6 +29,7 @@ import com.socialdrive.app.domain.NavigationRequestResult
 import com.socialdrive.app.domain.RecordingSnapshot
 import com.socialdrive.app.domain.ThemeMode
 import com.socialdrive.app.domain.UploadState
+import com.socialdrive.app.domain.PublishedDeleteDecision
 import com.socialdrive.app.safety.SafetyPolicy
 import com.socialdrive.app.ui.screens.DetailScreen
 import com.socialdrive.app.ui.screens.HomeScreen
@@ -50,6 +52,8 @@ fun SocialDriveApp(
     val vehicleMotion by offlineViewModel.vehicleMotion.collectAsStateWithLifecycle()
     val navigationState by offlineViewModel.navigationState.collectAsStateWithLifecycle()
     val navigationCapability by offlineViewModel.navigationCapability.collectAsStateWithLifecycle()
+    val routePrivacy by offlineViewModel.routePrivacy.collectAsStateWithLifecycle()
+    val deletePending by offlineViewModel.deletePending.collectAsStateWithLifecycle()
     var destination by rememberSaveable { mutableStateOf(AppDestination.Home) }
     val motion = vehicleMotion.motion
     var theme by rememberSaveable { mutableStateOf(ThemeMode.Night) }
@@ -59,6 +63,7 @@ fun SocialDriveApp(
     var sessionState by rememberSaveable { mutableStateOf(DriveSessionState.Idle) }
     var demoUploadState by rememberSaveable { mutableStateOf<UploadState?>(null) }
     var stopConfirmationRequested by rememberSaveable { mutableStateOf(false) }
+    var privacyMessage by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(persistedUploadState) {
         if (persistedUploadState != UploadState.Draft) demoUploadState = null
@@ -155,6 +160,7 @@ fun SocialDriveApp(
                             highlights = activeRecording?.highlightCount ?: 0,
                             gps = CapabilityState.Unavailable,
                             vehicle = vehicleMotion.integration.capability,
+                            routeSource = routePrivacy.displayedSource,
                         ),
                         onHighlight = { scope.launch { offlineViewModel.addHighlight() } },
                         onRequestStop = { stopConfirmationRequested = true },
@@ -189,6 +195,7 @@ fun SocialDriveApp(
                         } else {
                             "주차 상태를 확인한 뒤 게시물을 편집할 수 있어요."
                         },
+                        routeSource = routePrivacy.displayedSource,
                     )
                     AppDestination.Settings -> SettingsScreen(
                         motion = motion,
@@ -209,6 +216,35 @@ fun SocialDriveApp(
                         },
                         onThemeChange = { theme = it },
                         onBack = { navigate(AppDestination.Home) },
+                        routePrivacy = routePrivacy,
+                        privacyMessage = privacyMessage,
+                        onRequestLiveConsent = {
+                            scope.launch {
+                                val decision = offlineViewModel.requestLiveRouteConsent()
+                                privacyMessage = if (decision.unavailableReason != null) {
+                                    "실시간 경로 SDK가 아직 제공되지 않아 동의를 저장하지 않았어요. 데모 데이터만 계속 사용합니다."
+                                } else {
+                                    "경로 동의 상태를 저장했어요."
+                                }
+                            }
+                        },
+                        onWithdrawConsent = {
+                            scope.launch {
+                                val result = offlineViewModel.withdrawRouteConsent()
+                                privacyMessage = "동의를 철회하고 미게시 경로 ${result.purgedUnpublishedPointCount}개를 삭제했어요."
+                            }
+                        },
+                        hasPublishedDraft = latestDraft?.state == LocalState.PUBLISHED,
+                        deletePending = deletePending,
+                        onConfirmPublishedDelete = {
+                            scope.launch {
+                                privacyMessage = when (offlineViewModel.requestPublishedDelete(confirmed = true)) {
+                                    PublishedDeleteDecision.DeletePending -> "삭제 대기를 저장했어요. 실제 서버 삭제는 연결 구현 후 별도 실행됩니다."
+                                    PublishedDeleteDecision.ConfirmationRequired -> "삭제 확인이 필요해요."
+                                    PublishedDeleteDecision.NotPublished -> "게시된 기록만 삭제 요청할 수 있어요."
+                                }
+                            }
+                        },
                     )
                 }
             }

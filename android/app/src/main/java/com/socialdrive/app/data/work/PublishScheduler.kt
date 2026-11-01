@@ -48,6 +48,7 @@ class PublishScheduler(
 
     companion object {
         fun uniqueName(draftId: String) = "publish-draft-$draftId"
+        const val ROUTE_UPLOAD_TAG = "publish:route"
     }
 }
 
@@ -79,6 +80,7 @@ class PublishWorkChainEnqueuer(private val workManager: WorkManager) : PublishRe
         .setConstraints(constraints)
         .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
         .addTag("publish:$draftId")
+        .addTag(PublishScheduler.ROUTE_UPLOAD_TAG)
         .build()
 
 }

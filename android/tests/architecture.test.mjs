@@ -28,9 +28,10 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   const database = read("app/src/main/java/com/socialdrive/app/data/local/SocialDriveDatabase.kt");
   for (const table of ["recording_sessions", "drive_drafts", "upload_queue"]) assert.match(entities, new RegExp(table));
   assert.match(database, /exportSchema\s*=\s*true/);
-  assert.match(database, /version\s*=\s*3/);
+  assert.match(database, /version\s*=\s*4/);
   assert.match(database, /Migration\(1, 2\)/);
   assert.match(database, /Migration\(2, 3\)/);
+  assert.match(database, /Migration\(3, 4\)/);
   assert.match(database, /REMOTE_VERSION_REQUIRED/);
   assert.match(database, /status IN \('QUEUED', 'RUNNING', 'PAUSED_MOTION', 'FAILED'\)/);
   assert.match(database, /stage NOT IN \('COMPLETE', 'PUBLISHED', 'DELETED'\)/);
@@ -43,9 +44,11 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   const schema1 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/1.json"));
   const schema2 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/2.json"));
   const schema3 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/3.json"));
+  const schema4 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/4.json"));
   assert.equal(schema1.database.version, 1);
   assert.equal(schema2.database.version, 2);
   assert.equal(schema3.database.version, 3);
+  assert.equal(schema4.database.version, 4);
   const queue1 = schema1.database.entities.find((entity) => entity.tableName === "upload_queue");
   const queue2 = schema2.database.entities.find((entity) => entity.tableName === "upload_queue");
   assert.equal(queue1.fields.some((field) => field.columnName === "lastErrorCode"), false);
@@ -64,6 +67,10 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   assert.match(migrationTest, /failed-publish/);
   assert.match(migrationTest, /"PUBLISHED"/);
   assert.match(migrationTest, /"DELETED"/);
+  assert.match(migrationTest, /migrateThreeToFourAddsPrivacyStateWithoutChangingPublishRows/);
+  for (const table of ["route_privacy_state", "normalized_route_points", "published_delete_requests"]) {
+    assert.ok(schema4.database.entities.some((entity) => entity.tableName === table), table);
+  }
 });
 
 test("publish queue is stable restart-safe and keeps ephemeral credentials out of Room", () => {
@@ -279,8 +286,8 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 41/);
-  assert.match(readme, /does not compile Android framework code, the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
+  assert.match(coreRunner, /expectedTests = 48/);
+  assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 
 test("cloud API core isolates auth from presigned uploads and actual flavor never falls back to fake", () => {
@@ -432,6 +439,63 @@ test("unknown vehicle motion fails closed for parked-only actions", () => {
   const safety = read("app/src/main/java/com/socialdrive/app/safety/SafetyPolicy.kt");
   assert.match(safety, /MotionState\.Unknown\s*->\s*SafetyDecision\(false/);
   assert.match(safety, /motion\s*==\s*MotionState\.Parked/);
+});
+
+test("route source consent withdrawal and delete pending stay privacy safe", () => {
+  const domain = read("app/src/main/java/com/socialdrive/app/domain/RoutePrivacy.kt");
+  const repository = read("app/src/main/java/com/socialdrive/app/data/RoutePrivacyRepository.kt");
+  const routeFake = read("app/src/main/java/com/socialdrive/app/data/fake/FakeDriveRepository.kt");
+  const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
+  const daos = read("app/src/main/java/com/socialdrive/app/data/local/Daos.kt");
+  const scheduler = read("app/src/main/java/com/socialdrive/app/data/work/PublishScheduler.kt");
+  const remote = read("app/src/main/java/com/socialdrive/app/data/remote/RemoteDriveApi.kt");
+  const suite = read("app/src/test/java/com/socialdrive/app/domain/RoutePrivacyTest.kt");
+  const mainManifest = read("app/src/main/AndroidManifest.xml");
+  const build = read("app/build.gradle.kts");
+
+  for (const marker of [
+    "RouteSource", "DemoPreset", "LiveUnavailable", "SDK_COMING_SOON", "PERMISSION_DENIED",
+    "CAPABILITY_MISSING", "TestOnlyLiveRouteCapability", "RouteConsentState", "NotAsked", "Granted", "Withdrawn",
+  ]) assert.ok(domain.includes(marker), marker);
+  assert.match(domain, /class LiveAvailable internal constructor/);
+  const productionKotlin = kotlinFiles(path.join(root, "app/src/main"))
+    .map((file) => fs.readFileSync(file, "utf8")).join("\n");
+  assert.doesNotMatch(productionKotlin, /LiveAvailable\s*\(/);
+  assert.match(domain, /stopAndAwait\(\)[\s\S]*withdrawAndPurge\(\)[\s\S]*pendingUploads\.cancel/);
+  assert.match(repository, /RoomRoutePrivacyMutationStore/);
+  assert.doesNotMatch(repository, /RemoteDriveApi|CloudDriveClient|deleteDrive/);
+  assert.match(entities, /normalized_route_points/);
+  assert.match(entities, /published_delete_requests/);
+  assert.match(daos, /DELETE FROM normalized_route_points WHERE publicationState != 'PUBLISHED'/);
+  assert.match(daos, /status = 'PRIVACY_WITHDRAWN'/);
+  assert.match(daos, /stage NOT IN \('COMPLETE', 'CANCELLED'\)/);
+  assert.match(scheduler, /ROUTE_UPLOAD_TAG/);
+  assert.match(remote, /\{"schemaVersion":1,"path":\[/);
+  assert.match(remote, /"highlights":\[\]\}/);
+  assert.doesNotMatch(remote, /latitude|longitude/);
+  assert.doesNotMatch(build, /play-services-location|FusedLocationProvider|androidx\.core\.location/);
+  assert.doesNotMatch(mainManifest, /ACCESS_(?:FINE|COARSE|BACKGROUND)_LOCATION/);
+  assert.equal((routeFake.match(/routeSource = RouteSource\.DemoPreset/g) ?? []).length, 3);
+  for (const marker of [
+    "zero points before explicit consent", "atomically purges and tombstones", "late fake point",
+    "requires confirmation and only writes local pending",
+  ]) assert.ok(suite.includes(marker), marker);
+});
+
+test("demo route source remains visible across every route surface", () => {
+  for (const relative of [
+    "app/src/main/java/com/socialdrive/app/ui/screens/HomeScreen.kt",
+    "app/src/main/java/com/socialdrive/app/ui/screens/DetailScreen.kt",
+    "app/src/main/java/com/socialdrive/app/ui/screens/RecordingScreen.kt",
+    "app/src/main/java/com/socialdrive/app/ui/screens/PublishScreen.kt",
+    "app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt",
+  ]) {
+    const source = read(relative);
+    assert.match(source, /DemoDataBadge|RouteSourceBadge|데모 데이터/, relative);
+  }
+  const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
+  assert.match(settings, /enabled = motion == MotionState\.Parked/);
+  assert.match(settings, /SDK 준비 중 · Coming Soon/);
 });
 
 test("fake data fixtures contain no precise geographic coordinates or credentials", () => {

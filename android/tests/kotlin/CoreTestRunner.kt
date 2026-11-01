@@ -1,4 +1,5 @@
 import com.socialdrive.app.domain.IntegrationContractsTest
+import com.socialdrive.app.domain.RoutePrivacyTest
 import com.socialdrive.app.data.remote.CloudDriveClientTest
 import com.socialdrive.app.data.remote.RemoteDriveApiTest
 import com.socialdrive.app.data.work.PublishRecoveryPolicyTest
@@ -8,9 +9,10 @@ import java.lang.reflect.InvocationTargetException
 import org.junit.Test
 
 fun main() {
-    val expectedTests = 41
+    val expectedTests = 48
     val classes = listOf(
         IntegrationContractsTest::class.java,
+        RoutePrivacyTest::class.java,
         CloudDriveClientTest::class.java,
         RemoteDriveApiTest::class.java,
         PublishRecoveryPolicyTest::class.java,

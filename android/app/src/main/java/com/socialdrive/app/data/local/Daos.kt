@@ -193,4 +193,48 @@ interface UploadQueueDao {
           AND attempts = :attempts AND uploadRewindCount >= :maxRewinds
     """)
     suspend fun failPublishAtUploadLimit(draftId: String, attempts: Int, maxRewinds: Int, now: Long): Int
+
+    @Query("""
+        UPDATE upload_queue SET stage = 'CANCELLED', status = 'PRIVACY_WITHDRAWN',
+            nextAttemptAtEpochMs = 0, lastErrorCode = 'PRIVACY_WITHDRAWN', updatedAtEpochMs = :now
+        WHERE status IN ('QUEUED', 'RUNNING', 'FAILED', 'PAUSED_MOTION')
+          AND stage NOT IN ('COMPLETE', 'CANCELLED')
+    """)
+    suspend fun tombstonePendingForPrivacyWithdrawal(now: Long): Int
+
+    @Query("SELECT draftId FROM upload_queue WHERE status = 'PRIVACY_WITHDRAWN'")
+    suspend fun privacyWithdrawnDraftIds(): List<String>
+}
+
+@Dao
+interface RoutePrivacyDao {
+    @Query("SELECT * FROM route_privacy_state WHERE id = 1")
+    fun observe(): Flow<RoutePrivacyEntity?>
+
+    @Query("SELECT * FROM route_privacy_state WHERE id = 1")
+    suspend fun find(): RoutePrivacyEntity?
+
+    @Upsert
+    suspend fun upsert(state: RoutePrivacyEntity)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertPoint(point: NormalizedRoutePointEntity)
+
+    @Query("SELECT COUNT(*) FROM normalized_route_points WHERE publicationState != 'PUBLISHED'")
+    suspend fun unpublishedPointCount(): Int
+
+    @Query("SELECT COUNT(*) FROM normalized_route_points")
+    suspend fun pointCount(): Int
+
+    @Query("DELETE FROM normalized_route_points WHERE publicationState != 'PUBLISHED'")
+    suspend fun purgeUnpublishedPoints(): Int
+
+    @Upsert
+    suspend fun upsertDeleteRequest(request: PublishedDeleteRequestEntity)
+
+    @Query("SELECT * FROM published_delete_requests WHERE draftId = :draftId")
+    suspend fun findDeleteRequest(draftId: String): PublishedDeleteRequestEntity?
+
+    @Query("SELECT * FROM published_delete_requests WHERE draftId = :draftId")
+    fun observeDeleteRequest(draftId: String): Flow<PublishedDeleteRequestEntity?>
 }

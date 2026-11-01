@@ -25,6 +25,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.UploadState
+import com.socialdrive.app.domain.RouteSource
+import com.socialdrive.app.ui.components.RouteSourceBadge
 import com.socialdrive.app.ui.components.SafetyRestrictionBanner
 import com.socialdrive.app.ui.components.UploadStateChip
 
@@ -40,6 +42,7 @@ fun PublishScreen(
     onCopyChanged: (String, String) -> Unit = { _, _ -> },
     canAct: Boolean = canEdit,
     editingRestriction: String = "주차 상태를 확인한 뒤 게시물을 편집할 수 있어요.",
+    routeSource: RouteSource = RouteSource.DemoPreset,
 ) {
     var title by remember(initialTitle) { mutableStateOf(initialTitle) }
     var description by remember(initialDescription) { mutableStateOf(initialDescription) }
@@ -52,6 +55,7 @@ fun PublishScreen(
                 Text("대표 이미지 → 이야기 → 공개 범위 → 동의", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             UploadStateChip(uploadState)
+            RouteSourceBadge(routeSource, Modifier.padding(start = 10.dp))
         }
         if (!canEdit) SafetyRestrictionBanner(editingRestriction, Modifier.padding(vertical = 12.dp))
         Row(
@@ -62,7 +66,7 @@ fun PublishScreen(
                 Text("1  대표 장면", style = MaterialTheme.typography.titleLarge)
                 androidx.compose.material3.Card(Modifier.fillMaxWidth().weight(1f)) {
                     Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("DEMO ROUTE ARTWORK", color = MaterialTheme.colorScheme.secondary)
+                        Text("데모 데이터 · ROUTE ARTWORK", color = MaterialTheme.colorScheme.secondary)
                         Text("실제 위치와 사진은 포함되지 않습니다", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }

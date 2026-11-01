@@ -43,6 +43,7 @@ import com.socialdrive.app.domain.DriveSummary
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.IntegrationSource
 import com.socialdrive.app.domain.RoutePoint
+import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.ui.theme.LocalRouteMemoryColors
 
@@ -105,7 +106,7 @@ fun DriveSummaryCard(drive: DriveSummary, onClick: () -> Unit, modifier: Modifie
                     Metric(Icons.Rounded.Star, "하이라이트 ${drive.highlights}")
                 }
             }
-            DemoDataBadge(Modifier.align(Alignment.TopEnd).padding(16.dp))
+            RouteSourceBadge(drive.routeSource, Modifier.align(Alignment.TopEnd).padding(16.dp))
         }
     }
 }
@@ -121,7 +122,26 @@ private fun Metric(icon: androidx.compose.ui.graphics.vector.ImageVector, text: 
 @Composable
 fun DemoDataBadge(modifier: Modifier = Modifier) {
     Surface(modifier, shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = .86f)) {
-        Text("DEMO", Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+        Text("데모 데이터", Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+@Composable
+fun RouteSourceBadge(source: RouteSource, modifier: Modifier = Modifier) {
+    val label = when (source) {
+        RouteSource.DemoPreset -> "데모 데이터"
+        is RouteSource.LiveUnavailable -> "실시간 경로 사용 불가"
+        else -> "실시간 경로"
+    }
+    Surface(modifier, shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
+        Text(
+            label,
+            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

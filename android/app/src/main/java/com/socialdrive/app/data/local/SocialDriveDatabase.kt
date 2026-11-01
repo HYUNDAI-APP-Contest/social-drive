@@ -8,14 +8,22 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [RecordingEntity::class, DraftEntity::class, UploadQueueEntity::class],
-    version = 3,
+    entities = [
+        RecordingEntity::class,
+        DraftEntity::class,
+        UploadQueueEntity::class,
+        RoutePrivacyEntity::class,
+        NormalizedRoutePointEntity::class,
+        PublishedDeleteRequestEntity::class,
+    ],
+    version = 4,
     exportSchema = true,
 )
 abstract class SocialDriveDatabase : RoomDatabase() {
     abstract fun recordingDao(): RecordingDao
     abstract fun draftDao(): DraftDao
     abstract fun uploadQueueDao(): UploadQueueDao
+    abstract fun routePrivacyDao(): RoutePrivacyDao
 
     companion object {
         fun create(context: Context): SocialDriveDatabase = Room.databaseBuilder(
@@ -50,5 +58,43 @@ object RoomMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+    val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("""
+                CREATE TABLE IF NOT EXISTS route_privacy_state (
+                    id INTEGER NOT NULL,
+                    consentState TEXT NOT NULL,
+                    routeSource TEXT NOT NULL,
+                    unavailableReason TEXT,
+                    updatedAtEpochMs INTEGER NOT NULL,
+                    PRIMARY KEY(id)
+                )
+            """.trimIndent())
+            database.execSQL("""
+                INSERT OR IGNORE INTO route_privacy_state
+                    (id, consentState, routeSource, unavailableReason, updatedAtEpochMs)
+                VALUES (1, 'NotAsked', 'DemoPreset', NULL, 0)
+            """.trimIndent())
+            database.execSQL("""
+                CREATE TABLE IF NOT EXISTS normalized_route_points (
+                    recordingId TEXT NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    horizontal REAL NOT NULL,
+                    vertical REAL NOT NULL,
+                    publicationState TEXT NOT NULL,
+                    PRIMARY KEY(recordingId, sequence)
+                )
+            """.trimIndent())
+            database.execSQL("""
+                CREATE TABLE IF NOT EXISTS published_delete_requests (
+                    draftId TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    requestedAtEpochMs INTEGER NOT NULL,
+                    PRIMARY KEY(draftId)
+                )
+            """.trimIndent())
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 }

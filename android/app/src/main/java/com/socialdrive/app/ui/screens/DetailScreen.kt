@@ -37,8 +37,8 @@ import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.NavigationRequest
 import com.socialdrive.app.domain.NavigationState
-import com.socialdrive.app.ui.components.DemoDataBadge
 import com.socialdrive.app.ui.components.IntegrationStatusChip
+import com.socialdrive.app.ui.components.RouteSourceBadge
 import com.socialdrive.app.ui.components.RouteRibbon
 import com.socialdrive.app.ui.components.SafetyRestrictionBanner
 
@@ -85,7 +85,7 @@ fun DetailScreen(
                 Text(drive.title, style = MaterialTheme.typography.headlineMedium)
                 Text("${drive.date} · ${drive.duration} · ${drive.distance}", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            DemoDataBadge()
+            RouteSourceBadge(drive.routeSource)
             IntegrationStatusChip(navigationCapability, Modifier.padding(start = 8.dp))
             IconButton(onClick = { feedback = "데모에서는 개인정보 보호를 위해 외부 공유를 실행하지 않아요." }) {
                 Icon(Icons.Rounded.Share, contentDescription = "드라이브 공유 안내")
