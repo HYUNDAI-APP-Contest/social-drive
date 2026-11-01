@@ -248,6 +248,7 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.doesNotMatch(host, /myUserHandle\(\)\.identifier/);
   assert.match(host, /task_record_context_mismatch/);
   assert.match(host, /HIST_RECORD[\s\S]*HIST_ZERO/);
+  assert.ok(host.includes('Hist\\\\s+#[0-9]+:'));
   assert.match(host, /Global Resumed\/mFocusedApp\/application-token summaries use their own tNNN/);
   assert.match(host, /default_task_not_visible_active/);
   assert.match(host, /if \(current == previous\) return true/);
@@ -274,6 +275,8 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.match(hostTest, /task_representation_inconsistent/);
   assert.match(hostTest, /DrivingViewActivity t99/);
   assert.match(hostTest, /capturedStyleDump/);
+  assert.match(hostTest, /Hist  #0/);
+  assert.match(hostTest, /replace\("Hist  #", "Hist #"\)/);
   assert.match(hostTest, /1000299[\s\S]*1000318[\s\S]*1000304/);
   assert.match(hostTest, /drivingVisible = false/);
   assert.match(hostTest, /naviState = "STOPPED"/);

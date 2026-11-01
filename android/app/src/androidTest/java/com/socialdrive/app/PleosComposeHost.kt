@@ -242,8 +242,8 @@ internal object PleosReadinessParser {
 
     private val TASK_HEADER = Regex("\\bTask\\{[^\\n]*#([0-9]+)\\b")
     private val ACTIVITY_RECORD = Regex("ActivityRecord\\{[^\\n]*\\su([0-9]+)\\s+([A-Za-z0-9_.]+)/([A-Za-z0-9_.$]+)\\s+t([0-9]+)")
-    private val HIST_RECORD = Regex("\\bHist #[0-9]+:")
-    private val HIST_ZERO = Regex("\\bHist #0:")
+    private val HIST_RECORD = Regex("\\bHist\\s+#[0-9]+:")
+    private val HIST_ZERO = Regex("\\bHist\\s+#0:")
     private val VISIBILITY = Regex("(?:^|\\s)mVisible=(true|false)(?:\\s|$)")
     private val LIFECYCLE = Regex("(?:^|\\s)state=(CREATED|STARTED|RESUMED|PAUSED|STOPPED|DESTROYED)(?:\\s|$)")
 }

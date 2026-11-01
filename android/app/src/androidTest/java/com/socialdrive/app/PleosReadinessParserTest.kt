@@ -18,6 +18,8 @@ class PleosReadinessParserTest {
         val full = PleosReadinessParser.observe("42", fixture(fullComponents = true), "42", 10)
         assertEquals(listOf("10", "20", "30"), requireNotNull(short.snapshot).taskIds)
         assertEquals(short.snapshot, full.snapshot)
+        val singleSpaceHist = PleosReadinessParser.observe("42", fixture().replace("Hist  #", "Hist #"), "42", 10)
+        assertEquals(short.snapshot, singleSpaceHist.snapshot)
         val repeatedSections = PleosReadinessParser.observe("42", fixture() + fixture(), "42", 10)
         assertEquals(listOf("10", "20", "30"), requireNotNull(repeatedSections.snapshot).taskIds)
         val capturedStyle = PleosReadinessParser.observe("42", capturedStyleDump(), "42", 10)
@@ -104,7 +106,7 @@ class PleosReadinessParserTest {
         userId: Int = 10,
     ): String = """
         * Task{abc #$id type=standard}
-          * Hist #0: ActivityRecord{def u$userId $component t$id}
+          * Hist  #0: ActivityRecord{def u$userId $component t$id}
             mVisibleRequested=$visible mVisible=$visible mClientVisible=$visible
             state=$state stopped=${state == "STOPPED"}
     """.trimIndent() + "\n"
