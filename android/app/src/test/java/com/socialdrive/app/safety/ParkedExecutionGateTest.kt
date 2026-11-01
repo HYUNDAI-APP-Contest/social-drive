@@ -6,8 +6,10 @@ import com.socialdrive.app.data.remote.AssetUploadCommand
 import com.socialdrive.app.data.remote.RemoteDriveApi
 import com.socialdrive.app.data.remote.assetUploads
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,27 +17,40 @@ import kotlin.test.assertIs
 
 class ParkedExecutionGateTest {
     @Test
-    fun `transition after registration cancels before remote block starts`() = runTest {
-        val registered = CompletableDeferred<Unit>()
-        val gate = ParkedExecutionGate(MotionState.Parked) {
-            registered.complete(Unit)
-            awaitCancellation()
-        }
-        var remoteCalls = 0
-        var pauses = 0
-        val result = async {
-            gate.execute(onPaused = { pauses += 1 }) {
-                remoteCalls += 1
+    fun `stopped dispatcher transition after registration cancels before remote block starts`() =
+        runTest(StandardTestDispatcher()) {
+            val registered = CompletableDeferred<Unit>()
+            val releaseStart = CompletableDeferred<Unit>()
+            val gate = ParkedExecutionGate(MotionState.Parked) {
+                registered.complete(Unit)
+                releaseStart.await()
             }
+            var remoteCalls = 0
+            var pauses = 0
+            var queueState = "RUNNING"
+            val result = async {
+                gate.execute(onPaused = { pauses += 1; queueState = "PAUSED_MOTION" }) {
+                    remoteCalls += 1
+                }
+            }
+
+            registered.await()
+            val transition = async(start = CoroutineStart.UNDISPATCHED) {
+                gate.transitionTo(MotionState.Driving)
+            }
+            releaseStart.complete(Unit)
+            transition.await()
+
+            assertIs<ParkedExecutionResult.Paused>(result.await())
+            assertEquals(0, remoteCalls)
+            assertEquals(1, pauses)
+            assertEquals("PAUSED_MOTION", queueState)
+
+            gate.transitionTo(MotionState.Parked)
+            val replay = gate.execute(onPaused = {}) { remoteCalls += 1; "resumed" }
+            assertEquals("resumed", assertIs<ParkedExecutionResult.Completed<String>>(replay).value)
+            assertEquals(1, remoteCalls)
         }
-
-        registered.await()
-        gate.transitionTo(MotionState.Driving)
-
-        assertIs<ParkedExecutionResult.Paused>(result.await())
-        assertEquals(0, remoteCalls)
-        assertEquals(1, pauses)
-    }
 
     @Test
     fun `create upload and publish are cooperatively cancelled and never advance`() = runTest {

@@ -70,11 +70,15 @@ test("publish queue is stable restart-safe and keeps ephemeral credentials out o
   assert.match(scheduler, /PAUSED_MOTION[\s\S]*ExistingWorkPolicy\.REPLACE/);
   assert.equal((workers.match(/ParkedExecutionResult\.Paused[^\n]*return Result\.failure\(\)/g) ?? []).length, 3);
   const gate = read("app/src/main/java/com/socialdrive/app/safety/ParkedExecutionGate.kt");
-  assert.match(gate, /active \+= child[\s\S]*child\.start\(\)[\s\S]*registered\.complete/);
-  assert.match(gate, /children\.forEach \{ it\.cancel\(MotionTransitionCancellation\(\)\) \}/);
+  assert.match(gate, /CoroutineStart\.UNDISPATCHED[\s\S]*bodyEntered\.complete\(Unit\)[\s\S]*startGate\.await\(\)/);
+  assert.match(gate, /ActiveExecution\(child, settled\)[\s\S]*active \+= registration[\s\S]*bodyEntered\.await\(\)[\s\S]*afterChildRegistered\(\)[\s\S]*startGate\.complete\(Unit\)/);
+  assert.match(gate, /children\.forEach \{ it\.remoteChild\.cancel\(MotionTransitionCancellation\(\)\) \}/);
+  assert.match(gate, /pauseRecorded\.compareAndSet\(false, true\)/);
+  assert.match(gate, /withContext\(NonCancellable\)[\s\S]*settled\.complete\(Unit\)[\s\S]*registryMutex\.withLock \{ active\.remove\(registration\) \}/);
   const gateTest = read("app/src/test/java/com/socialdrive/app/safety/ParkedExecutionGateTest.kt");
   for (const stage of ["create", "upload", "publish"]) assert.match(gateTest, new RegExp(`"${stage}"`));
   assert.match(gateTest, /transition after registration cancels before remote block starts/);
+  assert.match(gateTest, /assertEquals\("PAUSED_MOTION", queueState\)/);
   const workTest = read("app/src/androidTest/java/com/socialdrive/app/PublishWorkChainTest.kt");
   assert.match(workTest, /recoverAfterProcessRestart\(\)[\s\S]*resumed\.count \{ !it\.state\.isFinished \}/);
   for (const marker of ["idempotencyKey", "checksumSha256Base64", "same checksum as success", "permanent conflict"]) assert.match(remote, new RegExp(marker));

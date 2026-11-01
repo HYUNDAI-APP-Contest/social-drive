@@ -4,6 +4,7 @@ import com.socialdrive.app.domain.MotionState
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.NonCancellable
@@ -11,7 +12,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -22,6 +22,13 @@ sealed interface ParkedExecutionResult<out T> {
 }
 
 private class MotionTransitionCancellation : CancellationException("Observed motion is not parked")
+private data class ActiveExecution(
+    val remoteChild: Deferred<*>,
+    val settled: Deferred<Unit>,
+)
+
+private fun CancellationException.isMotionTransition(): Boolean =
+    this is MotionTransitionCancellation || cause is MotionTransitionCancellation
 
 /**
  * Serializes observed motion transitions with the start of cooperative remote work.
@@ -31,33 +38,33 @@ private class MotionTransitionCancellation : CancellationException("Observed mot
  */
 class ParkedExecutionGate(
     initial: MotionState = MotionState.Unknown,
-    private val afterRegistration: suspend () -> Unit = {},
+    private val afterChildRegistered: suspend () -> Unit = {},
 ) {
     private val transitionMutex = Mutex()
     private val registryMutex = Mutex()
-    private val active = mutableSetOf<Deferred<ParkedExecutionResult<*>>>()
+    private val active = mutableSetOf<ActiveExecution>()
     private var observedState = initial
 
     suspend fun transitionTo(next: MotionState) = transitionMutex.withLock transition@{
         if (next == MotionState.Parked) {
             while (true) {
                 val children = registryMutex.withLock {
-                    active.removeAll { it.isCompleted }
+                    active.removeAll { it.settled.isCompleted }
                     if (active.isEmpty()) {
                         observedState = MotionState.Parked
                         return@transition
                     }
                     active.toList()
                 }
-                children.joinAll()
+                children.forEach { it.settled.await() }
             }
         } else {
             val children = registryMutex.withLock {
                 observedState = next
                 active.toList()
             }
-            children.forEach { it.cancel(MotionTransitionCancellation()) }
-            children.joinAll()
+            children.forEach { it.remoteChild.cancel(MotionTransitionCancellation()) }
+            children.forEach { it.settled.await() }
         }
     }
 
@@ -72,34 +79,48 @@ class ParkedExecutionGate(
         onPaused: suspend () -> Unit,
         remoteBlock: suspend CoroutineScope.() -> T,
     ): ParkedExecutionResult<T> = coroutineScope {
-        val allowed = AtomicBoolean(false)
-        val registered = CompletableDeferred<Unit>()
-        lateinit var child: Deferred<ParkedExecutionResult<T>>
-        child = async(start = kotlinx.coroutines.CoroutineStart.LAZY) {
-            try {
-                registered.await()
-                afterRegistration()
-                if (!allowed.get()) {
-                    withContext(NonCancellable) { onPaused() }
-                    return@async ParkedExecutionResult.Paused
-                }
-                currentCoroutineContext().ensureActive()
-                ParkedExecutionResult.Completed(remoteBlock())
-            } catch (error: MotionTransitionCancellation) {
+        val pauseRecorded = AtomicBoolean(false)
+        val bodyEntered = CompletableDeferred<Unit>()
+        val startGate = CompletableDeferred<Unit>()
+        suspend fun recordPauseOnce() {
+            if (pauseRecorded.compareAndSet(false, true)) {
                 withContext(NonCancellable) { onPaused() }
-                ParkedExecutionResult.Paused
             }
         }
+        val settled = CompletableDeferred<Unit>()
+        lateinit var child: Deferred<ParkedExecutionResult<T>>
+        lateinit var registration: ActiveExecution
         registryMutex.withLock {
-            allowed.set(observedState == MotionState.Parked)
-            active += child
-            child.start()
-            registered.complete(Unit)
+            val allowed = observedState == MotionState.Parked
+            child = async(start = CoroutineStart.UNDISPATCHED) {
+                bodyEntered.complete(Unit)
+                startGate.await()
+                if (!allowed) return@async ParkedExecutionResult.Paused
+                currentCoroutineContext().ensureActive()
+                ParkedExecutionResult.Completed(remoteBlock())
+            }
+            registration = ActiveExecution(child, settled)
+            active += registration
+            bodyEntered.await()
         }
         try {
-            child.await()
+            afterChildRegistered()
+            startGate.complete(Unit)
+            try {
+                child.await().also { result ->
+                    if (result is ParkedExecutionResult.Paused) recordPauseOnce()
+                }
+            } catch (error: CancellationException) {
+                if (!error.isMotionTransition()) throw error
+                recordPauseOnce()
+                ParkedExecutionResult.Paused
+            }
         } finally {
-            registryMutex.withLock { active.remove(child) }
+            withContext(NonCancellable) {
+                startGate.complete(Unit)
+                settled.complete(Unit)
+                registryMutex.withLock { active.remove(registration) }
+            }
         }
     }
 }
