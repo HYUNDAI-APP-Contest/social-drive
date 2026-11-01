@@ -32,7 +32,11 @@ import com.socialdrive.app.data.work.PublishWorkChainEnqueuer
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.safety.ParkedExecutionGate
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -61,7 +65,10 @@ class PublishWorkChainTest {
     }
 
     @After
-    fun tearDown() = database.close()
+    fun tearDown() {
+        TestWorkManagerLifecycle.close(WorkManager.getInstance(context))
+        database.close()
+    }
 
     @Test
     fun theSameDraftCreatesOnePersistentThreeStageChain() = runTest {
@@ -92,6 +99,7 @@ class PublishWorkChainTest {
         val work = manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id)).get(5, TimeUnit.SECONDS)
         val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
         work.forEach { driver.setAllConstraintsMet(it.id) }
+        awaitUniqueWorkFinished(draft.id)
 
         assertEquals(0, remote.calls)
         assertEquals(LocalState.PAUSED_MOTION, database.uploadQueueDao().find(draft.id)?.status)
@@ -121,6 +129,7 @@ class PublishWorkChainTest {
         val work = manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id)).get(5, TimeUnit.SECONDS)
         val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
         work.forEach { driver.setAllConstraintsMet(it.id) }
+        awaitUniqueWorkFinished(draft.id)
 
         assertEquals(1, remote.createCalls)
         assertEquals("remote-legacy", database.draftDao().find(draft.id)?.remoteDriveId)
@@ -146,6 +155,7 @@ class PublishWorkChainTest {
         val work = manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id)).get(5, TimeUnit.SECONDS)
         val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
         work.forEach { driver.setAllConstraintsMet(it.id) }
+        awaitUniqueWorkFinished(draft.id)
 
         assertEquals(1, remote.createCalls)
         assertEquals("remote-legacy", database.draftDao().find(draft.id)?.remoteDriveId)
@@ -166,6 +176,7 @@ class PublishWorkChainTest {
         val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
         manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id)).get(5, TimeUnit.SECONDS)
             .forEach { driver.setAllConstraintsMet(it.id) }
+        awaitUniqueWorkFinished(draft.id)
 
         val queue = requireNotNull(database.uploadQueueDao().find(draft.id))
         assertEquals(LocalState.PUBLISH, queue.stage)
@@ -207,6 +218,7 @@ class PublishWorkChainTest {
             .get(5, TimeUnit.SECONDS)
         val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
         work.forEach { driver.setAllConstraintsMet(it.id) }
+        awaitUniqueWorkFinished("draft-crash")
 
         assertEquals(0, remote.publishCalls)
         val queue = requireNotNull(database.uploadQueueDao().find("draft-crash"))
@@ -273,9 +285,22 @@ class PublishWorkChainTest {
         assertEquals(0, remote.uploadCalls)
         val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
         work.forEach { driver.setAllConstraintsMet(it.id) }
+        awaitUniqueWorkFinished(draft.id)
         assertEquals(1, remote.publishCalls)
         assertEquals(LocalState.COMPLETE, database.uploadQueueDao().find(draft.id)?.stage)
         assertEquals(ConflictState.RESOLVED, database.publishConflictDao().find(draft.id)?.state)
+    }
+
+    private suspend fun awaitUniqueWorkFinished(draftId: String) = withContext(Dispatchers.IO) {
+        withTimeout(5_000) {
+            while (true) {
+                val work = WorkManager.getInstance(context)
+                    .getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draftId))
+                    .get(5, TimeUnit.SECONDS)
+                if (work.isNotEmpty() && work.all { it.state.isFinished }) return@withTimeout
+                delay(10)
+            }
+        }
     }
 }
 

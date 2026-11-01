@@ -22,20 +22,20 @@ test("Android contract targets the automotive-compatible API floor", () => {
   assert.match(build, /getByName\("androidTest"\)\.assets\.srcDir\("\$projectDir\/schemas"\)/);
 });
 
-test("WorkManager uses on-demand Configuration Provider initialization in every manifest", () => {
+test("WorkManager uses target-only on-demand initialization without a test APK provider", () => {
   const mainManifest = read("app/src/main/AndroidManifest.xml");
   const testManifest = read("app/src/androidTest/AndroidManifest.xml");
   const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
   const build = read("app/build.gradle.kts");
   const instrumentation = read("app/src/androidTest/java/com/socialdrive/app/WorkManagerOnDemandInitializationTest.kt");
-  for (const manifest of [mainManifest, testManifest]) {
-    assert.match(manifest, /xmlns:tools="http:\/\/schemas\.android\.com\/tools"/);
-    assert.match(manifest, /android:name="androidx\.startup\.InitializationProvider"/);
-    assert.match(manifest, /android:authorities="\$\{applicationId\}\.androidx-startup"/);
-    assert.match(manifest, /tools:node="merge"/);
-    assert.match(manifest, /android:name="androidx\.work\.WorkManagerInitializer"[\s\S]*tools:node="remove"/);
-    assert.doesNotMatch(manifest, /<provider(?=[^>]*android:name="androidx\.startup\.InitializationProvider")[^>]*tools:node="remove"/);
-  }
+  assert.match(mainManifest, /xmlns:tools="http:\/\/schemas\.android\.com\/tools"/);
+  assert.match(mainManifest, /android:name="androidx\.startup\.InitializationProvider"/);
+  assert.match(mainManifest, /android:authorities="\$\{applicationId\}\.androidx-startup"/);
+  assert.match(mainManifest, /tools:node="merge"/);
+  assert.match(mainManifest, /android:name="androidx\.work\.WorkManagerInitializer"[\s\S]*tools:node="remove"/);
+  assert.doesNotMatch(mainManifest, /<provider(?=[^>]*android:name="androidx\.startup\.InitializationProvider")[^>]*tools:node="remove"/);
+  assert.doesNotMatch(testManifest, /InitializationProvider|WorkManagerInitializer|<provider/);
+  assert.match(testManifest, /separate package and must not declare the target app's/);
   assert.match(application, /class SocialDriveApplication : Application\(\), Configuration\.Provider/);
   assert.match(application, /override val workManagerConfiguration: Configuration/);
   assert.match(instrumentation, /SocialDriveTestApplication/);
@@ -127,6 +127,12 @@ test("publish queue is stable restart-safe and keeps ephemeral credentials out o
   assert.match(scheduler, /recoverAfterProcessRestart/);
   assert.match(application, /recoverQueuedWork\(\)/);
   assert.match(application, /publishScheduler\.recoverAfterProcessRestart/);
+  const workChainTest = read("app/src/androidTest/java/com/socialdrive/app/PublishWorkChainTest.kt");
+  const workLifecycle = read("app/src/androidTest/java/com/socialdrive/app/TestWorkManagerLifecycle.kt");
+  assert.match(workChainTest, /awaitUniqueWorkFinished/);
+  assert.match(workChainTest, /withContext\(Dispatchers\.IO\)[\s\S]*withTimeout\(5_000\)/);
+  assert.match(workChainTest, /TestWorkManagerLifecycle\.close/);
+  assert.match(workLifecycle, /cancelAllWork\(\)[\s\S]*getWorkInfos\(active\)[\s\S]*pruneWork\(\)[\s\S]*closeWorkDatabase\(\)/);
   for (const worker of ["CreateDriveWorker", "UploadAssetsWorker", "PublishDriveWorker"]) assert.match(scheduler, new RegExp(worker));
   assert.match(workers, /original draft is retained after acknowledgement/);
   assert.equal((workers.match(/executionGate\.execute\(/g) ?? []).length, 3);
@@ -577,6 +583,7 @@ test("published delete is parked durable idempotent bounded and fail closed", ()
   const actualFactory = read("app/src/pleos/java/com/socialdrive/app/data/remote/FlavorRemoteDeleteApiFactory.kt");
   const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
   const androidTest = read("app/src/androidTest/java/com/socialdrive/app/PublishedDeleteWorkTest.kt");
+  const offlineTest = read("app/src/androidTest/java/com/socialdrive/app/OfflinePersistenceTest.kt");
   const cancellationSuite = read("app/src/test/java/com/socialdrive/app/data/work/DeleteCancellationGuardTest.kt");
   const coreScript = read("scripts/test-kotlin-core.sh");
   assert.match(lifecycle, /MAX_ATTEMPTS = 4/);
@@ -605,6 +612,9 @@ test("published delete is parked durable idempotent bounded and fail closed", ()
   assert.doesNotMatch(actualFactory, /FakeRemoteDeleteApi/);
   assert.match(settings, /삭제 완료로 간주하지 않았습니다/);
   assert.match(settings, /로컬 원본은 유지/);
+  assert.match(androidTest, /awaitRealCondition[\s\S]*withContext\(Dispatchers\.IO\)[\s\S]*withTimeout\(5_000\)/);
+  assert.match(androidTest, /TestWorkManagerLifecycle\.close/);
+  assert.match(offlineTest, /assertEquals\("drive-request-11", request\.clientRequestId\)/);
   for (const marker of [
     "backend204ConfirmsTombstoneAndRetainsLocalOriginal",
     "backend404IsNotTreatedAsDeletionReceipt",

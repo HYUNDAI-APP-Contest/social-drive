@@ -229,7 +229,7 @@ class OfflinePersistenceTest {
         assertEquals(PublishedDeleteDecision.DeletePending, privacy.requestPublishedDelete(draft.id, true))
         val request = requireNotNull(database.publishedDeleteDao().find(draft.id))
         assertEquals(LocalState.DELETE_PENDING, request.state)
-        assertEquals("request-11", request.clientRequestId)
+        assertEquals("drive-request-11", request.clientRequestId)
         assertEquals("remote-published", request.remoteDriveId)
         assertEquals(64, request.idempotencyKeyHash.length)
         assertEquals(0, request.attempts)

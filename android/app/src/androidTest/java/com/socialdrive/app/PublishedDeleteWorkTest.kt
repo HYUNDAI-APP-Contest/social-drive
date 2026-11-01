@@ -35,8 +35,10 @@ import com.socialdrive.app.safety.ParkedExecutionGate
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -71,7 +73,10 @@ class PublishedDeleteWorkTest {
         )
     }
 
-    @After fun tearDown() = database.close()
+    @After fun tearDown() {
+        TestWorkManagerLifecycle.close(WorkManager.getInstance(context))
+        database.close()
+    }
 
     @Test
     fun backend204ConfirmsTombstoneAndRetainsLocalOriginal() = runTest {
@@ -163,8 +168,8 @@ class PublishedDeleteWorkTest {
         remote.entered.await()
 
         manager.cancelUniqueWork(DeleteWorkScheduler.uniqueName("draft-delete-6")).result.get(5, TimeUnit.SECONDS)
-        withTimeout(5_000) {
-            while (database.publishedDeleteDao().find("draft-delete-6")?.state == DeleteRequestState.RUNNING.name) delay(10)
+        awaitRealCondition {
+            database.publishedDeleteDao().find("draft-delete-6")?.state != DeleteRequestState.RUNNING.name
         }
         val interrupted = requireNotNull(database.publishedDeleteDao().find("draft-delete-6"))
         assertEquals(DeleteRequestState.RETRY_WAIT.name, interrupted.state)
@@ -174,8 +179,8 @@ class PublishedDeleteWorkTest {
         scheduler.enqueue("draft-delete-6", ExistingWorkPolicy.REPLACE)
         manager.getWorkInfosForUniqueWork(DeleteWorkScheduler.uniqueName("draft-delete-6"))
             .get(5, TimeUnit.SECONDS).filter { !it.state.isFinished }.forEach { driver.setAllConstraintsMet(it.id) }
-        withTimeout(5_000) {
-            while (database.publishedDeleteDao().find("draft-delete-6")?.state != DeleteRequestState.CONFIRMED.name) delay(10)
+        awaitRealCondition {
+            database.publishedDeleteDao().find("draft-delete-6")?.state == DeleteRequestState.CONFIRMED.name
         }
         assertEquals(2, remote.calls)
     }
@@ -203,12 +208,23 @@ class PublishedDeleteWorkTest {
         )
     }
 
-    private fun runDelete(draftId: String) {
+    private suspend fun runDelete(draftId: String) {
         val manager = WorkManager.getInstance(context)
         DeleteWorkScheduler(manager, database, motion).enqueue(draftId)
         val work = manager.getWorkInfosForUniqueWork(DeleteWorkScheduler.uniqueName(draftId)).get(5, TimeUnit.SECONDS)
         val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
         work.forEach { driver.setAllConstraintsMet(it.id) }
+        awaitRealCondition {
+            manager.getWorkInfosForUniqueWork(DeleteWorkScheduler.uniqueName(draftId))
+                .get(5, TimeUnit.SECONDS)
+                .let { it.isNotEmpty() && it.all { info -> info.state.isFinished } }
+        }
+    }
+
+    private suspend fun awaitRealCondition(condition: suspend () -> Boolean) = withContext(Dispatchers.IO) {
+        withTimeout(5_000) {
+            while (!condition()) delay(10)
+        }
     }
 }
 
