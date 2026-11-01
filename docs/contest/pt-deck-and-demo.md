@@ -12,7 +12,7 @@
 
 1. 실제 앱 화면과 실제 실행 증거를 먼저 보여 준다.
 2. `실제 SDK`, `앱 구현`, `코드 존재(미통합)`, `데모 데이터`, `미구현`, `향후 기능`을 같은 색상 체계로 끝까지 구분한다.
-3. Vehicle/NaviHelper adapter는 PLEOS 별도 브랜치 `6475287`에 `코드 존재(미통합)` 상태다. 독립 검토 `CHANGES_REQUIRED`와 Gradle·AVD 미검증을 표시하고, 후속 수정·검토와 AVD callback 증거가 생긴 뒤에만 `실제 SDK`로 승격한다.
+3. Vehicle/NaviHelper adapter는 최초 `6475287` 1차 반려 후 수정한 `98a2978`에 `코드 존재(미통합)` 상태다. 독립 재검토 진행 중과 Gradle·AVD 미검증을 표시하고, `APPROVE`와 AVD callback 증거가 생긴 뒤에만 `실제 SDK`로 승격한다.
 4. FusedLocation, STT, TTS, Vehicle Control은 실제 기능으로 말하지 않는다.
 5. MAU와 retention은 산식·검증 방법을 제시하고 근거 없는 숫자를 만들지 않는다.
 
@@ -59,7 +59,7 @@
 
 - Compose/Room/Worker: 현재 `코드 존재(미통합)`
 - preset 경로: `데모 데이터`
-- Vehicle/NaviHelper: 현재 PLEOS 브랜치 `6475287`의 `코드 존재(미통합)`, 검토 `CHANGES_REQUIRED`; 후속 검토와 AVD 실기 성공 후에만 `실제 SDK`
+- Vehicle/NaviHelper: 현재 1차 반려 후 수정 `98a2978`의 `코드 존재(미통합)`, 독립 재검토 진행 중; `APPROVE`와 AVD 실기 성공 후에만 `실제 SDK`
 
 ### 4장 — 모바일이 아니라 차량이어야 완성된다
 
@@ -72,7 +72,7 @@
 
 발표 문장:
 
-> 구현 목표는 Vehicle 상태로 사용자가 입력할 수 있는 순간을 결정하고 NaviHelper로 콘텐츠를 실제 주행에 연결하는 것입니다. 두 adapter는 PLEOS 브랜치 `6475287`에 있지만 검토 `CHANGES_REQUIRED`, main 미병합·Gradle/AVD 검증 전이며, Coming Soon SDK도 실제 기능으로 주장하지 않습니다.
+> 구현 목표는 Vehicle 상태로 사용자가 입력할 수 있는 순간을 결정하고 NaviHelper로 콘텐츠를 실제 주행에 연결하는 것입니다. 두 adapter는 1차 반려 후 수정 `98a2978`에 있지만 독립 재검토 진행 중, main 미병합·Gradle/AVD 검증 전이며, Coming Soon SDK도 실제 기능으로 주장하지 않습니다.
 
 평가 연결: 기술 활용성. [공식 개발 환경](https://appdevchallenge.auto-hmg.io/guide/development), [공식 SDK 상태](https://document.pleos.ai/en/docs/pleos-only/create-my-project)
 
@@ -105,7 +105,7 @@ Parked
 - Android 별도 작업 브랜치: recording session, `highlightCount`, draft, pending queue, preset reference와 안전 gate 코드
 - 백엔드 별도 작업 브랜치: Cognito JWT, DynamoDB, private S3 계약
 - 테스트 소스: 안전 정책, Room migration, 오프라인 복구, API security
-- PLEOS adapter 코드 증거: 별도 브랜치 `6475287`; 독립 검토 `CHANGES_REQUIRED`, race/lifecycle/permission 후속 수정 중
+- PLEOS adapter 코드 증거: 최초 `6475287` 1차 반려 후 race/lifecycle/permission 수정 `98a2978`; 독립 재검토 진행 중
 - 아직 없는 증거: 실제 경로점·위치 수집, 위치 동의·철회 UI, main 병합, Gradle 성공, AVD 실기 결과, 앱-AWS E2E, release APK
 - root `readme.md`: 공식 네 항목의 문서 구조 완료. 빌드·AVD·APK 실증 결과는 아직 갱신 필요
 
@@ -150,8 +150,8 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 | 0–7초 | 로고, 앱명, 차량 화면 | 없음 | “한 번의 터치가 다음 사람의 드라이브가 됩니다.” |
 | 7–17초 | SNS→지도→내비 재입력 Before | 문제 정의 | “좋은 코스를 발견해도 장소를 다시 찾아야 합니다.” |
 | 17–29초 | 피드와 드라이브 상세 | 현재 `코드 존재(미통합)` 또는 `데모 데이터` | 코스, 하이라이트, preset 목적지 확인 |
-| 29–43초 | `이 코스 따라가기`와 Navigation 앱 | 현재 `코드 존재(미통합)`; 검증 성공 시 `실제 SDK` | `6475287` 검토 `CHANGES_REQUIRED`. 후속 수정·Gradle·실제 NaviHelper callback 증거가 없으면 데모로 대체 |
-| 43–57초 | Virtual Console P→D, 앱 안전 전환 | 현재 `코드 존재(미통합)`; 검증 성공 시 `실제 SDK` | `6475287` 검토 `CHANGES_REQUIRED`. 후속 수정·Gradle·Vehicle AVD 증거가 없으면 데모로 대체 |
+| 29–43초 | `이 코스 따라가기`와 Navigation 앱 | 현재 `코드 존재(미통합)`; 검증 성공 시 `실제 SDK` | 1차 반려 후 수정 `98a2978`, 독립 재검토 진행 중. `APPROVE`·Gradle·실제 NaviHelper callback 증거가 없으면 데모로 대체 |
+| 43–57초 | Virtual Console P→D, 앱 안전 전환 | 현재 `코드 존재(미통합)`; 검증 성공 시 `실제 SDK` | 1차 반려 후 수정 `98a2978`, 독립 재검토 진행 중. `APPROVE`·Gradle·Vehicle AVD 증거가 없으면 데모로 대체 |
 | 57–70초 | 기록 화면에서 `방금 좋았어` 한 번 터치 | 현재 `코드 존재(미통합)` 또는 `데모 데이터` | 주행 중 긴 입력이 없음을 보여 줌 |
 | 70–80초 | 앱 종료·재실행 후 세션/초안 복원 | 검증 후 `앱 구현` | session·draft·queue persistence 증거. 실제 경로점 저장으로 표현 금지 |
 | 80–91초 | D 또는 Unknown에서 게시 진입 거부 | 검증 후 `앱 구현` | fail-closed 안전 정책 |
@@ -181,7 +181,7 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 
 ### 11월 4–6일 — 통합
 
-- 승인된 Android·백엔드 브랜치를 main 통합 후보로 준비
+- 독립 검토를 통과한 Android·백엔드 브랜치를 main 통합 후보로 준비
 - Android 인증·feed·drive·upload API 연결
 - private S3와 presigned upload E2E
 
@@ -280,11 +280,11 @@ No-Go 대응:
 
 ### 모바일 앱과 무엇이 다른가?
 
-완성 목표에서는 Vehicle 상태가 입력 가능 범위를 결정하고 NaviHelper가 콘텐츠를 차량의 실제 경로 안내로 전환한다. 두 adapter는 PLEOS 브랜치 `6475287`에 있지만 검토 `CHANGES_REQUIRED`, main 미병합·Gradle/AVD 검증 전이다. 이 목표가 실제 검증되면 모바일과 달리 차량 상태 기반 안전 전환부터 차량 Navigation 앱까지 흐름을 완결할 수 있다.
+완성 목표에서는 Vehicle 상태가 입력 가능 범위를 결정하고 NaviHelper가 콘텐츠를 차량의 실제 경로 안내로 전환한다. 두 adapter는 1차 반려 후 수정 `98a2978`에 있지만 독립 재검토 진행 중, main 미병합·Gradle/AVD 검증 전이다. 이 목표가 실제 검증되면 모바일과 달리 차량 상태 기반 안전 전환부터 차량 Navigation 앱까지 흐름을 완결할 수 있다.
 
 ### 주행 중 안전을 어떻게 강제하는가?
 
-별도 Android 작업 브랜치에는 Driving뿐 아니라 Unknown도 막는 정책과 Worker gate 코드가 존재하지만 아직 제출 브랜치에 통합·실행 검증되지 않았다. Vehicle adapter 후속 수정·독립 재검토·main 통합 후 UI 진입 시점과 원격 호출 직전에 실제 motion을 재검증하는 것을 release Go 조건으로 삼는다.
+별도 Android 작업 브랜치에는 Driving뿐 아니라 Unknown도 막는 정책과 Worker gate 코드가 존재하지만 아직 제출 브랜치에 통합·실행 검증되지 않았다. Vehicle adapter 독립 재검토 통과·main 통합 후 UI 진입 시점과 원격 호출 직전에 실제 motion을 재검증하는 것을 release Go 조건으로 삼는다.
 
 ### 위치정보는 언제 서버로 가는가?
 
