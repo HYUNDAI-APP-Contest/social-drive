@@ -1,13 +1,17 @@
 import com.socialdrive.app.domain.IntegrationContractsTest
+import com.socialdrive.app.data.remote.CloudDriveClientTest
+import com.socialdrive.app.data.remote.RemoteDriveApiTest
 import com.socialdrive.app.integration.NavigationGatewayCoordinatorTest
 import com.socialdrive.app.integration.NavigationRequestControllerTest
 import java.lang.reflect.InvocationTargetException
 import org.junit.Test
 
 fun main() {
-    val expectedTests = 15
+    val expectedTests = 25
     val classes = listOf(
         IntegrationContractsTest::class.java,
+        CloudDriveClientTest::class.java,
+        RemoteDriveApiTest::class.java,
         NavigationRequestControllerTest::class.java,
         NavigationGatewayCoordinatorTest::class.java,
     )

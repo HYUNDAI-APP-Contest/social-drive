@@ -7,7 +7,7 @@ import com.socialdrive.app.data.DraftRepository
 import com.socialdrive.app.data.PublishQueueRepository
 import com.socialdrive.app.data.RecordingRepository
 import com.socialdrive.app.data.local.SocialDriveDatabase
-import com.socialdrive.app.data.remote.FakeRemoteDriveApi
+import com.socialdrive.app.data.remote.FlavorRemoteDriveApiFactory
 import com.socialdrive.app.data.remote.RemoteDriveApi
 import com.socialdrive.app.data.work.PublishScheduler
 import com.socialdrive.app.data.work.PublishWorkerDependencies
@@ -25,7 +25,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val database: SocialDriveDatabase by lazy { SocialDriveDatabase.create(this) }
-    val remoteDriveApi: RemoteDriveApi by lazy { FakeRemoteDriveApi() }
+    val remoteDriveApi: RemoteDriveApi by lazy { FlavorRemoteDriveApiFactory.create() }
     val integrationBundle by lazy { FlavorIntegrationFactory.create(this) }
     val vehicleMotionSource get() = integrationBundle.vehicleMotionSource
     val navigationGateway get() = integrationBundle.navigationGateway

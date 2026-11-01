@@ -20,6 +20,9 @@ An offline-first visual foundation for the Hyundai app contest with isolated `de
 - Stable `clientRequestId` values, local-original retention through publish acknowledgement, and no persisted presigned URLs or tokens
 - A cancellation-aware Parked execution gate around every remote worker stage and process-restart recovery; Driving/Unknown pauses locally and blocks later calls
 - Replay-safe asset sessions keyed by stable `clientRequestId + assetId + SHA-256 checksum`; checksum conflicts fail closed
+- SDK-independent production cloud core for authenticated create/upload-session/publish/feed/detail/update/delete calls
+- Fresh in-memory Bearer sessions per API operation and a separate presigned-object transport that cannot inherit API authorization
+- Exact-host, HTTPS, `PUT`, signed content-type, and signed RFC 4648 checksum validation before any object upload
 
 ## Run
 
@@ -45,17 +48,17 @@ In a restricted shell where Gradle, network access, or its local lock-listener s
 bash scripts/test-kotlin-core.sh
 ```
 
-This compiles the production request controller/coordinator and executes their JVM tests. It does not compile the Android/Pleos vendor adapter, assemble an APK, or replace a Pleos emulator run.
+This compiles the production request controller/coordinator plus the SDK-independent cloud client/worker adapter and executes their JVM tests. It does not compile Android framework code, the Pleos vendor adapter, a concrete Cognito or HTTP SDK adapter, assemble an APK, call AWS, or replace a Pleos emulator run.
 
 ## Real versus demo
 
 | Area | Current behavior | Future boundary |
 | --- | --- | --- |
-| Route and drive feed | Preset normalized artwork and Korean copy | Authenticated feed API and cached feed entities |
+| Route and drive feed | Preset normalized artwork and Korean copy; production DTO/HTTP contract is implemented and fake-transport tested | Configure Cognito mobile client/API hosts, inject a concrete cancellation-cooperative HTTP transport, and add cached feed entities |
 | Motion state | Demo flavor simulation | Pleos flavor initializes Vehicle 2.3.2 but remains fail-closed `Unknown`; the public Brake API is not proof of parking |
 | Navigation | Demo feedback; fake records contain no coordinates | Pleos flavor initializes NaviHelper 3.0.5 and accepts only validated, privacy-reviewed route input |
 | Recording | Room session and draft persistence | Approved sensor adapter writing privacy-minimized samples |
-| Publish | Room/WorkManager queue with injected fake API | Cognito API adapter that consumes presigned URLs only in memory |
+| Publish | Room/WorkManager queue; demo flavor uses an explicit fake, while the actual flavor fails closed until configured | Inject the production cloud adapter with approved Cognito/API settings and a cancellation-cooperative HTTP transport |
 
 Driving or unknown motion cannot enter detail, publish, or editable settings. AWS keys, precise coordinates, and raw vehicle state must never be added to the APK.
 The Pleos flavor declares only `NAVI_ROUTE_SEARCH`. Vehicle is initialized and released but no permissioned Vehicle API is read, so `CAR_DRIVE` is intentionally absent. It does not include Fused Location, TTS, STT, or vehicle-control dependencies. A standard Android emulator cannot prove Pleos runtime behavior; use the matching Pleos Connect Emulator and approved SDK access before making a release claim.
@@ -68,5 +71,9 @@ The pinned repository, artifacts, permissions, lifecycle, listener, and route re
 The instrumented safety suite verifies that Driving/Unknown home states contain no feed or settings controls, system Back during recording opens the shared stop confirmation, and only the parked flow reaches publish.
 The publish admission check also fails closed for Driving and Unknown even if it is called outside Compose. Queued work stores only opaque local/remote IDs and retry metadata. The immutable `originalContentRef` and draft row remain until and after a successful publish acknowledgement; cleanup requires a separate future retention policy.
 Once a draft enters the queue its editable copy is locked (`state = DRAFT` is required for updates), so a retry cannot upload content different from the frozen local payload. The production API adapter must reissue an upload session using the stable idempotency key, sign checksum and content type, and treat only the same checksum as a replay; presigned URLs remain memory-only.
+
+The cloud core maps the stable local `clientRequestId` to both `clientDraftId` and `Idempotency-Key`. Create always sends a privacy-minimized `COVER + ROUTE` manifest with lowercase hexadecimal SHA-256. Upload retry calls `POST /drives/{id}/uploads` once with that complete, identical two-asset manifest; subset refresh is rejected locally. It then accepts only exact configured HTTPS hosts, `PUT`, signed content type, signed checksum, and byte count before uploading each asset. The object request is built by a transport separate from the authenticated API transport and rejects any `Authorization` header. Feed cursors are opaque values and are forwarded without decoding. Owner-hidden `404`, create idempotency conflict, version conflict, manifest mismatch, incomplete upload, and retryable service errors remain typed without echoing response bodies.
+
+Tokens, presigned/read URLs, request/response bodies, coordinates, and raw vehicle data are neither logged nor written to Room/WorkManager. Sensitive transport objects have redacted diagnostics. There is intentionally no embedded Cognito app client, API base URL, upload host, client secret, or AWS credential. Until those mobile settings and a concrete HTTP transport are approved and injected, the `pleos` flavor uses `UnavailableRemoteDriveApi` and never silently falls back to demo data.
 
 The motion gate coordinates the motion state observed by this process with cancellation-cooperative remote child jobs; it cannot make a physical vehicle signal and a network service globally atomic. After a Driving/Unknown transition is observed, no new remote block starts, in-flight work receives best-effort cancellation, and stable idempotency makes a replay safe if the service had already accepted the request. Motion pause ends the current WorkManager chain without consuming retry backoff. A later Parked transition waits for the pause record, then immediately replaces the unique chain at the same persisted stage and `clientRequestId`; only one replacement chain remains runnable.

@@ -54,6 +54,7 @@ test("publish queue is stable restart-safe and keeps ephemeral credentials out o
   const workers = read("app/src/main/java/com/socialdrive/app/data/work/PublishWorkers.kt");
   const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
   const remote = read("app/src/main/java/com/socialdrive/app/data/remote/RemoteDriveApi.kt");
+  const demoRemote = read("app/src/demo/java/com/socialdrive/app/data/remote/FakeRemoteDriveApi.kt");
   assert.doesNotMatch(entities, /presigned|credential|accessToken|uploadUrl/i);
   assert.match(repositories, /findByRecording\(id\)/);
   assert.match(repositories, /clientRequestId = "drive-\$\{ids\.create\(\)\}"/);
@@ -82,7 +83,7 @@ test("publish queue is stable restart-safe and keeps ephemeral credentials out o
   const workTest = read("app/src/androidTest/java/com/socialdrive/app/PublishWorkChainTest.kt");
   assert.match(workTest, /recoverAfterProcessRestart\(\)[\s\S]*resumed\.count \{ !it\.state\.isFinished \}/);
   for (const marker of ["idempotencyKey", "checksumSha256Base64", "same checksum as success", "permanent conflict"]) assert.match(remote, new RegExp(marker));
-  assert.match(remote, /putIfAbsent\(session, command\.checksumSha256Base64\)/);
+  assert.match(demoRemote, /putIfAbsent\(session, command\.checksumSha256Base64\)/);
 });
 
 test("Compose observes Room state and Android tests cover persistence and unique work", () => {
@@ -258,8 +259,61 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 15/);
-  assert.match(readme, /does not compile the Android\/Pleos vendor adapter, assemble an APK, or replace a Pleos emulator run/);
+  assert.match(coreRunner, /expectedTests = 25/);
+  assert.match(readme, /does not compile Android framework code, the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
+});
+
+test("cloud API core isolates auth from presigned uploads and actual flavor never falls back to fake", () => {
+  const contracts = read("app/src/main/java/com/socialdrive/app/data/remote/CloudDriveContracts.kt");
+  const client = read("app/src/main/java/com/socialdrive/app/data/remote/CloudDriveClient.kt");
+  const adapter = read("app/src/main/java/com/socialdrive/app/data/remote/CloudRemoteDriveApi.kt");
+  const workers = read("app/src/main/java/com/socialdrive/app/data/work/PublishWorkers.kt");
+  const remote = read("app/src/main/java/com/socialdrive/app/data/remote/RemoteDriveApi.kt");
+  const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
+  const demoFactory = read("app/src/demo/java/com/socialdrive/app/data/remote/FlavorRemoteDriveApiFactory.kt");
+  const demoFake = read("app/src/demo/java/com/socialdrive/app/data/remote/FakeRemoteDriveApi.kt");
+  const actualFactory = read("app/src/pleos/java/com/socialdrive/app/data/remote/FlavorRemoteDriveApiFactory.kt");
+  const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
+  const coreScript = read("scripts/test-kotlin-core.sh");
+  const suite = read("app/src/test/java/com/socialdrive/app/data/remote/CloudDriveClientTest.kt");
+
+  assert.match(contracts, /fun interface AuthSessionProvider/);
+  assert.match(contracts, /freshBearerToken/);
+  assert.match(contracts, /fun interface ApiHttpTransport/);
+  assert.match(contracts, /fun interface ObjectUploadTransport/);
+  assert.match(client, /"Authorization" to token\.authorizationHeader\(\)/);
+  assert.match(client, /check\(request\.headers\.keys\.none \{ it\.equals\("authorization"/);
+  assert.match(client, /allowedUploadHosts/);
+  assert.match(client, /"content-type"/);
+  assert.match(client, /"x-amz-checksum-sha256"/);
+  assert.match(client, /fun refreshUploads/);
+  assert.match(client, /fun feed/);
+  assert.match(client, /fun getDrive/);
+  assert.match(client, /fun updateDrive/);
+  assert.match(client, /fun deleteDrive/);
+  assert.match(adapter, /clientRequestId = clientRequestId/);
+  assert.match(adapter, /client\.refreshUploads/);
+  assert.match(adapter, /override suspend fun uploadAssets/);
+  assert.match(adapter, /commands\.map\(AssetUploadCommand::manifest\)[\s\S]*client\.refreshUploads\(remoteDriveId, manifests\)/);
+  assert.match(workers, /remote\.uploadAssets\(remoteId, draft\.snapshot\(\)\.assetUploads\(\)\)/);
+  assert.doesNotMatch(workers, /assetUploads\(\)\.forEach/);
+  assert.match(remote, /AssetKind\.COVER/);
+  assert.match(remote, /AssetKind\.ROUTE/);
+  assert.match(application, /FlavorRemoteDriveApiFactory\.create\(\)/);
+  assert.match(demoFactory, /FakeRemoteDriveApi/);
+  assert.match(demoFake, /class FakeRemoteDriveApi/);
+  assert.doesNotMatch(remote, /class FakeRemoteDriveApi/);
+  assert.doesNotMatch(actualFactory, /FakeRemoteDriveApi/);
+  assert.match(actualFactory, /UnavailableRemoteDriveApi/);
+  assert.doesNotMatch(entities, /bearer|token|presigned|uploadUrl|authorization/i);
+  assert.doesNotMatch(client + contracts + adapter, /android\.util\.Log|println\(|printStackTrace/);
+  for (const source of ["CloudDriveClient.kt", "CloudDriveClientTest.kt", "CloudRemoteDriveApi.kt"]) {
+    assert.ok(coreScript.includes(source), source);
+  }
+  for (const marker of [
+    "fresh bearer token", "stable request id", "exact manifest", "only signed headers",
+    "foreign host", "opaque cursor", "typed conflicts", "indistinguishable",
+  ]) assert.ok(suite.includes(marker), marker);
 });
 
 test("integration UI is explicit about actual demo unavailable and coming-soon features", () => {

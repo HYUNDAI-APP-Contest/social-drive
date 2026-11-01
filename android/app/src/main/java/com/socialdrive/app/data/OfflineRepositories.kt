@@ -20,17 +20,6 @@ object RandomIdFactory : IdFactory {
     override fun create(): String = UUID.randomUUID().toString()
 }
 
-data class DraftSnapshot(
-    val id: String,
-    val recordingId: String,
-    val clientRequestId: String,
-    val title: String,
-    val description: String,
-    val coverPreset: String,
-    val originalContentRef: String,
-    val state: String,
-)
-
 sealed interface EnqueueResult {
     data class Enqueued(val draftId: String, val clientRequestId: String) : EnqueueResult
     data object AlreadyQueued : EnqueueResult

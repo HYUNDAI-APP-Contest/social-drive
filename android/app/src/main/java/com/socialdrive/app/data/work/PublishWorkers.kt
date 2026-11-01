@@ -147,10 +147,8 @@ class UploadAssetsWorker(
             val execution = dependencies.executionGate.execute(
                 onPaused = { pauseForMotion(id, queue.stage, queue.attempts + 1) },
             ) {
-                // Each retry uses the same server session key and checksum; URLs remain in memory.
-                draft.snapshot().assetUploads().forEach { asset ->
-                    dependencies.remote.uploadAsset(remoteId, asset)
-                }
+                // Each retry refreshes the complete frozen manifest; returned URLs remain in memory.
+                dependencies.remote.uploadAssets(remoteId, draft.snapshot().assetUploads())
             }
             if (execution is ParkedExecutionResult.Paused) return Result.failure()
             val now = dependencies.clock()

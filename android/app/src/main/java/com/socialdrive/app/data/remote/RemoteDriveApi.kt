@@ -3,13 +3,9 @@ package com.socialdrive.app.data.remote
 import com.socialdrive.app.data.DraftSnapshot
 import java.security.MessageDigest
 import java.util.Base64
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.yield
 
-enum class RemoteFailureCode { OFFLINE, TIMEOUT, SERVER_BUSY, REJECTED, UNKNOWN }
+enum class RemoteFailureCode { OFFLINE, TIMEOUT, SERVER_BUSY, AUTHENTICATION, NOT_FOUND, CONFLICT, REJECTED, CONFIGURATION, UNKNOWN }
 
 class RemoteDriveException(
     val code: RemoteFailureCode,
@@ -19,25 +15,43 @@ class RemoteDriveException(
 data class AssetUploadCommand(
     val clientRequestId: String,
     val assetId: String,
+    val kind: AssetKind,
     val idempotencyKey: String,
+    val checksumSha256Hex: String,
     val checksumSha256Base64: String,
     val contentType: String,
     val content: ByteArray,
 )
 
 fun DraftSnapshot.assetUploads(): List<AssetUploadCommand> {
-    val content = "route-memory:$coverPreset:$originalContentRef".toByteArray(Charsets.UTF_8)
-    val checksum = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(content))
-    val assetId = "route-memory-cover-v1"
+    // Contest-safe placeholders contain no original local reference, coordinate, or raw vehicle field.
+    val cover = byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0xd9.toByte())
+    val route = """{"schemaVersion":1,"path":[{"horizontal":0.2,"vertical":0.7,"progress":0.0},{"horizontal":0.8,"vertical":0.3,"progress":1.0}],"highlights":[]}"""
+        .toByteArray(Charsets.UTF_8)
     return listOf(
-        AssetUploadCommand(
-            clientRequestId = clientRequestId,
-            assetId = assetId,
-            idempotencyKey = "$clientRequestId:$assetId:$checksum",
-            checksumSha256Base64 = checksum,
-            contentType = "application/vnd.socialdrive.route-memory+json",
-            content = content,
-        ),
+        uploadCommand(AssetKind.COVER, "route-memory-cover-v1", "image/jpeg", cover),
+        uploadCommand(AssetKind.ROUTE, "route-memory-route-v1", "application/json", route),
+    )
+}
+
+private fun DraftSnapshot.uploadCommand(
+    kind: AssetKind,
+    assetId: String,
+    contentType: String,
+    content: ByteArray,
+): AssetUploadCommand {
+    val digest = MessageDigest.getInstance("SHA-256").digest(content)
+    val hex = digest.joinToString("") { "%02x".format(it) }
+    val base64 = Base64.getEncoder().encodeToString(digest)
+    return AssetUploadCommand(
+        clientRequestId = clientRequestId,
+        assetId = assetId,
+        kind = kind,
+        idempotencyKey = "$clientRequestId:$assetId:$hex",
+        checksumSha256Hex = hex,
+        checksumSha256Base64 = base64,
+        contentType = contentType,
+        content = content,
     )
 }
 
@@ -50,39 +64,14 @@ fun DraftSnapshot.assetUploads(): List<AssetUploadCommand> {
  */
 interface RemoteDriveApi {
     suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): String
-    suspend fun uploadAsset(remoteDriveId: String, command: AssetUploadCommand)
+    suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>)
     suspend fun publishDrive(remoteDriveId: String, clientRequestId: String)
 }
 
-class FakeRemoteDriveApi : RemoteDriveApi {
-    private val drives = ConcurrentHashMap<String, String>()
-    private val uploadedChecksums = ConcurrentHashMap<String, String>()
-    private val published = ConcurrentHashMap.newKeySet<String>()
-
-    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): String {
-        currentCoroutineContext().ensureActive()
-        yield()
-        return drives.computeIfAbsent(clientRequestId) { "demo-${draft.id}" }
-    }
-
-    override suspend fun uploadAsset(remoteDriveId: String, command: AssetUploadCommand) {
-        currentCoroutineContext().ensureActive()
-        yield()
-        val actual = Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(command.content))
-        val expectedKey = "${command.clientRequestId}:${command.assetId}:${command.checksumSha256Base64}"
-        if (actual != command.checksumSha256Base64 || command.idempotencyKey != expectedKey) {
-            throw RemoteDriveException(RemoteFailureCode.REJECTED, retryable = false)
-        }
-        val session = "$remoteDriveId:${command.clientRequestId}:${command.assetId}"
-        val existing = uploadedChecksums.putIfAbsent(session, command.checksumSha256Base64)
-        if (existing != null && existing != command.checksumSha256Base64) {
-            throw RemoteDriveException(RemoteFailureCode.REJECTED, retryable = false)
-        }
-    }
-
-    override suspend fun publishDrive(remoteDriveId: String, clientRequestId: String) {
-        currentCoroutineContext().ensureActive()
-        yield()
-        published += remoteDriveId
-    }
+/** Explicit fail-closed production boundary used when authenticated mobile configuration is absent. */
+class UnavailableRemoteDriveApi : RemoteDriveApi {
+    private fun unavailable(): Nothing = throw RemoteDriveException(RemoteFailureCode.CONFIGURATION, retryable = false)
+    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): String = unavailable()
+    override suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>) = unavailable()
+    override suspend fun publishDrive(remoteDriveId: String, clientRequestId: String) = unavailable()
 }

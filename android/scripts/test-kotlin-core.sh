@@ -19,9 +19,18 @@ classpath="$kotlin_home/lib/kotlin-test.jar:$kotlin_home/lib/kotlin-test-junit.j
 "$kotlin_home/bin/kotlinc" \
   "$android_root/app/src/main/java/com/socialdrive/app/domain/Models.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/domain/IntegrationContracts.kt" \
+  "$android_root/app/src/main/java/com/socialdrive/app/data/DraftSnapshot.kt" \
+  "$android_root/app/src/main/java/com/socialdrive/app/data/remote/JsonCodec.kt" \
+  "$android_root/app/src/main/java/com/socialdrive/app/data/remote/CloudDriveContracts.kt" \
+  "$android_root/app/src/main/java/com/socialdrive/app/data/remote/CloudDriveClient.kt" \
+  "$android_root/app/src/main/java/com/socialdrive/app/data/remote/RemoteDriveApi.kt" \
+  "$android_root/app/src/main/java/com/socialdrive/app/data/remote/CloudRemoteDriveApi.kt" \
+  "$android_root/app/src/demo/java/com/socialdrive/app/data/remote/FakeRemoteDriveApi.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/integration/NavigationRequestController.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/integration/NavigationGatewayCoordinator.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/domain/IntegrationContractsTest.kt" \
+  "$android_root/app/src/test/java/com/socialdrive/app/data/remote/CloudDriveClientTest.kt" \
+  "$android_root/app/src/testDemo/java/com/socialdrive/app/data/remote/RemoteDriveApiTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/integration/NavigationRequestControllerTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/integration/NavigationGatewayCoordinatorTest.kt" \
   "$android_root/tests/kotlin/CoreTestRunner.kt" \

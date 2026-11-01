@@ -1,7 +1,9 @@
 package com.socialdrive.app.data.remote
 
 import com.socialdrive.app.data.DraftSnapshot
-import kotlinx.coroutines.test.runTest
+import java.security.MessageDigest
+import java.util.Base64
+import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -19,33 +21,32 @@ class RemoteDriveApiTest {
     )
 
     @Test
-    fun `same asset session and checksum is replay safe`() = runTest {
+    fun `same asset session and checksum is replay safe`() = runBlocking {
         val api = FakeRemoteDriveApi()
         val remoteId = api.createDrive(draft.clientRequestId, draft)
-        val command = draft.assetUploads().single()
-
-        api.uploadAsset(remoteId, command)
-        api.uploadAsset(remoteId, command)
-
-        assertEquals(command.idempotencyKey, draft.assetUploads().single().idempotencyKey)
+        val commands = draft.assetUploads()
+        api.uploadAssets(remoteId, commands)
+        api.uploadAssets(remoteId, commands)
+        assertEquals(commands.first().idempotencyKey, draft.assetUploads().first().idempotencyKey)
     }
 
     @Test
-    fun `same session with a different checksum fails closed`() = runTest {
+    fun `same session with a different checksum fails closed`() = runBlocking {
         val api = FakeRemoteDriveApi()
         val remoteId = api.createDrive(draft.clientRequestId, draft)
-        val command = draft.assetUploads().single()
-        api.uploadAsset(remoteId, command)
-
-        val differentChecksum = java.util.Base64.getEncoder().encodeToString(
-            java.security.MessageDigest.getInstance("SHA-256").digest("different".toByteArray()),
+        val commands = draft.assetUploads()
+        val command = commands.first()
+        api.uploadAssets(remoteId, commands)
+        val differentChecksum = Base64.getEncoder().encodeToString(
+            MessageDigest.getInstance("SHA-256").digest("different".toByteArray()),
         )
         val conflict = command.copy(
-            idempotencyKey = "${command.clientRequestId}:${command.assetId}:$differentChecksum",
+            idempotencyKey = "${command.clientRequestId}:${command.assetId}:${"0".repeat(64)}",
+            checksumSha256Hex = "0".repeat(64),
             checksumSha256Base64 = differentChecksum,
             content = "different".toByteArray(),
         )
-        val error = assertFailsWith<RemoteDriveException> { api.uploadAsset(remoteId, conflict) }
+        val error = assertFailsWith<RemoteDriveException> { api.uploadAssets(remoteId, listOf(conflict, commands.last())) }
         assertEquals(RemoteFailureCode.REJECTED, error.code)
         assertEquals(false, error.retryable)
     }

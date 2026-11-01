@@ -99,6 +99,6 @@ private class CountingRemoteDriveApi : RemoteDriveApi {
         calls += 1
         return "remote-${draft.id}"
     }
-    override suspend fun uploadAsset(remoteDriveId: String, command: AssetUploadCommand) { calls += 1 }
+    override suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>) { calls += 1 }
     override suspend fun publishDrive(remoteDriveId: String, clientRequestId: String) { calls += 1 }
 }
