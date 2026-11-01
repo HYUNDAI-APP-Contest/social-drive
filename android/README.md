@@ -12,6 +12,9 @@ An offline-first visual foundation for the Hyundai app contest. The current buil
 - On-screen demo controls for every content and upload state
 - Confirmed recording stop: parked sessions continue to publish; driving/unknown sessions retain a draft without opening editing
 - Explicit demo badges and capability boundaries for future Pleos adapters
+- Room-backed recording sessions, durable drafts, and a staged upload queue with exported schemas and non-destructive migrations
+- A unique WorkManager chain per draft (`create → asset upload → publish`) that resumes after process restart
+- Stable `clientRequestId` values, local-original retention through publish acknowledgement, and no persisted presigned URLs or tokens
 
 ## Run
 
@@ -35,11 +38,12 @@ npm test
 
 | Area | Current behavior | Future boundary |
 | --- | --- | --- |
-| Route and drive feed | Preset normalized artwork and Korean copy | Room and authenticated feed API |
+| Route and drive feed | Preset normalized artwork and Korean copy | Authenticated feed API and cached feed entities |
 | Motion state | Settings simulation | `CarUxRestrictions`/Pleos vehicle capability |
 | Navigation | Capability placeholder | NaviHelper adapter |
-| Recording | Local UI state | Room session persistence and approved sensors |
-| Publish | Consent UI and fake success | Cognito JWT, presigned S3 upload, DynamoDB API |
+| Recording | Room session and draft persistence | Approved sensor adapter writing privacy-minimized samples |
+| Publish | Room/WorkManager queue with injected fake API | Cognito API adapter that consumes presigned URLs only in memory |
 
 Driving or unknown motion cannot enter detail, publish, or editable settings. AWS keys, precise coordinates, and raw vehicle state must never be added to the APK.
 The instrumented safety suite verifies that Driving/Unknown home states contain no feed or settings controls, system Back during recording opens the shared stop confirmation, and only the parked flow reaches publish.
+The publish admission check also fails closed for Driving and Unknown even if it is called outside Compose. Queued work stores only opaque local/remote IDs and retry metadata. The immutable `originalContentRef` and draft row remain until and after a successful publish acknowledgement; cleanup requires a separate future retention policy.

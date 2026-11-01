@@ -17,7 +17,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,7 +24,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
 import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.ui.components.SafetyRestrictionBanner
 import com.socialdrive.app.ui.components.UploadStateChip
@@ -37,16 +35,15 @@ fun PublishScreen(
     onUploadStateChange: (UploadState) -> Unit,
     onBack: () -> Unit,
     onDone: () -> Unit,
+    initialTitle: String = "빛나는 해안도로의 저녁",
+    initialDescription: String = "바다를 따라 만난 좋은 순간을 나눠요.",
+    onCopyChanged: (String, String) -> Unit = { _, _ -> },
+    canAct: Boolean = canEdit,
+    editingRestriction: String = "주차 상태를 확인한 뒤 게시물을 편집할 수 있어요.",
 ) {
-    var title by remember { mutableStateOf("빛나는 해안도로의 저녁") }
-    var description by remember { mutableStateOf("바다를 따라 만난 좋은 순간을 나눠요.") }
+    var title by remember(initialTitle) { mutableStateOf(initialTitle) }
+    var description by remember(initialDescription) { mutableStateOf(initialDescription) }
     var consent by remember { mutableStateOf(false) }
-    LaunchedEffect(uploadState) {
-        if (uploadState == UploadState.Uploading) {
-            delay(900)
-            onUploadStateChange(UploadState.Published)
-        }
-    }
     Column(Modifier.fillMaxSize().padding(24.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, contentDescription = "뒤로가기") }
@@ -56,7 +53,7 @@ fun PublishScreen(
             }
             UploadStateChip(uploadState)
         }
-        if (!canEdit) SafetyRestrictionBanner("주차 상태를 확인한 뒤 게시물을 편집할 수 있어요.", Modifier.padding(vertical = 12.dp))
+        if (!canEdit) SafetyRestrictionBanner(editingRestriction, Modifier.padding(vertical = 12.dp))
         Row(
             Modifier.fillMaxSize().padding(top = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(24.dp),
@@ -72,11 +69,31 @@ fun PublishScreen(
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("2  나의 이야기", style = MaterialTheme.typography.titleLarge)
-                OutlinedTextField(title, { title = it.take(40) }, Modifier.fillMaxWidth(), enabled = canEdit, label = { Text("제목") }, singleLine = true)
-                OutlinedTextField(description, { description = it.take(120) }, Modifier.fillMaxWidth(), enabled = canEdit, label = { Text("짧은 설명") }, minLines = 3)
+                OutlinedTextField(
+                    title,
+                    {
+                        title = it.take(40)
+                        onCopyChanged(title, description)
+                    },
+                    Modifier.fillMaxWidth(),
+                    enabled = canEdit,
+                    label = { Text("제목") },
+                    singleLine = true,
+                )
+                OutlinedTextField(
+                    description,
+                    {
+                        description = it.take(120)
+                        onCopyChanged(title, description)
+                    },
+                    Modifier.fillMaxWidth(),
+                    enabled = canEdit,
+                    label = { Text("짧은 설명") },
+                    minLines = 3,
+                )
                 Text("3  공개 범위 · 전체 공개", style = MaterialTheme.typography.titleMedium)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = consent, onCheckedChange = { consent = it }, enabled = canEdit)
+                    Checkbox(checked = consent, onCheckedChange = { consent = it }, enabled = canAct)
                     Text("게시할 데모 경로와 하이라이트 정보를 확인했습니다.")
                 }
                 Text("정밀 위치와 원시 차량 상태는 업로드하지 않습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -94,8 +111,8 @@ fun PublishScreen(
                 when (uploadState) {
                     UploadState.Published -> Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("피드에서 확인하기") }
                     UploadState.Uploading -> Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("안전하게 업로드 중…") }
-                    UploadState.Failed -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canEdit && consent, modifier = Modifier.fillMaxWidth()) { Text("업로드 다시 시도") }
-                    UploadState.Queued -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canEdit && consent, modifier = Modifier.fillMaxWidth()) { Text("네트워크 연결 후 업로드") }
+                    UploadState.Failed -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canAct && consent, modifier = Modifier.fillMaxWidth()) { Text("업로드 다시 시도") }
+                    UploadState.Queued -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("네트워크 연결을 기다리는 중") }
                     UploadState.Draft -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canEdit && consent, modifier = Modifier.fillMaxWidth()) { Text("안전하게 게시하기") }
                 }
             }

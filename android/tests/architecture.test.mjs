@@ -16,6 +16,53 @@ test("Android contract targets the automotive-compatible API floor", () => {
   assert.match(build, /minSdk\s*=\s*28/);
   assert.match(build, /buildFeatures\s*\{\s*compose\s*=\s*true/);
   assert.match(build, /androidx\.compose\.material3:material3/);
+  assert.match(build, /androidx\.room:room-runtime:2\.6\.1/);
+  assert.match(build, /androidx\.work:work-runtime-ktx:2\.9\.1/);
+  assert.match(build, /room\.schemaLocation/);
+});
+
+test("Room owns durable recordings drafts and a non-destructive migration path", () => {
+  const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
+  const daos = read("app/src/main/java/com/socialdrive/app/data/local/Daos.kt");
+  const database = read("app/src/main/java/com/socialdrive/app/data/local/SocialDriveDatabase.kt");
+  for (const table of ["recording_sessions", "drive_drafts", "upload_queue"]) assert.match(entities, new RegExp(table));
+  assert.match(database, /exportSchema\s*=\s*true/);
+  assert.match(database, /Migration\(1, 2\)/);
+  assert.match(database, /addMigrations\(RoomMigrations\.MIGRATION_1_2\)/);
+  assert.doesNotMatch(database, /fallbackToDestructiveMigration/);
+  assert.doesNotMatch(daos, /@Delete|DELETE FROM drive_drafts/);
+});
+
+test("publish queue is stable restart-safe and keeps ephemeral credentials out of Room", () => {
+  const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
+  const repositories = read("app/src/main/java/com/socialdrive/app/data/OfflineRepositories.kt");
+  const scheduler = read("app/src/main/java/com/socialdrive/app/data/work/PublishScheduler.kt");
+  const workers = read("app/src/main/java/com/socialdrive/app/data/work/PublishWorkers.kt");
+  const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
+  assert.doesNotMatch(entities, /presigned|credential|accessToken|uploadUrl/i);
+  assert.match(repositories, /findByRecording\(id\)/);
+  assert.match(repositories, /clientRequestId = "drive-\$\{ids\.create\(\)\}"/);
+  assert.match(repositories, /motionState != MotionState\.Parked/);
+  assert.match(scheduler, /beginUniqueWork\([\s\S]*ExistingWorkPolicy\.KEEP/);
+  assert.match(scheduler, /recoverAfterProcessRestart/);
+  assert.match(application, /recoverQueuedWork\(\)/);
+  assert.match(application, /publishScheduler\.recoverAfterProcessRestart/);
+  for (const worker of ["CreateDriveWorker", "UploadAssetsWorker", "PublishDriveWorker"]) assert.match(scheduler, new RegExp(worker));
+  assert.match(workers, /original draft is retained after acknowledgement/);
+});
+
+test("Compose observes Room state and Android tests cover persistence and unique work", () => {
+  const app = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
+  const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");
+  assert.match(app, /collectAsStateWithLifecycle/);
+  assert.match(app, /offlineViewModel\.finishActiveRecording/);
+  assert.match(app, /offlineViewModel\.enqueuePublish\(motion\)/);
+  assert.match(app, /offlineViewModel\.updateDraftCopy\(title, description\)/);
+  assert.match(viewModel, /publishQueueRepository\.observeState/);
+  for (const relative of [
+    "app/src/androidTest/java/com/socialdrive/app/OfflinePersistenceTest.kt",
+    "app/src/androidTest/java/com/socialdrive/app/PublishWorkChainTest.kt",
+  ]) assert.equal(fs.existsSync(path.join(root, relative)), true, relative);
 });
 
 test("Gradle bootstrap pins and verifies its distribution", () => {
