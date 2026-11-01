@@ -219,7 +219,7 @@ internal class NavigationGatewayCoordinator(
         }
         val kept = synchronized(lock) {
             val request = session.request
-            if (isCurrentRequestLocked(session, token) && request?.settleTask == null) {
+            if (request != null && isCurrentRequestLocked(session, token) && request.settleTask == null) {
                 request.settleTask = task
                 true
             } else false

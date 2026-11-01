@@ -39,6 +39,14 @@ When Android SDK/Gradle dependencies are unavailable, the deterministic reposito
 npm test
 ```
 
+In a restricted shell where Gradle, network access, or its local lock-listener socket is unavailable, compile and run the SDK-independent PLEOS lifecycle core with Android Studio's bundled Kotlin compiler:
+
+```bash
+bash scripts/test-kotlin-core.sh
+```
+
+This compiles the production request controller/coordinator and executes their JVM tests. It does not compile the Android/Pleos vendor adapter, assemble an APK, or replace a Pleos emulator run.
+
 ## Real versus demo
 
 | Area | Current behavior | Future boundary |

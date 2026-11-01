@@ -251,6 +251,15 @@ test("production coordinator fake-port tests execute synchronous callbacks races
   ]) assert.ok(suite.includes(marker), marker);
   assert.match(suite, /class FakePort : NavigationVendorPort/);
   assert.match(suite, /class ManualScheduleScope : NavigationScheduleScope/);
+  const coreScript = read("scripts/test-kotlin-core.sh");
+  const coreRunner = read("tests/kotlin/CoreTestRunner.kt");
+  const readme = read("README.md");
+  for (const source of ["NavigationRequestController.kt", "NavigationGatewayCoordinator.kt", "NavigationGatewayCoordinatorTest.kt"]) {
+    assert.ok(coreScript.includes(source), source);
+  }
+  assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
+  assert.match(coreRunner, /expectedTests = 15/);
+  assert.match(readme, /does not compile the Android\/Pleos vendor adapter, assemble an APK, or replace a Pleos emulator run/);
 });
 
 test("integration UI is explicit about actual demo unavailable and coming-soon features", () => {
