@@ -132,8 +132,20 @@ test("Gradle bootstrap pins and verifies its distribution", () => {
   assert.match(wrapper, /gradle-8\.9-bin\.zip/);
   assert.match(wrapper, /distributionSha256Sum=[a-f0-9]{64}/);
   const windows = read("gradlew.bat");
+  const posix = read("gradlew");
+  const localLauncher = read("scripts/gradle-local.sh");
+  const doctor = read("scripts/android-toolchain-doctor.sh");
   assert.match(windows, /Get-FileHash -Algorithm SHA256/);
   assert.match(windows, /Expand-Archive/);
+  assert.match(windows, /--offline forbids downloading/);
+  assert.match(posix, /GRADLE_USER_HOME/);
+  assert.match(posix, /--offline forbids downloading/);
+  assert.match(posix, /--proto '=https' --tlsv1\.2/);
+  assert.match(localLauncher, /java_home -v 17/);
+  assert.match(localLauncher, /GRADLE_USER_HOME="\$runtime_root\/gradle-user-home"/);
+  assert.match(localLauncher, /TMPDIR="\$runtime_root\/tmp"/);
+  assert.match(doctor, /Android platform 35 is missing/);
+  assert.doesNotMatch(doctor, /sdkmanager|install|yes \|/);
 });
 
 test("driving home returns before parked feed and settings UI", () => {

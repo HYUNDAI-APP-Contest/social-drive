@@ -18,15 +18,25 @@ PROPERTIES="$APP_HOME/gradle/wrapper/gradle-wrapper.properties"
 DIST_URL=$(sed -n 's/^distributionUrl=//p' "$PROPERTIES" | sed 's/\\:/:/g')
 DIST_SHA=$(sed -n 's/^distributionSha256Sum=//p' "$PROPERTIES")
 DIST_NAME=$(basename "$DIST_URL" .zip)
-BOOTSTRAP_DIR="$APP_HOME/.gradle/wrapper-bootstrap/$DIST_NAME"
+GRADLE_CACHE_HOME=${GRADLE_USER_HOME:-"$APP_HOME/.gradle"}
+BOOTSTRAP_DIR="$GRADLE_CACHE_HOME/wrapper-bootstrap/$DIST_NAME"
 GRADLE_BIN="$BOOTSTRAP_DIR/gradle-8.9/bin/gradle"
 
 if [ ! -x "$GRADLE_BIN" ]; then
+  OFFLINE=false
+  for ARG in "$@"; do
+    [ "$ARG" = "--offline" ] && OFFLINE=true
+  done
+  if [ "$OFFLINE" = true ]; then
+    echo "Pinned Gradle 8.9 is not cached at $GRADLE_BIN; --offline forbids downloading it." >&2
+    echo "Run scripts/gradle-local.sh --version once with approved network access, then retry offline." >&2
+    exit 2
+  fi
   command -v curl >/dev/null 2>&1 || { echo "curl is required to bootstrap Gradle." >&2; exit 1; }
   command -v unzip >/dev/null 2>&1 || { echo "unzip is required to bootstrap Gradle." >&2; exit 1; }
   mkdir -p "$BOOTSTRAP_DIR"
   ARCHIVE="$BOOTSTRAP_DIR/$DIST_NAME.zip"
-  curl --fail --location --retry 2 "$DIST_URL" --output "$ARCHIVE" || {
+  curl --fail --location --proto '=https' --tlsv1.2 --retry 2 "$DIST_URL" --output "$ARCHIVE" || {
     echo "Unable to download the pinned Gradle distribution. Check network access." >&2
     exit 1
   }

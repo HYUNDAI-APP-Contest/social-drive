@@ -42,6 +42,25 @@ Requirements: JDK 17+, Android SDK 35, and an emulator or device. From this dire
 
 Open `android/` in Android Studio to run the `app` configuration. The first Gradle run downloads public Android and Compose dependencies. Both wrapper scripts fall back to the pinned Gradle 8.9 distribution when the binary wrapper JAR is absent and verify the official SHA-256 before execution. Do not place SDK secrets or AWS credentials in this project.
 
+For a reproducible command-line setup on macOS/Linux, use the repo-local launcher. It selects JDK 17 (ignoring an inherited JDK 21), keeps Gradle state and temporary files below ignored `android/.gradle/local-runtime`, and only auto-detects the conventional macOS Android SDK directory:
+
+```bash
+bash scripts/android-toolchain-doctor.sh
+bash scripts/gradle-local.sh --version
+bash scripts/gradle-local.sh --offline tasks --all
+```
+
+The checkout intentionally does not commit the binary wrapper JAR. If Gradle 8.9 is not already cached, `--offline` now fails immediately without calling the network. One approved online `bash scripts/gradle-local.sh --version` run can bootstrap only the pinned distribution after SHA-256 verification. The doctor is read-only: it does not install SDK packages or inspect credentials. This project requires the exact `platforms/android-35` package; another installed platform does not substitute for it.
+
+Only after `tasks --all` succeeds and lists the variants should the debug assemblies be attempted:
+
+```bash
+bash scripts/gradle-local.sh --offline assembleDemoDebug
+bash scripts/gradle-local.sh --offline assemblePleosDebug
+```
+
+`assembleDemoDebug` validates the public demo boundary. `assemblePleosDebug` additionally requires the approved Pleos Maven artifacts to already exist in the local Gradle cache when offline; neither command signs, deploys, or accesses cloud credentials.
+
 When Android SDK/Gradle dependencies are unavailable, the deterministic repository and safety contract can still be checked with:
 
 ```bash
