@@ -12,7 +12,7 @@
 
 1. 실제 앱 화면과 실제 실행 증거를 먼저 보여 준다.
 2. `실제 SDK`, `앱 구현`, `코드 존재(미통합)`, `데모 데이터`, `미구현`, `향후 기능`을 같은 색상 체계로 끝까지 구분한다.
-3. Android HEAD `88b4938`은 PLEOS·cloud·route-consent와 runtime doctor를 포함하며 Sentinel `APPROVE`, core Kotlin 51/51, npm 26/26이지만 `코드 존재(미통합)` 상태다. doctor는 offline zero-network fail-fast까지만 검증됐고 tasks/variants/assemble에는 도달하지 못했다. runtime 증거가 생긴 뒤에만 상태를 승격한다.
+3. 최신 Android 작업 브랜치 HEAD `f091e995`은 PLEOS·cloud·route-consent·Room v5 conflict review 코드를 포함하며 core Kotlin 63/63, npm static 27/27이지만 `코드 존재(미통합)` 상태다. `main` 미병합이고 Gradle·Room/Android instrumentation·Compose·APK·AVD·actual cloud가 미실행이므로 runtime 증거가 생긴 뒤에만 상태를 승격한다. `88b4938`은 P0-3A doctor의 역사적 증거로만 사용한다.
 4. FusedLocation, STT, TTS, Vehicle Control은 실제 기능으로 말하지 않는다.
 5. MAU와 retention은 산식·검증 방법을 제시하고 근거 없는 숫자를 만들지 않는다.
 
@@ -59,7 +59,7 @@
 
 - Compose/Room/Worker: 현재 `코드 존재(미통합)`
 - preset 경로: `데모 데이터`
-- Vehicle/NaviHelper: HEAD `88b4938`이 PLEOS `89078a0` 포함, Sentinel `APPROVE`, core 51/51, npm 26/26이지만 `코드 존재(미통합)`; tasks·vendor adapter·Gradle·AVD 실기 성공 후에만 `실제 SDK`
+- Vehicle/NaviHelper: HEAD `f091e995`에 기반 코드 존재, core 63/63, static 27/27이지만 `코드 존재(미통합)`; vendor adapter·Gradle·AVD 실기 성공 후에만 `실제 SDK`
 
 ### 4장 — 모바일이 아니라 차량이어야 완성된다
 
@@ -72,7 +72,7 @@
 
 발표 문장:
 
-> 구현 목표는 Vehicle 상태로 사용자가 입력할 수 있는 순간을 결정하고 NaviHelper로 콘텐츠를 실제 주행에 연결하는 것입니다. HEAD `88b4938`은 Sentinel `APPROVE`와 core 51/51을 통과했지만 wrapper 8.9/platform 35/DNS 차단으로 tasks에도 도달하지 못했으며, Coming Soon SDK도 실제 기능으로 주장하지 않습니다.
+> 구현 목표는 Vehicle 상태로 사용자가 입력할 수 있는 순간을 결정하고 NaviHelper로 콘텐츠를 실제 주행에 연결하는 것입니다. HEAD `f091e995`은 core 63/63과 static 27/27을 통과했지만 Gradle·vendor adapter·AVD runtime은 미실행이며, Coming Soon SDK도 실제 기능으로 주장하지 않습니다.
 
 평가 연결: 기술 활용성. [공식 개발 환경](https://appdevchallenge.auto-hmg.io/guide/development), [공식 SDK 상태](https://document.pleos.ai/en/docs/pleos-only/create-my-project)
 
@@ -95,6 +95,7 @@ Parked
 
 - Unknown도 fail-closed
 - 게시 성공 전 원본 유지
+- 409는 durable FAILED로 정지하고 일반 worker 재claim 금지; 사용자 adopt 뒤에만 publish-only replay
 - 토큰·presigned URL 비영속
 - 좌표·주소·자격증명 비로그
 
@@ -103,12 +104,12 @@ Parked
 왼쪽, 현재 코드 증거:
 
 - Android 별도 작업 브랜치: recording session, `highlightCount`, draft, pending queue, preset reference와 안전 gate 코드
-- Android HEAD `88b4938`: PLEOS·cloud·route-consent + runtime bootstrap/doctor; P0-3A 부분 완료
+- Android HEAD `f091e995`: PLEOS·cloud·route-consent + Room v5 conflict review 코드
 - 테스트 소스: 안전 정책, Room migration, 오프라인 복구, API security
-- 통합 코드 증거: `88b4938`, Sentinel `APPROVE`, core 51/51, npm 26/26; base `b1c33a2` 포함
+- 작업 브랜치 코드 증거: `f091e995`, core 63/63, npm static 27/27. 409 durable stop·explicit adopt·publish-only replay 포함
 - consent/withdraw와 demo/unavailable 구분은 코드에 있으나 실제 위치 수집은 없고 published delete는 parked-only local `DELETE_PENDING`뿐이며 network `DELETE`·retry는 없음
-- 아직 없는 증거: 실제 경로점·위치 수집, main 병합, concrete cloud 설정, vendor adapter, Gradle·instrumentation, AVD 실기, 앱-AWS E2E, release APK
-- P0-3A doctor는 missing wrapper 8.9·platform 35를 보고하고 offline zero-network fail-fast. `services.gradle.org` DNS 차단으로 tasks/variants/assemble 미도달
+- 아직 없는 증거: 실제 경로점·위치 수집, main 병합, concrete cloud 설정, vendor adapter, Gradle·Room/Android instrumentation·Compose, AVD 실기, 앱-AWS E2E, release APK
+- 역사적 `88b4938` P0-3A doctor는 missing wrapper 8.9·platform 35를 보고하고 offline zero-network fail-fast. 최신 앱 HEAD나 tasks/variants/assemble 성공 증거가 아님
 - root `readme.md`: 공식 네 항목의 문서 구조 완료. 빌드·AVD·APK 실증 결과는 아직 갱신 필요
 
 오른쪽, retention loop:
@@ -152,8 +153,8 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 | 0–7초 | 로고, 앱명, 차량 화면 | 없음 | “한 번의 터치가 다음 사람의 드라이브가 됩니다.” |
 | 7–17초 | SNS→지도→내비 재입력 Before | 문제 정의 | “좋은 코스를 발견해도 장소를 다시 찾아야 합니다.” |
 | 17–29초 | 피드와 드라이브 상세 | 현재 `코드 존재(미통합)` 또는 `데모 데이터` | 코스, 하이라이트, preset 목적지 확인 |
-| 29–43초 | `이 코스 따라가기`와 Navigation 앱 | 현재 `코드 존재(미통합)`; runtime 검증 성공 시 `실제 SDK` | `88b4938` core/doctor 승인. tasks·vendor adapter·Gradle·NaviHelper callback은 미실행이므로 현재는 데모로 대체 |
-| 43–57초 | Virtual Console P→D, 앱 안전 전환 | 현재 `코드 존재(미통합)`; runtime 검증 성공 시 `실제 SDK` | `88b4938` core/doctor 승인. tasks·vendor adapter·Gradle·Vehicle AVD는 미실행이므로 현재는 데모로 대체 |
+| 29–43초 | `이 코스 따라가기`와 Navigation 앱 | 현재 `코드 존재(미통합)`; runtime 검증 성공 시 `실제 SDK` | `f091e995`에 코드만 존재. vendor adapter·Gradle·NaviHelper callback은 미실행이므로 현재는 데모로 대체 |
+| 43–57초 | Virtual Console P→D, 앱 안전 전환 | 현재 `코드 존재(미통합)`; runtime 검증 성공 시 `실제 SDK` | `f091e995`에 코드만 존재. vendor adapter·Gradle·Vehicle AVD는 미실행이므로 현재는 데모로 대체 |
 | 57–70초 | 기록 화면에서 `방금 좋았어` 한 번 터치 | 현재 `코드 존재(미통합)` 또는 `데모 데이터` | 주행 중 긴 입력이 없음을 보여 줌 |
 | 70–80초 | 앱 종료·재실행 후 세션/초안 복원 | 검증 후 `앱 구현` | session·draft·queue persistence 증거. 실제 경로점 저장으로 표현 금지 |
 | 80–91초 | D 또는 Unknown에서 게시 진입 거부 | 검증 후 `앱 구현` | fail-closed 안전 정책 |
@@ -282,7 +283,7 @@ No-Go 대응:
 
 ### 모바일 앱과 무엇이 다른가?
 
-완성 목표에서는 Vehicle 상태가 입력 가능 범위를 결정하고 NaviHelper가 콘텐츠를 차량의 실제 경로 안내로 전환한다. HEAD `88b4938`은 Sentinel `APPROVE`와 core 51/51을 통과했지만 tasks·variants·assemble·vendor adapter·instrumentation·APK·AVD runtime은 미실행이다. 이 목표가 실제 검증되면 모바일과 달리 차량 상태 기반 안전 전환부터 차량 Navigation 앱까지 흐름을 완결할 수 있다.
+완성 목표에서는 Vehicle 상태가 입력 가능 범위를 결정하고 NaviHelper가 콘텐츠를 차량의 실제 경로 안내로 전환한다. HEAD `f091e995`은 core 63/63과 static 27/27을 통과했지만 `main` 미병합이며 Gradle·vendor adapter·Room/Android instrumentation·Compose·APK·AVD runtime은 미실행이다. 이 목표가 실제 검증되면 모바일과 달리 차량 상태 기반 안전 전환부터 차량 Navigation 앱까지 흐름을 완결할 수 있다.
 
 ### 주행 중 안전을 어떻게 강제하는가?
 
@@ -290,7 +291,7 @@ No-Go 대응:
 
 ### 위치정보는 언제 서버로 가는가?
 
-현재 HEAD `88b4938`은 `b1c33a2`의 consent/withdraw·route source 안전 경계를 포함하지만 실제 위치·경로점 수집은 미구현이고 preset reference만 사용한다. published delete도 local `DELETE_PENDING`뿐이다. network delete/retry와 실제 위치 source는 후속 Go 조건이다.
+현재 HEAD `f091e995`은 consent/withdraw·route source 안전 경계를 포함하지만 실제 위치·경로점 수집은 미구현이고 preset reference만 사용한다. published delete도 local `DELETE_PENDING`뿐이다. network delete/retry와 실제 위치 source는 후속 Go 조건이다.
 
 ### 실제 SDK와 데모 기능은 무엇인가?
 

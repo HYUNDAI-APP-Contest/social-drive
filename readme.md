@@ -7,9 +7,10 @@
 2026-11-01 현재 이 저장소의 `main`에는 Android 앱과 Pleos 연동 브랜치가 병합되지 않았습니다. 이 작업공간에도 실행할 `android/` 디렉터리와 release APK가 없습니다.
 
 - Vehicle SDK 2.3.2와 NaviHelper 3.0.5 adapter의 최초 구현 커밋은 `6475287`이며 1차 독립 검토에서 `CHANGES_REQUIRED`였습니다.
-- race/lifecycle/permission 지적은 `98a2978`과 `6e930d6`에서 보완됐고, PLEOS·cloud·route-consent `b1c33a2` 위에 runtime bootstrap/doctor를 추가한 최신 Android HEAD는 `88b4938`입니다.
-- `88b4938`은 Sentinel `APPROVE`이며 core Kotlin 51/51, npm 26/26, Room schema v4와 `수동 SQLite predicate/migration PASS` 증거가 있습니다. P0-3A의 재현 가능한 local bootstrap/doctor 코드가 추가됐지만 Android build나 runtime 성공 증거는 아닙니다.
-- 이 `APPROVE`는 실제 SDK나 cloud runtime 성공을 뜻하지 않습니다. `main` 미병합이며 concrete Cognito/API host 및 no-redirect HTTP adapter 설정이 없어 actual cloud는 사용할 수 없습니다. Gradle·Android instrumentation·vendor adapter·APK·Pleos AVD·AWS E2E도 아직 실행되지 않았습니다.
+- PLEOS·cloud·route-consent 기반 위에 충돌 검토를 추가한 최신 Android 작업 브랜치 HEAD는 `f091e995f3cbfd3edf87bbe6d5f705458f1b0d50`입니다. core Kotlin 63/63과 npm static 27/27이 통과했지만 `main`에는 병합되지 않았습니다.
+- `f091e995`에는 Room v5의 durable 409 conflict 상태, 사용자의 명시적 최신 버전 확인·adopt, adopt 후 publish-only replay가 코드로 존재합니다. 일반 worker는 `FAILED/VERSION_CONFLICT`를 claim하지 못하며 자동 GET·자동 overwrite·자동 재게시를 하지 않습니다.
+- `88b4938`은 최신 앱 HEAD가 아니라 P0-3A의 재현 가능한 local bootstrap/doctor와 offline zero-network fail-fast를 남긴 **역사적 증거**입니다.
+- 위 검사는 SDK-independent core·정적 계약 범위입니다. `main` 미병합이며 concrete Cognito/API host 및 no-redirect HTTP adapter 설정이 없어 actual cloud는 사용할 수 없습니다. Gradle build·Room/Android instrumentation·Compose test·vendor adapter·APK·Pleos AVD·AWS E2E는 아직 실행되지 않았습니다.
 - 최신 코드에는 recording session, `highlightCount`, draft, pending queue, preset reference와 route source·consent/withdraw·로컬 `DELETE_PENDING` 상태가 포함됩니다.
 - 실제 위치·경로점 수집은 여전히 구현되지 않았습니다. 게시물 삭제도 주차 상태의 로컬 `DELETE_PENDING`까지만 구현됐고 network `DELETE`·retry는 아직 없습니다.
 - P0-3A는 doctor/fail-fast 범위에서 부분 완료됐습니다. 프로젝트가 요구하는 Gradle wrapper 8.9 cache와 Android platform 35가 없고 `services.gradle.org` DNS가 차단되어 tasks·variants·assemble에는 도달하지 못했습니다.
@@ -49,7 +50,8 @@ Social Drive의 목표 흐름은 다음과 같습니다.
 | 등급 | 기능 | 2026-11-01 증거 |
 |---|---|---|
 | `실제 SDK` | 없음 | Pleos AVD callback과 release 증거가 아직 없음 |
-| `코드 존재(미통합)` | Vehicle/NaviHelper + cloud + route-consent + runtime doctor | 최신 `88b4938`; Sentinel `APPROVE`, core Kotlin 51/51, npm 26/26. P0-3A doctor는 offline에서 zero-network fail-fast하나 tasks/variants/assemble 미도달 |
+| `코드 존재(미통합)` | Vehicle/NaviHelper + cloud + route-consent + conflict review | 최신 `f091e995`; core Kotlin 63/63, npm static 27/27. 409 durable stop, explicit adopt, publish-only replay 코드 포함. `main` 미병합, Gradle·Room instrumentation·Compose·APK·AVD·cloud 미실행 |
+| `역사적 도구 증거` | P0-3A runtime bootstrap/doctor | `88b4938`; offline zero-network fail-fast 확인. tasks/variants/assemble 또는 앱 실행 성공 증거가 아님 |
 | `코드 존재(미통합)` | session/draft/queue, route source, consent/withdraw, local delete state | 실제 위치 수집 없이 demo/unavailable을 분리하고 게시물 삭제는 parked-only local `DELETE_PENDING`까지만 구현 |
 | `데모 데이터` | preset route / fake motion | 실제 위치나 실제 Vehicle callback이 아님 |
 | `미구현` | 실제 위치·경로점 수집, network `DELETE`·retry, release APK | 구현 또는 검증 증거 없음 |
@@ -107,8 +109,8 @@ adb install -r app/build/outputs/apk/demo/debug/app-demo-debug.apk
 | Android | minSdk 28 이상, API 34 Pleos AVD | Pleos API34/arm64 AVD 정의는 있으나 project bootstrap이 요구하는 exact Android platform 35는 없음; boot 미성공 |
 | Gradle | 프로젝트 wrapper 8.9 | 요구되는 8.9 distribution cache 없음. 호스트의 별도 8.14.3 cache는 프로젝트 wrapper 요구를 충족하지 않음; tasks·variants·assemble 미도달 |
 | Emulator | Pleos Connect Emulator 2.1.0, Cold Boot, RAM 4GB | AVD/system image와 RAM 4GB 확인. sandbox CPU feature 제약으로 `emulator -version` 실패; boot·앱 실행 증거 없음 |
-| Vehicle | Vehicle SDK 2.3.2 / Vehicle Service 대응 버전 | `88b4938`이 PLEOS `89078a0` 포함; vendor adapter·Gradle·AVD callback 미실행 |
-| Navigation | NaviHelper 3.0.5 | `88b4938`이 PLEOS `89078a0` 포함; vendor adapter·Gradle·route callback 미실행 |
+| Vehicle | Vehicle SDK 2.3.2 / Vehicle Service 대응 버전 | `f091e995`이 PLEOS 기반 코드를 포함; vendor adapter·Gradle·AVD callback 미실행 |
+| Navigation | NaviHelper 3.0.5 | `f091e995`이 NaviHelper 기반 코드를 포함; vendor adapter·Gradle·route callback 미실행 |
 | AWS | Cognito JWT, DynamoDB, private S3 기반 목표 | backend `ddbd61f` 계약 포함. concrete Cognito/API host·no-redirect HTTP adapter 설정 부재로 actual cloud unavailable; AWS E2E 미실행 |
 
 P0-3A bootstrap/doctor는 missing wrapper 8.9와 platform 35를 진단하고 offline 실행에서 네트워크 요청 없이 즉시 실패하도록 검증됐다. 현재 `services.gradle.org` DNS가 차단되어 wrapper를 받을 수 없고 AGP·Kotlin Gradle plugin·Pleos vendor artifact도 준비되지 않았다. build·emulator·APK 성공을 주장할 수 없으며 signing secret과 keystore는 조회하지 않았다.
