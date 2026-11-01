@@ -9,6 +9,7 @@ enum class LiveUnavailableReason { SDK_COMING_SOON, PERMISSION_DENIED, CAPABILIT
     level = RequiresOptIn.Level.ERROR,
     message = "Live route capability is test-only until an approved location SDK and permission flow exist.",
 )
+@Retention(AnnotationRetention.BINARY)
 annotation class TestOnlyLiveRouteCapability
 
 @TestOnlyLiveRouteCapability

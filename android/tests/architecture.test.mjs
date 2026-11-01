@@ -507,6 +507,10 @@ test("route source consent withdrawal and delete pending stay privacy safe", () 
     "RouteSource", "DemoPreset", "LiveUnavailable", "SDK_COMING_SOON", "PERMISSION_DENIED",
     "CAPABILITY_MISSING", "TestOnlyLiveRouteCapability", "RouteConsentState", "NotAsked", "Granted", "Withdrawn",
   ]) assert.ok(domain.includes(marker), marker);
+  assert.match(
+    domain,
+    /@RequiresOptIn\([\s\S]*?@Retention\(AnnotationRetention\.BINARY\)\s*annotation class TestOnlyLiveRouteCapability/,
+  );
   assert.match(domain, /class LiveAvailable internal constructor/);
   const productionKotlin = kotlinFiles(path.join(root, "app/src/main"))
     .map((file) => fs.readFileSync(file, "utf8")).join("\n");
