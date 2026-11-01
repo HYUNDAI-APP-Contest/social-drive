@@ -91,8 +91,8 @@ Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-o
 
 | 기능 | 공식 상태 | 2026-11-01 저장소 등급 | 승격 조건/금지 사항 |
 |---|---|---|---|
-| Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | `미구현` | adapter 구현과 AVD capability/callback 증거 후에만 `실제 SDK`. 그 전에는 현재형 설명 금지 |
-| NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | `미구현` | 실제 목적지·경유지 요청과 callback 증거 후에만 `실제 SDK`. fake 응답을 실제 SDK로 표현 금지 |
+| Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | `코드 존재(미통합)` | PLEOS 브랜치 `6475287`, 독립 검토 `CHANGES_REQUIRED`, race/lifecycle/permission 수정 중. 컴파일·AVD capability/callback 증거 후에만 `실제 SDK` |
+| NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | `코드 존재(미통합)` | PLEOS 브랜치 `6475287`, 독립 검토 `CHANGES_REQUIRED`, 후속 수정 중. 실제 route callback 증거 후에만 `실제 SDK` |
 | FusedLocation | Coming Soon | `향후 기능` | 실제 위치·경로점 수집 기능으로 주장하거나 MVP 필수 의존성으로 사용 금지 |
 | SpeechToText | Coming Soon | `향후 기능` | 실제 음성 인식 기능으로 주장 금지 |
 | TextToSpeech | Coming Soon | `향후 기능` | 실제 음성 합성 기능으로 주장 금지 |
@@ -122,8 +122,8 @@ Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-o
 | Android recording/draft/queue 기반 | `agent/issue-android-foundation` 별도 작업 브랜치 | `코드 존재(미통합)`. 확인된 증거는 recording session, `highlightCount`, draft, pending queue, preset reference뿐임 |
 | 실제 경로점·위치 수집 | 확인된 구현 증거 없음 | `미구현`. RoutePoint 또는 실제 위치 샘플 수집·동의·철회가 구현됐다고 주장 금지 |
 | AWS 최소 API | `agent/issue-backend-mvp` 별도 작업 브랜치 | `코드 존재(미통합)`. main 병합·배포·Android E2E 전 |
-| Vehicle/NaviHelper 실제 연동 | 설계 계약만 존재 | `미구현`. 아직 Pleos AVD 검증 전 |
-| root `readme.md` | 운영 사전 활성화 안내 두 문장만 존재 | `미구현`. 공식 필수 네 항목(앱 소개·실행·환경·APK 위치)을 충족하도록 준비 필요 |
+| Vehicle/NaviHelper adapter | PLEOS 별도 브랜치 커밋 `6475287` | `코드 존재(미통합)`. 독립 검토 `CHANGES_REQUIRED`, race/lifecycle/permission 후속 수정 중, main 미병합, Gradle·Pleos AVD 미검증. 실제 SDK 동작 증거 아님 |
+| root `readme.md` | 앱 소개·실행 방법·테스트 환경/설정·APK 목표 경로를 문서화 | 문서 준비 완료. Android/main 미병합·빌드/AVD 미검증·APK 생성 전 상태를 명시함 |
 | release APK | 없음 | `미구현`. 제출 가능 상태 아님 |
 | 시연 영상 | 없음 | `미구현`. 선택 가산점 산출물 준비 전 |
 
