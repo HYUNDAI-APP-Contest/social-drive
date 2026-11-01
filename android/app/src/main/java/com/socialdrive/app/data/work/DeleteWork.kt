@@ -24,10 +24,8 @@ import com.socialdrive.app.safety.ParkedExecutionGate
 import com.socialdrive.app.safety.ParkedExecutionResult
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 
 data class DeleteWorkerDependencies(
     val database: SocialDriveDatabase,
@@ -57,34 +55,44 @@ class DeletePublishedDriveWorker(
         )
         if (claimed != 1) return Result.success()
 
+        return DeleteCancellationGuard.run(
+            handoffInterruptedLease = { persistInterruptedLease(draftId, lease.attempt) },
+        ) {
+            runClaimedLease(draftId, request, lease.attempt)
+        }
+    }
+
+    private suspend fun runClaimedLease(
+        draftId: String,
+        request: PublishedDeleteRequestEntity,
+        attempt: Int,
+    ): Result {
         return try {
             val execution = dependencies.executionGate.execute(
                 onPaused = {
                     dependencies.database.publishedDeleteDao().pauseForMotionCas(
                         draftId,
-                        runningAttempt = lease.attempt,
-                        restoredAttempts = lease.attempt - 1,
+                        runningAttempt = attempt,
+                        restoredAttempts = attempt - 1,
                         now = dependencies.clock(),
                     )
                 },
             ) {
                 dependencies.remote.deletePublishedDrive(request.remoteDriveId, request.idempotencyKeyHash)
             }
-            if (execution is ParkedExecutionResult.Paused) return Result.failure()
-            dependencies.database.publishedDeleteDao().confirmCas(draftId, lease.attempt, dependencies.clock())
-            // A 204 confirms only the remote deletion. The local original draft is deliberately retained.
-            Result.success()
-        } catch (cancelled: CancellationException) {
-            // WorkManager/app cancellation is distinct from a motion pause. Persist the lease handoff
-            // before rethrowing so an idempotent replay can be scheduled in this process or after restart.
-            withContext(NonCancellable) {
-                persistInterruptedLease(draftId, lease.attempt)
+            if (execution is ParkedExecutionResult.Paused) {
+                Result.failure()
+            } else {
+                dependencies.database.publishedDeleteDao().confirmCas(draftId, attempt, dependencies.clock())
+                // A 204 confirms only the remote deletion. The local original draft is deliberately retained.
+                Result.success()
             }
+        } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (failure: RemoteDeleteException) {
-            persistFailure(draftId, lease.attempt, failure.failureCode)
+            persistFailure(draftId, attempt, failure.failureCode)
         } catch (_: Throwable) {
-            persistFailure(draftId, lease.attempt, DeleteFailureCode.UNKNOWN)
+            persistFailure(draftId, attempt, DeleteFailureCode.UNKNOWN)
         }
     }
 

@@ -314,7 +314,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 72/);
+  assert.match(coreRunner, /expectedTests = 74/);
   assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 
@@ -536,12 +536,15 @@ test("published delete is parked durable idempotent bounded and fail closed", ()
   const entity = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
   const dao = read("app/src/main/java/com/socialdrive/app/data/local/Daos.kt");
   const worker = read("app/src/main/java/com/socialdrive/app/data/work/DeleteWork.kt");
+  const cancellationGuard = read("app/src/main/java/com/socialdrive/app/data/work/DeleteCancellationGuard.kt");
   const client = read("app/src/main/java/com/socialdrive/app/data/remote/CloudDriveClient.kt");
   const remote = read("app/src/main/java/com/socialdrive/app/data/remote/RemoteDeleteApi.kt");
   const app = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
   const actualFactory = read("app/src/pleos/java/com/socialdrive/app/data/remote/FlavorRemoteDeleteApiFactory.kt");
   const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
   const androidTest = read("app/src/androidTest/java/com/socialdrive/app/PublishedDeleteWorkTest.kt");
+  const cancellationSuite = read("app/src/test/java/com/socialdrive/app/data/work/DeleteCancellationGuardTest.kt");
+  const coreScript = read("scripts/test-kotlin-core.sh");
   assert.match(lifecycle, /MAX_ATTEMPTS = 4/);
   assert.match(lifecycle, /NOT_FOUND_UNCONFIRMED/);
   assert.match(lifecycle, /AUTHENTICATION, DeleteFailureCode\.FORBIDDEN/);
@@ -551,7 +554,11 @@ test("published delete is parked durable idempotent bounded and fail closed", ()
   assert.match(dao, /state = 'RUNNING'.*attempts = :runningAttempt/s);
   assert.match(dao, /NOT EXISTS \([\s\S]*published_delete_requests/);
   assert.match(worker, /executionGate\.execute/);
-  assert.match(worker, /catch \(cancelled: CancellationException\)[\s\S]*withContext\(NonCancellable\)[\s\S]*persistInterruptedLease/);
+  assert.match(worker, /DeleteCancellationGuard\.run[\s\S]*handoffInterruptedLease = \{ persistInterruptedLease/);
+  assert.match(cancellationGuard, /catch \(cancelled: CancellationException\)[\s\S]*withContext\(NonCancellable\)[\s\S]*handoffInterruptedLease/);
+  assert.match(cancellationSuite, /cancellation while persisting retry failure hands off running lease/);
+  assert.match(cancellationSuite, /cancellation while persisting terminal 409 hands off running lease/);
+  assert.match(coreScript, /DeleteCancellationGuardTest\.kt/);
   assert.match(worker, /persistInterruptedLease[\s\S]*"INTERRUPTED"/);
   assert.match(worker, /RemoteDeleteConfirmed|confirmCas/);
   assert.match(worker, /local original draft is deliberately retained/);
