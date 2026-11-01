@@ -10,8 +10,10 @@ import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.remote.FlavorRemoteDriveApiFactory
 import com.socialdrive.app.data.remote.RemoteDriveApi
 import com.socialdrive.app.data.work.PublishScheduler
+import com.socialdrive.app.data.work.PublishRescheduler
 import com.socialdrive.app.data.work.PublishWorkerDependencies
 import com.socialdrive.app.data.work.PublishWorkerFactory
+import com.socialdrive.app.data.work.PublishWorkChainEnqueuer
 import com.socialdrive.app.integration.FlavorIntegrationFactory
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.safety.ParkedExecutionGate
@@ -37,7 +39,10 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
         PublishScheduler(WorkManager.getInstance(this), publishQueueRepository, parkedExecutionGate)
     }
     private val publishWorkerFactory by lazy {
-        PublishWorkerFactory(PublishWorkerDependencies(database, remoteDriveApi, parkedExecutionGate))
+        val deferredRescheduler = PublishRescheduler { draftId ->
+            PublishWorkChainEnqueuer(WorkManager.getInstance(this)).replaceFromUpload(draftId)
+        }
+        PublishWorkerFactory(PublishWorkerDependencies(database, remoteDriveApi, parkedExecutionGate, deferredRescheduler))
     }
 
     override val workManagerConfiguration: Configuration

@@ -22,11 +22,12 @@ class PublishScheduler(
     private val workManager: WorkManager,
     private val queue: PublishQueueRepository,
     private val executionGate: ParkedExecutionGate,
+    private val chainEnqueuer: PublishWorkChainEnqueuer = PublishWorkChainEnqueuer(workManager),
 ) {
     private val recoveryMutex = Mutex()
     suspend fun enqueue(draftId: String, motionState: MotionState): EnqueueResult {
         val result = queue.enqueue(draftId, motionState)
-        if (result is EnqueueResult.Enqueued || result is EnqueueResult.AlreadyQueued) schedule(draftId, ExistingWorkPolicy.KEEP)
+        if (result is EnqueueResult.Enqueued || result is EnqueueResult.AlreadyQueued) chainEnqueuer.enqueue(draftId, ExistingWorkPolicy.KEEP)
         return result
     }
 
@@ -35,20 +36,35 @@ class PublishScheduler(
             whenNotParked = { queue.pauseRecoverableForMotion() },
             whenParked = {
                 queue.recoverable().forEach { item ->
-                    val policy = if (item.status == LocalState.PAUSED_MOTION) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP
-                    schedule(item.draftId, policy)
+                    val policy = when (PublishRecoveryPolicy.recoveryEnqueueMode(item.status, item.stage, item.lastErrorCode)) {
+                        RecoveryEnqueueMode.REPLACE -> ExistingWorkPolicy.REPLACE
+                        RecoveryEnqueueMode.KEEP -> ExistingWorkPolicy.KEEP
+                    }
+                    chainEnqueuer.enqueue(item.draftId, policy)
                 }
             },
         )
     }
 
-    private fun schedule(draftId: String, policy: ExistingWorkPolicy) {
+    companion object {
+        fun uniqueName(draftId: String) = "publish-draft-$draftId"
+    }
+}
+
+fun interface PublishRescheduler {
+    fun replaceFromUpload(draftId: String)
+}
+
+class PublishWorkChainEnqueuer(private val workManager: WorkManager) : PublishRescheduler {
+    override fun replaceFromUpload(draftId: String) = enqueue(draftId, ExistingWorkPolicy.REPLACE)
+
+    fun enqueue(draftId: String, policy: ExistingWorkPolicy) {
         val input = Data.Builder().putString(StagedPublishWorker.KEY_DRAFT_ID, draftId).build()
         val constraints = Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build()
         val create = request<CreateDriveWorker>(input, constraints, draftId)
         val upload = request<UploadAssetsWorker>(input, constraints, draftId)
         val publish = request<PublishDriveWorker>(input, constraints, draftId)
-        workManager.beginUniqueWork(uniqueName(draftId), policy, create)
+        workManager.beginUniqueWork(PublishScheduler.uniqueName(draftId), policy, create)
             .then(upload)
             .then(publish)
             .enqueue()
@@ -65,7 +81,4 @@ class PublishScheduler(
         .addTag("publish:$draftId")
         .build()
 
-    companion object {
-        fun uniqueName(draftId: String) = "publish-draft-$draftId"
-    }
 }

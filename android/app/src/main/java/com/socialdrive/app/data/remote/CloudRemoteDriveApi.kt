@@ -8,10 +8,10 @@ class CloudRemoteDriveApi(
     private val client: CloudDriveClient,
     private val consentPolicyVersion: String,
 ) : RemoteDriveApi {
-    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): String = translate {
+    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): RemoteDraftRef = translate {
         require(clientRequestId == draft.clientRequestId)
         val assets = draft.assetUploads().map(AssetUploadCommand::manifest)
-        client.createDrive(
+        val drive = client.createDrive(
             CreateDriveInput(
                 clientRequestId = clientRequestId,
                 title = draft.title,
@@ -22,7 +22,8 @@ class CloudRemoteDriveApi(
                 consentPolicyVersion = consentPolicyVersion,
                 assets = assets,
             ),
-        ).drive.id
+        ).drive
+        RemoteDraftRef(drive.id, drive.version)
     }
 
     override suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>) = translate {
@@ -36,19 +37,32 @@ class CloudRemoteDriveApi(
             }
         }
         val manifests = commands.map(AssetUploadCommand::manifest)
-        val session = client.refreshUploads(remoteDriveId, manifests)
-        commands.forEach { command ->
-            val instruction = session.uploads.singleOrNull { it.kind == command.kind }
-                ?: throw CloudDriveException(CloudFailureKind.CONTRACT, "MISSING_UPLOAD", false)
-            client.uploadAsset(instruction, command.manifest(), command.content)
+        var lastExpiry: CloudDriveException? = null
+        repeat(MAX_UPLOAD_SESSION_ATTEMPTS) { attempt ->
+            try {
+                val session = client.refreshUploads(remoteDriveId, manifests)
+                commands.forEach { command ->
+                    val instruction = session.uploads.singleOrNull { it.kind == command.kind }
+                        ?: throw CloudDriveException(CloudFailureKind.CONTRACT, "MISSING_UPLOAD", false)
+                    client.uploadAsset(instruction, command.manifest(), command.content)
+                }
+                return@translate
+            } catch (failure: CloudDriveException) {
+                if (failure.kind != CloudFailureKind.UPLOAD_EXPIRED) throw failure
+                lastExpiry = failure
+                if (attempt + 1 == MAX_UPLOAD_SESSION_ATTEMPTS) throw failure
+            }
         }
+        throw lastExpiry ?: CloudDriveException(CloudFailureKind.UPLOAD_EXPIRED, "UPLOAD_SESSION_EXPIRED", true)
     }
 
-    override suspend fun publishDrive(remoteDriveId: String, clientRequestId: String) = translate {
-        // Version is intentionally refreshed after process restart instead of being persisted with a URL/token.
-        val detail = client.getDrive(remoteDriveId)
-        client.publishDrive(remoteDriveId, detail.drive.version)
-        Unit
+    override suspend fun publishDrive(
+        remoteDriveId: String,
+        expectedVersion: Int,
+        clientRequestId: String,
+    ): RemotePublishAck = translate {
+        val published = client.publishDrive(remoteDriveId, expectedVersion)
+        RemotePublishAck(published.version)
     }
 
     private suspend fun <T> translate(block: suspend () -> T): T = try {
@@ -60,7 +74,10 @@ class CloudRemoteDriveApi(
             code = when (failure.kind) {
                 CloudFailureKind.AUTHENTICATION -> RemoteFailureCode.AUTHENTICATION
                 CloudFailureKind.NOT_FOUND -> RemoteFailureCode.NOT_FOUND
-                CloudFailureKind.IDEMPOTENCY_CONFLICT, CloudFailureKind.VERSION_CONFLICT -> RemoteFailureCode.CONFLICT
+                CloudFailureKind.VERSION_CONFLICT -> RemoteFailureCode.VERSION_CONFLICT
+                CloudFailureKind.UPLOAD_INCOMPLETE -> RemoteFailureCode.UPLOAD_INCOMPLETE
+                CloudFailureKind.UPLOAD_EXPIRED -> RemoteFailureCode.UPLOAD_EXPIRED
+                CloudFailureKind.IDEMPOTENCY_CONFLICT -> RemoteFailureCode.REJECTED
                 CloudFailureKind.VALIDATION, CloudFailureKind.CONTRACT -> RemoteFailureCode.REJECTED
                 CloudFailureKind.RETRYABLE -> RemoteFailureCode.SERVER_BUSY
                 CloudFailureKind.UNKNOWN -> RemoteFailureCode.UNKNOWN
@@ -69,6 +86,8 @@ class CloudRemoteDriveApi(
         )
     }
 }
+
+private const val MAX_UPLOAD_SESSION_ATTEMPTS = 2
 
 private fun AssetUploadCommand.manifest() = AssetManifest(
     kind = kind,

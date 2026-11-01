@@ -23,12 +23,18 @@ class HttpResponse(
     override fun toString(): String = "HttpResponse(status=$status, sensitiveFields=[REDACTED])"
 }
 
-/** Cancellation-cooperative transport. Implementations must disable automatic redirects and logging. */
+/**
+ * Cancellation-cooperative transport. Implementations must disable redirects and logging, stream
+ * with a hard 2 MiB response cap, and cancel the underlying call when the coroutine is cancelled.
+ */
 fun interface ApiHttpTransport {
     suspend fun execute(request: HttpRequest): HttpResponse
 }
 
-/** Cancellation-cooperative, no-redirect transport dedicated to presigned object requests. */
+/**
+ * Cancellation-cooperative, no-redirect/no-log transport dedicated to presigned object requests.
+ * It must never buffer more than 2 MiB of a response body or add ambient authentication headers.
+ */
 fun interface ObjectUploadTransport {
     suspend fun execute(request: HttpRequest): HttpResponse
 }
@@ -145,6 +151,8 @@ enum class CloudFailureKind {
     NOT_FOUND,
     IDEMPOTENCY_CONFLICT,
     VERSION_CONFLICT,
+    UPLOAD_INCOMPLETE,
+    UPLOAD_EXPIRED,
     VALIDATION,
     RETRYABLE,
     CONTRACT,

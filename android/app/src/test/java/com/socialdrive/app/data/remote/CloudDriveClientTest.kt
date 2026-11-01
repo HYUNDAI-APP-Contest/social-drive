@@ -3,6 +3,7 @@ package com.socialdrive.app.data.remote
 import com.socialdrive.app.data.DraftSnapshot
 import java.net.URI
 import java.security.MessageDigest
+import java.time.Instant
 import java.util.Base64
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
@@ -13,6 +14,69 @@ import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
 class CloudDriveClientTest {
+    @Test
+    fun `SigV4 contract rejects malformed scope expiry signature and unsigned required headers`() = runBlocking {
+        val mutations = listOf<(String) -> String>(
+            { it.replace("AWS4-HMAC-SHA256", "AWS4-ECDSA-P256-SHA256") },
+            { it.replace("%2Fs3%2Faws4_request", "%2Fec2%2Faws4_request") },
+            { it.replace("X-Amz-Date=20261101T100000Z", "X-Amz-Date=20261102T100000Z") },
+            { it.replace("X-Amz-Expires=600", "X-Amz-Expires=901") },
+            { it.replace("a".repeat(64), "z".repeat(64)) },
+            { it.replace("\"x-amz-checksum-sha256\":", "\"x-extra\":\"unsigned\",\"x-amz-checksum-sha256\":") },
+        )
+        mutations.forEach { mutate ->
+            val harness = Harness()
+            harness.api.responses += jsonResponse(200, mutate(uploadSessionResponse(harness.manifests)))
+            val failure = assertFailsWith<CloudDriveException> {
+                harness.client.refreshUploads("drive-remote-0001", harness.manifests)
+            }
+            assertEquals(CloudFailureKind.CONTRACT, failure.kind)
+            assertTrue(harness.objects.requests.isEmpty())
+        }
+    }
+
+    @Test
+    fun `response parser enforces byte depth node and string limits`() = runBlocking {
+        val harness = Harness()
+        harness.api.responses += HttpResponse(200, body = ByteArray(2 * 1024 * 1024 + 1))
+        val oversized = assertFailsWith<CloudDriveException> { harness.client.feed() }
+        assertEquals("RESPONSE_TOO_LARGE", oversized.code)
+
+        assertFailsWith<IllegalArgumentException> {
+            JsonCodec.parse(("[".repeat(34) + "0" + "]".repeat(34)).toByteArray())
+        }
+        assertFailsWith<IllegalArgumentException> {
+            JsonCodec.parse(("[" + List(10_001) { "0" }.joinToString(",") + "]").toByteArray())
+        }
+        assertFailsWith<IllegalArgumentException> {
+            JsonCodec.parse(("\"" + "x".repeat(16_385) + "\"").toByteArray())
+        }
+
+        val cover = harness.manifests.first { it.kind == AssetKind.COVER }
+        harness.objects.responses += HttpResponse(200, body = ByteArray(2 * 1024 * 1024 + 1))
+        val objectOversized = assertFailsWith<CloudDriveException> {
+            harness.client.uploadAsset(validInstruction(cover), cover, harness.coverBytes)
+        }
+        assertEquals("RESPONSE_TOO_LARGE", objectOversized.code)
+    }
+
+    @Test
+    fun `drive resources reject unsafe ids impossible ranges and unreasonable timestamps`() = runBlocking {
+        val invalidDrives = listOf(
+            driveJson(status = "PUBLISHED").replace("drive-remote-0001", "bad id"),
+            driveJson(status = "PUBLISHED", version = 0),
+            driveJson(status = "PUBLISHED").replace("\"distanceMeters\":0", "\"distanceMeters\":-1"),
+            driveJson(status = "PUBLISHED").replace("\"title\":\"바닷길\"", "\"title\":\"\""),
+            driveJson(status = "PUBLISHED").replace("2026-11-01T10:00:00Z", "2201-11-01T10:00:00Z"),
+        )
+        invalidDrives.forEach { drive ->
+            val harness = Harness()
+            harness.api.responses += jsonResponse(200, """{"items":[$drive],"nextCursor":null}""")
+            val failure = assertFailsWith<CloudDriveException> { harness.client.feed() }
+            assertEquals(CloudFailureKind.CONTRACT, failure.kind)
+        }
+    }
+
     @Test
     fun `worker adapter reuses frozen manifests refreshes upload and fetches publish version`() = runBlocking {
         val harness = Harness()
@@ -29,7 +93,7 @@ class CloudDriveClientTest {
         val adapter = CloudRemoteDriveApi(harness.client, "2026-11-01")
         val assets = draft.assetUploads()
         harness.api.responses += jsonResponse(201, createResponse(assets.map(AssetUploadCommand::testManifest)))
-        assertEquals("drive-remote-0001", adapter.createDrive(draft.clientRequestId, draft))
+        assertEquals(RemoteDraftRef("drive-remote-0001", 1), adapter.createDrive(draft.clientRequestId, draft))
 
         harness.api.responses += jsonResponse(200, uploadSessionResponse(assets.map(AssetUploadCommand::testManifest)))
         harness.objects.responses += HttpResponse(200)
@@ -40,13 +104,51 @@ class CloudDriveClientTest {
         assertEquals(2, harness.objects.requests.size)
         assertTrue(harness.objects.requests.all { request -> request.headers.keys.none { it.equals("authorization", true) } })
 
-        harness.api.responses += jsonResponse(
-            200,
-            """{"drive":${driveJson(version = 7, extra = ",\"coverUrl\":\"https://read.example.test/c\",\"routeUrl\":\"https://read.example.test/r\",\"routeSchemaVersion\":1")}}""",
-        )
         harness.api.responses += jsonResponse(200, """{"drive":${driveJson(status = "PUBLISHED", version = 8)}}""")
-        adapter.publishDrive("drive-remote-0001", draft.clientRequestId)
+        adapter.publishDrive("drive-remote-0001", 7, draft.clientRequestId)
         assertEquals(7, JsonCodec.parse(harness.api.requests.last().body!!).objectValue().integer("expectedVersion"))
+        assertTrue(harness.api.requests.last().uri.path.endsWith("/publish"))
+
+        harness.api.responses += jsonResponse(200, """{"drive":${driveJson(status = "PUBLISHED", version = 8)}}""")
+        assertEquals(8, adapter.publishDrive("drive-remote-0001", 7, draft.clientRequestId).version)
+        assertEquals(7, JsonCodec.parse(harness.api.requests.last().body!!).objectValue().integer("expectedVersion"))
+
+        harness.api.responses += errorResponse(409, "VERSION_CONFLICT", retryable = false)
+        val conflict = assertFailsWith<RemoteDriveException> {
+            adapter.publishDrive("drive-remote-0001", 7, draft.clientRequestId)
+        }
+        assertEquals(RemoteFailureCode.VERSION_CONFLICT, conflict.code)
+        assertFalse(conflict.retryable)
+    }
+
+    @Test
+    fun `expired object session refreshes full manifest once and remains bounded`() = runBlocking {
+        val harness = Harness()
+        val adapter = CloudRemoteDriveApi(harness.client, "2026-11-01")
+        val draft = testDraft()
+        val assets = draft.assetUploads()
+        repeat(2) { harness.api.responses += jsonResponse(200, uploadSessionResponse(assets.map { it.testManifest() })) }
+        harness.objects.responses += HttpResponse(200)
+        harness.objects.responses += HttpResponse(403)
+        harness.objects.responses += HttpResponse(200)
+        harness.objects.responses += HttpResponse(200)
+
+        adapter.uploadAssets("drive-remote-0001", assets)
+
+        assertEquals(2, harness.api.requests.count { it.uri.path.endsWith("/uploads") })
+        assertEquals(4, harness.objects.requests.size)
+
+        val exhausted = Harness()
+        val exhaustedAdapter = CloudRemoteDriveApi(exhausted.client, "2026-11-01")
+        repeat(2) { exhausted.api.responses += jsonResponse(200, uploadSessionResponse(assets.map { it.testManifest() })) }
+        exhausted.objects.responses += HttpResponse(403)
+        exhausted.objects.responses += HttpResponse(403)
+        val failure = assertFailsWith<RemoteDriveException> {
+            exhaustedAdapter.uploadAssets("drive-remote-0001", assets)
+        }
+        assertEquals(RemoteFailureCode.UPLOAD_EXPIRED, failure.code)
+        assertEquals(2, exhausted.api.requests.count { it.uri.path.endsWith("/uploads") })
+        assertEquals(2, exhausted.objects.requests.size)
     }
 
     @Test
@@ -129,6 +231,13 @@ class CloudDriveClientTest {
         }
         assertEquals("UPLOAD_SIZE_MISMATCH", contentError.code)
         assertTrue(harness.objects.requests.isEmpty())
+
+        harness.clockNow = Instant.parse("2026-11-01T10:09:31Z")
+        val expired = assertFailsWith<CloudDriveException> {
+            harness.client.uploadAsset(instruction, cover, harness.coverBytes)
+        }
+        assertEquals(CloudFailureKind.UPLOAD_EXPIRED, expired.kind)
+        assertTrue(harness.objects.requests.isEmpty())
     }
 
     @Test
@@ -203,7 +312,7 @@ class CloudDriveClientTest {
         val incomplete = assertFailsWith<CloudDriveException> {
             harness.client.publishDrive("drive-remote-0001", 1)
         }
-        assertEquals(CloudFailureKind.RETRYABLE, incomplete.kind)
+        assertEquals(CloudFailureKind.UPLOAD_INCOMPLETE, incomplete.kind)
     }
 
     @Test
@@ -239,6 +348,7 @@ class CloudDriveClientTest {
             assets = manifests,
         )
         var tokenCount = 0
+        var clockNow: Instant = Instant.parse("2026-11-01T10:00:00Z")
         val api = FakeTransport()
         val objects = FakeObjectTransport()
         val client = CloudDriveClient(
@@ -246,6 +356,7 @@ class CloudDriveClientTest {
             auth = AuthSessionProvider { BearerToken.inMemory("fresh-token-${++tokenCount}") },
             apiTransport = api,
             objectTransport = objects,
+            clock = { clockNow },
         )
     }
 
@@ -284,16 +395,16 @@ class CloudDriveClientTest {
         signedHeaders: String = "content-type%3Bhost%3Bx-amz-checksum-sha256",
     ): String = manifests.joinToString(prefix = "[", postfix = "]") { asset ->
         val signedChecksum = checksum ?: hexToBase64(asset.sha256Hex)
-        """{"kind":"${asset.kind}","method":"PUT","url":"https://$host/${asset.kind.name.lowercase()}?X-Amz-SignedHeaders=$signedHeaders&X-Amz-Signature=private","requiredHeaders":{"Content-Type":"${asset.contentType}","x-amz-checksum-sha256":"$signedChecksum"},"maxBytes":${asset.sizeBytes},"expiresAt":"2026-11-01T10:10:00.000Z"}"""
+        """{"kind":"${asset.kind}","method":"PUT","url":"https://$host/${asset.kind.name.lowercase()}?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=TESTACCESSKEY00000001%2F20261101%2Fap-northeast-2%2Fs3%2Faws4_request&X-Amz-Date=20261101T100000Z&X-Amz-Expires=600&X-Amz-SignedHeaders=$signedHeaders&X-Amz-Signature=${"a".repeat(64)}","requiredHeaders":{"Content-Type":"${asset.contentType}","x-amz-checksum-sha256":"$signedChecksum"},"maxBytes":${asset.sizeBytes},"expiresAt":"2026-11-01T10:10:00Z"}"""
     }
 
     private fun validInstruction(manifest: AssetManifest) = UploadInstruction(
         manifest.kind,
         HttpMethod.PUT,
-        URI("https://upload.example.test/asset?X-Amz-SignedHeaders=content-type%3Bhost%3Bx-amz-checksum-sha256&X-Amz-Signature=private"),
+        URI("https://upload.example.test/asset?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=TESTACCESSKEY00000001%2F20261101%2Fap-northeast-2%2Fs3%2Faws4_request&X-Amz-Date=20261101T100000Z&X-Amz-Expires=600&X-Amz-SignedHeaders=content-type%3Bhost%3Bx-amz-checksum-sha256&X-Amz-Signature=${"a".repeat(64)}"),
         mapOf("Content-Type" to manifest.contentType, "x-amz-checksum-sha256" to hexToBase64(manifest.sha256Hex)),
         manifest.sizeBytes,
-        "2026-11-01T10:10:00.000Z",
+        "2026-11-01T10:10:00Z",
     )
 }
 
@@ -306,8 +417,21 @@ private fun manifest(kind: AssetKind, type: String, bytes: ByteArray): AssetMani
 
 private fun AssetUploadCommand.testManifest() = AssetManifest(kind, contentType, content.size.toLong(), checksumSha256Hex)
 
-private fun driveJson(status: String = "DRAFT", version: Int = 1, extra: String = ""): String =
-    """{"id":"drive-remote-0001","status":"$status","version":$version,"title":"바닷길","summary":"공개용 요약","distanceMeters":0,"durationSeconds":0,"highlightCount":0,"createdAt":"2026-11-01T10:00:00.000Z"$extra}"""
+private fun testDraft() = DraftSnapshot(
+    id = "local-draft-0001",
+    recordingId = "recording-0001",
+    clientRequestId = "drive-request-0001",
+    title = "바닷길",
+    description = "공개용 요약",
+    coverPreset = "route-memory-default",
+    originalContentRef = "local-recording://recording-0001",
+    state = "QUEUED",
+)
+
+private fun driveJson(status: String = "DRAFT", version: Int = 1, extra: String = ""): String {
+    val published = if (status == "PUBLISHED") ",\"publishedAt\":\"2026-11-01T10:05:00Z\"" else ""
+    return """{"id":"drive-remote-0001","status":"$status","version":$version,"title":"바닷길","summary":"공개용 요약","distanceMeters":0,"durationSeconds":0,"highlightCount":0,"createdAt":"2026-11-01T10:00:00Z"$published$extra}"""
+}
 
 private fun jsonResponse(status: Int, json: String) = HttpResponse(status, body = json.toByteArray())
 

@@ -28,23 +28,35 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   const database = read("app/src/main/java/com/socialdrive/app/data/local/SocialDriveDatabase.kt");
   for (const table of ["recording_sessions", "drive_drafts", "upload_queue"]) assert.match(entities, new RegExp(table));
   assert.match(database, /exportSchema\s*=\s*true/);
+  assert.match(database, /version\s*=\s*3/);
   assert.match(database, /Migration\(1, 2\)/);
-  assert.match(database, /addMigrations\(RoomMigrations\.MIGRATION_1_2\)/);
+  assert.match(database, /Migration\(2, 3\)/);
+  assert.match(database, /REMOTE_VERSION_REQUIRED/);
+  assert.match(database, /addMigrations\(\*RoomMigrations\.ALL\)/);
   assert.doesNotMatch(database, /fallbackToDestructiveMigration/);
   assert.doesNotMatch(daos, /@Delete|DELETE FROM drive_drafts/);
   assert.match(daos, /state = 'DRAFT'/);
   assert.doesNotMatch(daos, /state != 'PUBLISHED'/);
   const schema1 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/1.json"));
   const schema2 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/2.json"));
+  const schema3 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/3.json"));
   assert.equal(schema1.database.version, 1);
   assert.equal(schema2.database.version, 2);
+  assert.equal(schema3.database.version, 3);
   const queue1 = schema1.database.entities.find((entity) => entity.tableName === "upload_queue");
   const queue2 = schema2.database.entities.find((entity) => entity.tableName === "upload_queue");
   assert.equal(queue1.fields.some((field) => field.columnName === "lastErrorCode"), false);
   assert.equal(queue2.fields.some((field) => field.columnName === "lastErrorCode"), true);
+  const draft3 = schema3.database.entities.find((entity) => entity.tableName === "drive_drafts");
+  const queue3 = schema3.database.entities.find((entity) => entity.tableName === "upload_queue");
+  assert.equal(draft3.fields.some((field) => field.columnName === "remoteVersion"), true);
+  assert.equal(queue3.fields.some((field) => field.columnName === "uploadRewindCount"), true);
+  assert.equal(queue3.fields.find((field) => field.columnName === "uploadRewindCount").defaultValue, "0");
   const migrationTest = read("app/src/androidTest/java/com/socialdrive/app/RoomMigrationTest.kt");
-  assert.match(migrationTest, /runMigrationsAndValidate\(DATABASE, 2, true, RoomMigrations\.MIGRATION_1_2\)/);
+  assert.match(migrationTest, /runMigrationsAndValidate\(DATABASE, 3, true, \*RoomMigrations\.ALL\)/);
   assert.match(migrationTest, /originalContentRef/);
+  assert.match(migrationTest, /remoteVersion/);
+  assert.match(migrationTest, /uploadRewindCount/);
 });
 
 test("publish queue is stable restart-safe and keeps ephemeral credentials out of Room", () => {
@@ -59,8 +71,8 @@ test("publish queue is stable restart-safe and keeps ephemeral credentials out o
   assert.match(repositories, /findByRecording\(id\)/);
   assert.match(repositories, /clientRequestId = "drive-\$\{ids\.create\(\)\}"/);
   assert.match(repositories, /motionState != MotionState\.Parked/);
-  assert.match(scheduler, /schedule\(draftId, ExistingWorkPolicy\.KEEP\)/);
-  assert.match(scheduler, /beginUniqueWork\(uniqueName\(draftId\), policy, create\)/);
+  assert.match(scheduler, /chainEnqueuer\.enqueue\(draftId, ExistingWorkPolicy\.KEEP\)/);
+  assert.match(scheduler, /beginUniqueWork\(PublishScheduler\.uniqueName\(draftId\), policy, create\)/);
   assert.match(scheduler, /recoverAfterProcessRestart/);
   assert.match(application, /recoverQueuedWork\(\)/);
   assert.match(application, /publishScheduler\.recoverAfterProcessRestart/);
@@ -68,7 +80,8 @@ test("publish queue is stable restart-safe and keeps ephemeral credentials out o
   assert.match(workers, /original draft is retained after acknowledgement/);
   assert.equal((workers.match(/executionGate\.execute\(/g) ?? []).length, 3);
   assert.match(scheduler, /coordinateRecovery\([\s\S]*pauseRecoverableForMotion/);
-  assert.match(scheduler, /PAUSED_MOTION[\s\S]*ExistingWorkPolicy\.REPLACE/);
+  assert.match(scheduler, /RecoveryEnqueueMode\.REPLACE -> ExistingWorkPolicy\.REPLACE/);
+  assert.match(read("app/src/main/java/com/socialdrive/app/data/work/PublishRecoveryPolicy.kt"), /status == "PAUSED_MOTION"/);
   assert.equal((workers.match(/ParkedExecutionResult\.Paused[^\n]*return Result\.failure\(\)/g) ?? []).length, 3);
   const gate = read("app/src/main/java/com/socialdrive/app/safety/ParkedExecutionGate.kt");
   assert.match(gate, /CoroutineStart\.UNDISPATCHED[\s\S]*bodyEntered\.complete\(Unit\)[\s\S]*startGate\.await\(\)/);
@@ -259,7 +272,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 25/);
+  assert.match(coreRunner, /expectedTests = 35/);
   assert.match(readme, /does not compile Android framework code, the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 
@@ -276,6 +289,8 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
   const coreScript = read("scripts/test-kotlin-core.sh");
   const suite = read("app/src/test/java/com/socialdrive/app/data/remote/CloudDriveClientTest.kt");
+  const json = read("app/src/main/java/com/socialdrive/app/data/remote/JsonCodec.kt");
+  const readme = read("README.md");
 
   assert.match(contracts, /fun interface AuthSessionProvider/);
   assert.match(contracts, /freshBearerToken/);
@@ -286,6 +301,12 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   assert.match(client, /allowedUploadHosts/);
   assert.match(client, /"content-type"/);
   assert.match(client, /"x-amz-checksum-sha256"/);
+  for (const marker of ["AWS4-HMAC-SHA256", "X-Amz-Credential", "X-Amz-Date", "X-Amz-Expires", "X-Amz-Signature"]) {
+    assert.ok(client.includes(marker), marker);
+  }
+  assert.match(client, /MAX_RESPONSE_BYTES = 2 \* 1024 \* 1024/);
+  for (const marker of ["MAX_DEPTH = 32", "MAX_NODES = 10_000", "MAX_STRING_CHARS = 16_384"]) assert.ok(json.includes(marker), marker);
+  assert.match(client, /SIGNED_UPLOAD_HEADER_ORDER/);
   assert.match(client, /fun refreshUploads/);
   assert.match(client, /fun feed/);
   assert.match(client, /fun getDrive/);
@@ -294,9 +315,12 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   assert.match(adapter, /clientRequestId = clientRequestId/);
   assert.match(adapter, /client\.refreshUploads/);
   assert.match(adapter, /override suspend fun uploadAssets/);
+  assert.match(adapter, /MAX_UPLOAD_SESSION_ATTEMPTS = 2/);
   assert.match(adapter, /commands\.map\(AssetUploadCommand::manifest\)[\s\S]*client\.refreshUploads\(remoteDriveId, manifests\)/);
   assert.match(workers, /remote\.uploadAssets\(remoteId, draft\.snapshot\(\)\.assetUploads\(\)\)/);
   assert.doesNotMatch(workers, /assetUploads\(\)\.forEach/);
+  assert.match(adapter, /publishDrive\(remoteDriveId, expectedVersion\)/);
+  assert.doesNotMatch(adapter, /getDrive\(remoteDriveId\)/);
   assert.match(remote, /AssetKind\.COVER/);
   assert.match(remote, /AssetKind\.ROUTE/);
   assert.match(application, /FlavorRemoteDriveApiFactory\.create\(\)/);
@@ -307,6 +331,8 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   assert.match(actualFactory, /UnavailableRemoteDriveApi/);
   assert.doesNotMatch(entities, /bearer|token|presigned|uploadUrl|authorization/i);
   assert.doesNotMatch(client + contracts + adapter, /android\.util\.Log|println\(|printStackTrace/);
+  assert.match(readme, /highlightCount = 0/);
+  assert.match(readme, /must remain unavailable until approved derived publication metadata/);
   for (const source of ["CloudDriveClient.kt", "CloudDriveClientTest.kt", "CloudRemoteDriveApi.kt"]) {
     assert.ok(coreScript.includes(source), source);
   }
@@ -314,6 +340,35 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
     "fresh bearer token", "stable request id", "exact manifest", "only signed headers",
     "foreign host", "opaque cursor", "typed conflicts", "indistinguishable",
   ]) assert.ok(suite.includes(marker), marker);
+});
+
+test("publish concurrency and upload recovery retain frozen versions and bounded durable rewinds", () => {
+  const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
+  const daos = read("app/src/main/java/com/socialdrive/app/data/local/Daos.kt");
+  const workers = read("app/src/main/java/com/socialdrive/app/data/work/PublishWorkers.kt");
+  const scheduler = read("app/src/main/java/com/socialdrive/app/data/work/PublishScheduler.kt");
+  const policy = read("app/src/main/java/com/socialdrive/app/data/work/PublishRecoveryPolicy.kt");
+  const policyTest = read("app/src/test/java/com/socialdrive/app/data/work/PublishRecoveryPolicyTest.kt");
+  assert.match(entities, /val remoteVersion: Int\?/);
+  assert.match(entities, /val uploadRewindCount: Int/);
+  assert.match(daos, /remoteVersion = :remoteVersion/);
+  assert.match(daos, /rewindPublishToUpload/);
+  assert.match(daos, /uploadRewindCount = uploadRewindCount \+ 1/);
+  assert.match(daos, /stage = 'PUBLISH' AND status = 'RUNNING'[\s\S]*attempts = :attempts/);
+  assert.match(daos, /failPublishAtUploadLimit/);
+  assert.match(daos, /failRunningStage/);
+  assert.match(workers, /stalePublishResult/);
+  assert.match(workers, /remoteVersion \?: return fail/);
+  assert.match(workers, /repairsMigratedVersion/);
+  assert.match(workers, /publishDrive\(remoteId, expectedVersion, draft\.clientRequestId\)/);
+  assert.match(workers, /markPublished\(id, remoteId, acknowledgement\.version, now\)/);
+  assert.match(workers, /replaceFromUpload\(id\)/);
+  assert.match(scheduler, /ExistingWorkPolicy\.REPLACE/);
+  assert.match(scheduler, /PublishRecoveryPolicy\.recoveryEnqueueMode/);
+  assert.match(policy, /MAX_UPLOAD_REWINDS = 2/);
+  for (const marker of ["version conflict always stops", "rewinds only within", "expired upload remains", "commits before", "restart recovery", "stale rewind"]) {
+    assert.ok(policyTest.includes(marker), marker);
+  }
 });
 
 test("integration UI is explicit about actual demo unavailable and coming-soon features", () => {

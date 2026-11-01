@@ -65,6 +65,7 @@ class RecordingRepository(
             originalContentRef = "local-recording://${recording.id}",
             state = LocalState.DRAFT,
             remoteDriveId = null,
+            remoteVersion = null,
             createdAtEpochMs = now,
             updatedAtEpochMs = now,
             publishedAtEpochMs = null,
@@ -115,7 +116,7 @@ class PublishQueueRepository(
             val existing = database.uploadQueueDao().find(draftId)
             if (existing != null && existing.status != LocalState.FAILED) return@withTransaction EnqueueResult.AlreadyQueued
             val now = clock()
-            database.draftDao().updateRemoteState(draft.id, LocalState.QUEUED, draft.remoteDriveId, now)
+            database.draftDao().updateRemoteState(draft.id, LocalState.QUEUED, draft.remoteDriveId, draft.remoteVersion, now)
             database.uploadQueueDao().upsert(
                 UploadQueueEntity(
                     draftId = draft.id,
@@ -125,6 +126,7 @@ class PublishQueueRepository(
                     attempts = existing?.attempts ?: 0,
                     nextAttemptAtEpochMs = now,
                     lastErrorCode = null,
+                    uploadRewindCount = existing?.uploadRewindCount ?: 0,
                     updatedAtEpochMs = now,
                 ),
             )

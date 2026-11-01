@@ -48,20 +48,24 @@ internal object JsonCodec {
 
     private class Parser(private val source: String) {
         private var index = 0
+        private var nodes = 0
 
         fun parse(): JsonValue {
-            val value = parseValue()
+            val value = parseValue(depth = 0)
             whitespace()
             require(index == source.length) { "Trailing JSON content" }
             return value
         }
 
-        private fun parseValue(): JsonValue {
+        private fun parseValue(depth: Int): JsonValue {
+            require(depth <= MAX_DEPTH) { "JSON nesting limit exceeded" }
+            nodes += 1
+            require(nodes <= MAX_NODES) { "JSON node limit exceeded" }
             whitespace()
             require(index < source.length) { "Unexpected end of JSON" }
             return when (source[index]) {
-                '{' -> parseObject()
-                '[' -> parseArray()
+                '{' -> parseObject(depth)
+                '[' -> parseArray(depth)
                 '"' -> JsonValue.StringValue(parseString())
                 't' -> literal("true", JsonValue.BooleanValue(true))
                 'f' -> literal("false", JsonValue.BooleanValue(false))
@@ -71,7 +75,7 @@ internal object JsonCodec {
             }
         }
 
-        private fun parseObject(): JsonValue.Object {
+        private fun parseObject(depth: Int): JsonValue.Object {
             index += 1
             whitespace()
             if (take('}')) return JsonValue.Object(emptyMap())
@@ -82,7 +86,7 @@ internal object JsonCodec {
                 val key = parseString()
                 whitespace()
                 require(take(':')) { "Object separator required" }
-                require(values.put(key, parseValue()) == null) { "Duplicate JSON key" }
+                require(values.put(key, parseValue(depth + 1)) == null) { "Duplicate JSON key" }
                 whitespace()
                 if (take('}')) break
                 require(take(',')) { "Object item separator required" }
@@ -90,13 +94,13 @@ internal object JsonCodec {
             return JsonValue.Object(values)
         }
 
-        private fun parseArray(): JsonValue.Array {
+        private fun parseArray(depth: Int): JsonValue.Array {
             index += 1
             whitespace()
             if (take(']')) return JsonValue.Array(emptyList())
             val values = mutableListOf<JsonValue>()
             while (true) {
-                values += parseValue()
+                values += parseValue(depth + 1)
                 whitespace()
                 if (take(']')) break
                 require(take(',')) { "Array item separator required" }
@@ -110,7 +114,7 @@ internal object JsonCodec {
             while (index < source.length) {
                 val character = source[index++]
                 when (character) {
-                    '"' -> return result.toString()
+                    '"' -> return result.toString().also { require(it.length <= MAX_STRING_CHARS) { "JSON string limit exceeded" } }
                     '\\' -> {
                         require(index < source.length) { "Incomplete escape" }
                         when (val escaped = source[index++]) {
@@ -134,6 +138,7 @@ internal object JsonCodec {
                         result.append(character)
                     }
                 }
+                require(result.length <= MAX_STRING_CHARS) { "JSON string limit exceeded" }
             }
             error("Unterminated string")
         }
@@ -175,6 +180,12 @@ internal object JsonCodec {
 
         private fun whitespace() {
             while (index < source.length && source[index] in " \n\r\t") index += 1
+        }
+
+        companion object {
+            private const val MAX_DEPTH = 32
+            private const val MAX_NODES = 10_000
+            private const val MAX_STRING_CHARS = 16_384
         }
     }
 }

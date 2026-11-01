@@ -23,20 +23,20 @@ class RemoteDriveApiTest {
     @Test
     fun `same asset session and checksum is replay safe`() = runBlocking {
         val api = FakeRemoteDriveApi()
-        val remoteId = api.createDrive(draft.clientRequestId, draft)
+        val remote = api.createDrive(draft.clientRequestId, draft)
         val commands = draft.assetUploads()
-        api.uploadAssets(remoteId, commands)
-        api.uploadAssets(remoteId, commands)
+        api.uploadAssets(remote.id, commands)
+        api.uploadAssets(remote.id, commands)
         assertEquals(commands.first().idempotencyKey, draft.assetUploads().first().idempotencyKey)
     }
 
     @Test
     fun `same session with a different checksum fails closed`() = runBlocking {
         val api = FakeRemoteDriveApi()
-        val remoteId = api.createDrive(draft.clientRequestId, draft)
+        val remote = api.createDrive(draft.clientRequestId, draft)
         val commands = draft.assetUploads()
         val command = commands.first()
-        api.uploadAssets(remoteId, commands)
+        api.uploadAssets(remote.id, commands)
         val differentChecksum = Base64.getEncoder().encodeToString(
             MessageDigest.getInstance("SHA-256").digest("different".toByteArray()),
         )
@@ -46,7 +46,7 @@ class RemoteDriveApiTest {
             checksumSha256Base64 = differentChecksum,
             content = "different".toByteArray(),
         )
-        val error = assertFailsWith<RemoteDriveException> { api.uploadAssets(remoteId, listOf(conflict, commands.last())) }
+        val error = assertFailsWith<RemoteDriveException> { api.uploadAssets(remote.id, listOf(conflict, commands.last())) }
         assertEquals(RemoteFailureCode.REJECTED, error.code)
         assertEquals(false, error.retryable)
     }

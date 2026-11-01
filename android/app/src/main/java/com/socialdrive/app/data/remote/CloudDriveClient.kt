@@ -2,6 +2,9 @@ package com.socialdrive.app.data.remote
 
 import java.net.URI
 import java.security.MessageDigest
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import java.util.Base64
 import kotlinx.coroutines.CancellationException
 
@@ -14,6 +17,7 @@ class CloudDriveClient(
     private val auth: AuthSessionProvider,
     private val apiTransport: ApiHttpTransport,
     private val objectTransport: ObjectUploadTransport,
+    private val clock: () -> Instant = Instant::now,
 ) {
     suspend fun createDrive(input: CreateDriveInput): CreateDriveResult {
         validateCreate(input)
@@ -42,7 +46,9 @@ class CloudDriveClient(
             body = jsonObject("assets" to manifestsJson(assets)),
             expectedStatuses = setOf(200),
         ).objectValue()
-        return UploadSession(parseDrive(response.requiredObject("drive")), parseUploads(response, assets))
+        val drive = parseDrive(response.requiredObject("drive"))
+        if (drive.status != DriveStatus.DRAFT) throw CloudContractException("INVALID_UPLOAD_STATUS")
+        return UploadSession(drive, parseUploads(response, assets))
     }
 
     suspend fun uploadAsset(instruction: UploadInstruction, manifest: AssetManifest, content: ByteArray) {
@@ -60,6 +66,12 @@ class CloudDriveClient(
             throw cancelled
         } catch (_: Throwable) {
             throw CloudDriveException(CloudFailureKind.RETRYABLE, "UPLOAD_TRANSPORT", retryable = true)
+        }
+        if (response.body.size > MAX_RESPONSE_BYTES) {
+            throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
+        }
+        if (response.status == 403) {
+            throw CloudDriveException(CloudFailureKind.UPLOAD_EXPIRED, "UPLOAD_SESSION_EXPIRED", retryable = true)
         }
         if (response.status !in 200..299) {
             throw CloudDriveException(
@@ -79,7 +91,11 @@ class CloudDriveClient(
             body = jsonObject("expectedVersion" to jsonNumber(expectedVersion)),
             expectedStatuses = setOf(200),
         ).objectValue()
-        return parseDrive(root.requiredObject("drive"))
+        val drive = parseDrive(root.requiredObject("drive"))
+        if (drive.status != DriveStatus.PUBLISHED || drive.version < expectedVersion) {
+            throw CloudContractException("INVALID_PUBLISH_STATUS")
+        }
+        return drive
     }
 
     suspend fun feed(limit: Int = 20, cursor: OpaqueFeedCursor? = null): FeedPage {
@@ -91,8 +107,10 @@ class CloudDriveClient(
         val root = api(HttpMethod.GET, "/feed$query", expectedStatuses = setOf(200)).objectValue()
         val items = root.array("items").map { itemValue ->
             val item = itemValue.objectValue()
+            val drive = parseDrive(item)
+            if (drive.status != DriveStatus.PUBLISHED) throw CloudContractException("INVALID_FEED_STATUS")
             FeedItem(
-                drive = parseDrive(item),
+                drive = drive,
                 links = EphemeralAssetLinks(secureEphemeralUri(item.string("coverUrl")), routeUri = null),
             )
         }
@@ -110,7 +128,9 @@ class CloudDriveClient(
                 coverUri = secureEphemeralUri(drive.string("coverUrl")),
                 routeUri = secureEphemeralUri(drive.string("routeUrl")),
             ),
-            routeSchemaVersion = drive.integer("routeSchemaVersion"),
+            routeSchemaVersion = drive.integer("routeSchemaVersion").also {
+                if (it != 1) throw CloudContractException("INVALID_ROUTE_SCHEMA")
+            },
         )
     }
 
@@ -118,6 +138,8 @@ class CloudDriveClient(
         requireSafeId(driveId)
         require(patch.expectedVersion >= 1)
         require(patch.title != null || patch.summary != null)
+        patch.title?.let { require(it.isNotBlank() && it.codePointLength() <= 40) }
+        patch.summary?.let { require(it.codePointLength() <= 160) }
         val values = linkedMapOf<String, JsonValue>("expectedVersion" to jsonNumber(patch.expectedVersion))
         patch.title?.let { values["title"] = jsonString(it) }
         patch.summary?.let { values["summary"] = jsonString(it) }
@@ -161,9 +183,9 @@ class CloudDriveClient(
         } catch (_: Throwable) {
             throw CloudDriveException(CloudFailureKind.RETRYABLE, "API_TRANSPORT", retryable = true)
         }
+        if (response.body.size > MAX_RESPONSE_BYTES) throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
         if (response.status !in expectedStatuses) throw parseApiError(response)
         if (response.status == 204) return JsonValue.NullValue
-        if (response.body.size > MAX_RESPONSE_BYTES) throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
         return try {
             JsonCodec.parse(response.body)
         } catch (known: CloudDriveException) {
@@ -175,11 +197,7 @@ class CloudDriveClient(
 
     private fun parseApiError(response: HttpResponse): CloudDriveException {
         val fallbackRetry = response.status == 408 || response.status == 429 || response.status >= 500
-        val envelope = if (response.body.size <= MAX_RESPONSE_BYTES) {
-            runCatching { JsonCodec.parse(response.body).objectValue().requiredObject("error") }.getOrNull()
-        } else {
-            null
-        }
+        val envelope = runCatching { JsonCodec.parse(response.body).objectValue().requiredObject("error") }.getOrNull()
         val code = envelope?.get("code")?.let { (it as? JsonValue.StringValue)?.value } ?: "HTTP_${response.status}"
         val retryable = envelope?.get("retryable")?.let { (it as? JsonValue.BooleanValue)?.value } ?: fallbackRetry
         val requestId = envelope?.get("requestId")?.let { (it as? JsonValue.StringValue)?.value }
@@ -188,7 +206,7 @@ class CloudDriveClient(
             response.status == 404 -> CloudFailureKind.NOT_FOUND
             code == "IDEMPOTENCY_CONFLICT" -> CloudFailureKind.IDEMPOTENCY_CONFLICT
             response.status == 409 && code in setOf("VERSION_CONFLICT", "CONFLICT") -> CloudFailureKind.VERSION_CONFLICT
-            response.status == 409 && code == "UPLOAD_INCOMPLETE" -> CloudFailureKind.RETRYABLE
+            response.status == 409 && code == "UPLOAD_INCOMPLETE" -> CloudFailureKind.UPLOAD_INCOMPLETE
             response.status == 409 && code == "RESOURCE_CONFLICT" && retryable -> CloudFailureKind.RETRYABLE
             response.status == 409 && code == "ASSET_MISMATCH" -> CloudFailureKind.VALIDATION
             response.status in setOf(400, 413, 415, 422) -> CloudFailureKind.VALIDATION
@@ -239,13 +257,16 @@ class CloudDriveClient(
         if (instruction.requiredHeaders.keys.any { it.equals("authorization", ignoreCase = true) }) {
             throw CloudContractException("UPLOAD_AUTH_FORBIDDEN")
         }
+        val normalizedRequired = instruction.requiredHeaders.keys.map(String::lowercase)
+        if (normalizedRequired.size != normalizedRequired.toSet().size || normalizedRequired.toSet() != REQUIRED_UPLOAD_HEADERS) {
+            throw CloudContractException("INVALID_UPLOAD_HEADERS")
+        }
         val signedHeaders = instruction.uri.queryParameter("X-Amz-SignedHeaders")
-            ?.split(';')?.map(String::lowercase)?.toSet().orEmpty()
-        if (instruction.uri.queryParameter("X-Amz-Signature").isNullOrBlank() ||
-            "content-type" !in signedHeaders || "x-amz-checksum-sha256" !in signedHeaders
-        ) {
+            ?.split(';')?.map(String::lowercase).orEmpty()
+        if (signedHeaders != SIGNED_UPLOAD_HEADER_ORDER) {
             throw CloudContractException("UNSIGNED_UPLOAD_HEADERS")
         }
+        validateSigV4(instruction)
         val contentType = instruction.requiredHeaders.caseInsensitive("content-type")
         val checksum = instruction.requiredHeaders.caseInsensitive("x-amz-checksum-sha256")
         if (contentType != manifest.contentType || checksum != hexToBase64(manifest.sha256Hex)) {
@@ -255,8 +276,8 @@ class CloudDriveClient(
 
     private fun validateCreate(input: CreateDriveInput) {
         requireSafeId(input.clientRequestId)
-        require(input.title.isNotBlank() && input.title.length <= 40)
-        require(input.summary.length <= 160)
+        require(input.title.isNotBlank() && input.title.codePointLength() <= 40)
+        require(input.summary.codePointLength() <= 160)
         require(input.distanceMeters in 0..2_000_000)
         require(input.durationSeconds in 0..259_200)
         require(input.highlightCount in 0..100)
@@ -302,18 +323,67 @@ class CloudDriveClient(
         )
     })
 
-    private fun parseDrive(values: Map<String, JsonValue>): DriveResource = DriveResource(
-        id = values.string("id"),
-        status = enumValueOfOrContract(values.string("status")),
-        version = values.integer("version"),
-        title = values.string("title"),
-        summary = values.string("summary"),
-        distanceMeters = values.integer("distanceMeters"),
-        durationSeconds = values.integer("durationSeconds"),
-        highlightCount = values.integer("highlightCount"),
-        createdAt = values.string("createdAt"),
-        publishedAt = values.optionalString("publishedAt"),
-    )
+    private fun parseDrive(values: Map<String, JsonValue>): DriveResource {
+        val id = values.string("id")
+        if (!id.matches(Regex("[A-Za-z0-9_-]{8,128}"))) throw CloudContractException("INVALID_DRIVE_ID")
+        val status = enumValueOfOrContract<DriveStatus>(values.string("status"))
+        val version = values.integer("version")
+        val title = values.string("title")
+        val summary = values.string("summary")
+        val distance = values.integer("distanceMeters")
+        val duration = values.integer("durationSeconds")
+        val highlights = values.integer("highlightCount")
+        val createdText = values.string("createdAt")
+        val publishedText = values.optionalString("publishedAt")
+        val created = safeTimestamp(createdText)
+        val published = publishedText?.let(::safeTimestamp)
+        if (version !in 1..1_000_000 || title.isBlank() || title.codePointLength() > 40 || summary.codePointLength() > 160 ||
+            distance !in 0..2_000_000 || duration !in 0..259_200 || highlights !in 0..100 ||
+            (status == DriveStatus.PUBLISHED && published == null) || (status == DriveStatus.DRAFT && published != null) ||
+            (published != null && published < created)
+        ) throw CloudContractException("INVALID_DRIVE_RESOURCE")
+        return DriveResource(id, status, version, title, summary, distance, duration, highlights, createdText, publishedText)
+    }
+
+    private fun validateSigV4(instruction: UploadInstruction) {
+        val algorithm = instruction.uri.queryParameter("X-Amz-Algorithm")
+        val credential = instruction.uri.queryParameter("X-Amz-Credential")
+        val signedAtText = instruction.uri.queryParameter("X-Amz-Date")
+        val expiresText = instruction.uri.queryParameter("X-Amz-Expires")
+        val signature = instruction.uri.queryParameter("X-Amz-Signature")
+        if (algorithm != "AWS4-HMAC-SHA256" || credential == null || signedAtText == null || expiresText == null ||
+            signature?.matches(Regex("[a-f0-9]{64}")) != true
+        ) throw CloudContractException("INVALID_SIGV4")
+        val credentialParts = credential.split('/')
+        if (credentialParts.size != 5 || !credentialParts[0].matches(Regex("[A-Z0-9]{16,128}")) ||
+            !credentialParts[1].matches(Regex("[0-9]{8}")) || !credentialParts[2].matches(Regex("[a-z0-9-]{3,32}")) ||
+            credentialParts[3] != "s3" || credentialParts[4] != "aws4_request"
+        ) throw CloudContractException("INVALID_SIGV4_CREDENTIAL")
+        val signedAt = runCatching { SIGV4_DATE.parse(signedAtText, Instant::from) }
+            .getOrElse { throw CloudContractException("INVALID_SIGV4_DATE") }
+        if (credentialParts[1] != signedAtText.take(8)) throw CloudContractException("INVALID_SIGV4_CREDENTIAL")
+        val expiresSeconds = expiresText.toLongOrNull()
+            ?.takeIf { it in 1..MAX_PRESIGNED_SECONDS }
+            ?: throw CloudContractException("INVALID_SIGV4_EXPIRY")
+        val declaredExpiry = runCatching { Instant.parse(instruction.expiresAt) }
+            .getOrElse { throw CloudContractException("INVALID_UPLOAD_EXPIRY") }
+        val signedExpiry = signedAt.plusSeconds(expiresSeconds)
+        if (declaredExpiry.isBefore(signedAt) || kotlin.math.abs(declaredExpiry.epochSecond - signedExpiry.epochSecond) > CLOCK_SKEW_SECONDS) {
+            throw CloudContractException("INVALID_UPLOAD_EXPIRY")
+        }
+        val effectiveExpiry = if (declaredExpiry < signedExpiry) declaredExpiry else signedExpiry
+        val now = clock()
+        if (signedAt.isAfter(now.plusSeconds(CLOCK_SKEW_SECONDS)) || !now.plusSeconds(CLOCK_SKEW_SECONDS).isBefore(effectiveExpiry)) {
+            throw CloudDriveException(CloudFailureKind.UPLOAD_EXPIRED, "UPLOAD_SESSION_EXPIRED", retryable = true)
+        }
+    }
+
+    private fun safeTimestamp(value: String): Instant {
+        val instant = runCatching { Instant.parse(value) }.getOrElse { throw CloudContractException("INVALID_TIMESTAMP") }
+        val year = instant.atZone(ZoneOffset.UTC).year
+        if (year !in 2020..2100) throw CloudContractException("INVALID_TIMESTAMP")
+        return instant
+    }
 
     private fun apiUri(path: String): URI {
         require(path.startsWith('/') && !path.startsWith("//"))
@@ -339,6 +409,8 @@ class CloudDriveClient(
     private fun requireSafeId(value: String) {
         require(value.matches(Regex("[A-Za-z0-9_-]{8,128}")))
     }
+
+    private fun String.codePointLength(): Int = codePointCount(0, length)
 
     private fun percentEncode(value: String): String = buildString {
         value.toByteArray(Charsets.UTF_8).forEach { byte ->
@@ -395,6 +467,13 @@ class CloudDriveClient(
 
     companion object {
         private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+        private const val MAX_PRESIGNED_SECONDS = 900L
+        private const val CLOCK_SKEW_SECONDS = 30L
         private const val HEX = "0123456789ABCDEF"
+        private val REQUIRED_UPLOAD_HEADERS = setOf("content-type", "x-amz-checksum-sha256")
+        private val SIGNED_UPLOAD_HEADER_ORDER = listOf("content-type", "host", "x-amz-checksum-sha256")
+        private val SIGV4_DATE: DateTimeFormatter = DateTimeFormatter
+            .ofPattern("uuuuMMdd'T'HHmmss'Z'")
+            .withZone(ZoneOffset.UTC)
     }
 }

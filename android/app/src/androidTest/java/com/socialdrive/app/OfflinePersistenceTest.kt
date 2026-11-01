@@ -73,9 +73,37 @@ class OfflinePersistenceTest {
         assertNotEquals("", persisted.clientRequestId)
         assertEquals(false, drafts.updateCopy(draft.id, "바뀐 제목", "바뀐 설명"))
 
-        database.draftDao().markPublished(draft.id, "remote-demo", 300L)
+        database.draftDao().markPublished(draft.id, "remote-demo", 2, 300L)
         val published = requireNotNull(database.draftDao().find(draft.id))
         assertEquals(draft.originalContentRef, published.originalContentRef)
         assertEquals(LocalState.PUBLISHED, published.state)
+    }
+
+    @Test
+    fun frozenRemoteVersionAndBoundedUploadRewindSurviveRestart() = runTest {
+        val values = ArrayDeque(listOf("recording-5", "draft-5", "request-5"))
+        val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 500L })
+        val queue = PublishQueueRepository(database, clock = { 500L })
+        val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
+        queue.enqueue(draft.id, MotionState.Parked)
+        database.draftDao().updateRemoteState(draft.id, LocalState.QUEUED, "remote-frozen", 7, 501L)
+        database.uploadQueueDao().updateStage(draft.id, LocalState.PUBLISH, LocalState.RUNNING, 3, 502L, null, 502L)
+
+        assertEquals(0, database.uploadQueueDao().rewindPublishToUpload(draft.id, 2, 2, 503L))
+        assertEquals(1, database.uploadQueueDao().rewindPublishToUpload(draft.id, 3, 2, 503L))
+        database.uploadQueueDao().updateStage(draft.id, LocalState.PUBLISH, LocalState.RUNNING, 5, 504L, null, 504L)
+        assertEquals(1, database.uploadQueueDao().rewindPublishToUpload(draft.id, 5, 2, 505L))
+        database.uploadQueueDao().updateStage(draft.id, LocalState.PUBLISH, LocalState.RUNNING, 6, 506L, null, 506L)
+        assertEquals(1, database.uploadQueueDao().failPublishAtUploadLimit(draft.id, 6, 2, 507L))
+        database.uploadQueueDao().updateStage(draft.id, LocalState.COMPLETE, LocalState.PUBLISHED, 6, 0L, null, 506L)
+        assertEquals(0, database.uploadQueueDao().rewindPublishToUpload(draft.id, 6, 2, 507L))
+        assertEquals(0, database.uploadQueueDao().failPublishAtUploadLimit(draft.id, 6, 2, 507L))
+
+        val reconstructedDraft = requireNotNull(database.draftDao().find(draft.id))
+        val reconstructedQueue = requireNotNull(database.uploadQueueDao().find(draft.id))
+        assertEquals(7, reconstructedDraft.remoteVersion)
+        assertEquals(LocalState.COMPLETE, reconstructedQueue.stage)
+        assertEquals(LocalState.PUBLISHED, reconstructedQueue.status)
+        assertEquals(2, reconstructedQueue.uploadRewindCount)
     }
 }

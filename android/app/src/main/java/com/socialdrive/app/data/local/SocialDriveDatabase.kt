@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [RecordingEntity::class, DraftEntity::class, UploadQueueEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 abstract class SocialDriveDatabase : RoomDatabase() {
@@ -22,7 +22,7 @@ abstract class SocialDriveDatabase : RoomDatabase() {
             context.applicationContext,
             SocialDriveDatabase::class.java,
             "social-drive.db",
-        ).addMigrations(RoomMigrations.MIGRATION_1_2).build()
+        ).addMigrations(*RoomMigrations.ALL).build()
     }
 }
 
@@ -33,5 +33,18 @@ object RoomMigrations {
         }
     }
 
-    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2)
+    val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE drive_drafts ADD COLUMN remoteVersion INTEGER")
+            database.execSQL("ALTER TABLE upload_queue ADD COLUMN uploadRewindCount INTEGER NOT NULL DEFAULT 0")
+            database.execSQL("""
+                UPDATE upload_queue
+                SET stage = 'CREATE', status = 'QUEUED', lastErrorCode = 'REMOTE_VERSION_REQUIRED'
+                WHERE draftId IN (SELECT id FROM drive_drafts WHERE remoteDriveId IS NOT NULL)
+                  AND status IN ('QUEUED', 'RUNNING', 'PAUSED_MOTION')
+            """.trimIndent())
+        }
+    }
+
+    val ALL: Array<Migration> = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 }

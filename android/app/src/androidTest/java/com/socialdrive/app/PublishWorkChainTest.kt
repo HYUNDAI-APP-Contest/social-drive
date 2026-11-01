@@ -19,6 +19,7 @@ import com.socialdrive.app.data.remote.AssetUploadCommand
 import com.socialdrive.app.data.work.PublishScheduler
 import com.socialdrive.app.data.work.PublishWorkerDependencies
 import com.socialdrive.app.data.work.PublishWorkerFactory
+import com.socialdrive.app.data.work.PublishRescheduler
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.safety.ParkedExecutionGate
 import java.util.concurrent.TimeUnit
@@ -45,7 +46,7 @@ class PublishWorkChainTest {
             context,
             Configuration.Builder()
                 .setExecutor(SynchronousExecutor())
-                .setWorkerFactory(PublishWorkerFactory(PublishWorkerDependencies(database, remote, motion)))
+                .setWorkerFactory(PublishWorkerFactory(PublishWorkerDependencies(database, remote, motion, PublishRescheduler {})))
                 .build(),
         )
     }
@@ -95,10 +96,13 @@ class PublishWorkChainTest {
 
 private class CountingRemoteDriveApi : RemoteDriveApi {
     var calls = 0
-    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): String {
+    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): com.socialdrive.app.data.remote.RemoteDraftRef {
         calls += 1
-        return "remote-${draft.id}"
+        return com.socialdrive.app.data.remote.RemoteDraftRef("remote-${draft.id}", 1)
     }
     override suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>) { calls += 1 }
-    override suspend fun publishDrive(remoteDriveId: String, clientRequestId: String) { calls += 1 }
+    override suspend fun publishDrive(remoteDriveId: String, expectedVersion: Int, clientRequestId: String): com.socialdrive.app.data.remote.RemotePublishAck {
+        calls += 1
+        return com.socialdrive.app.data.remote.RemotePublishAck(expectedVersion + 1)
+    }
 }

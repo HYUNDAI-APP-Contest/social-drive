@@ -10,14 +10,14 @@ import kotlinx.coroutines.yield
 
 /** Demo-only cloud simulator. It is not present in the actual flavor's compile classpath. */
 class FakeRemoteDriveApi : RemoteDriveApi {
-    private val drives = ConcurrentHashMap<String, String>()
+    private val drives = ConcurrentHashMap<String, RemoteDraftRef>()
     private val uploadedChecksums = ConcurrentHashMap<String, String>()
     private val published = ConcurrentHashMap.newKeySet<String>()
 
-    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): String {
+    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): RemoteDraftRef {
         currentCoroutineContext().ensureActive()
         yield()
-        return drives.computeIfAbsent(clientRequestId) { "demo-${draft.id}" }
+        return drives.computeIfAbsent(clientRequestId) { RemoteDraftRef("demo-${draft.id}", 1) }
     }
 
     override suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>) {
@@ -38,9 +38,10 @@ class FakeRemoteDriveApi : RemoteDriveApi {
 
     private fun reject(): Nothing = throw RemoteDriveException(RemoteFailureCode.REJECTED, retryable = false)
 
-    override suspend fun publishDrive(remoteDriveId: String, clientRequestId: String) {
+    override suspend fun publishDrive(remoteDriveId: String, expectedVersion: Int, clientRequestId: String): RemotePublishAck {
         currentCoroutineContext().ensureActive()
         yield()
         published += remoteDriveId
+        return RemotePublishAck(expectedVersion + 1)
     }
 }

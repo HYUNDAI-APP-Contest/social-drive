@@ -95,13 +95,13 @@ private class LatchingRemoteDriveApi : RemoteDriveApi {
     suspend fun call(stage: String, draft: DraftSnapshot): Any = when (stage) {
         "create" -> createDrive(draft.clientRequestId, draft)
         "upload" -> uploadAssets("remote", draft.assetUploads())
-        "publish" -> publishDrive("remote", draft.clientRequestId)
+        "publish" -> publishDrive("remote", 1, draft.clientRequestId)
         else -> block(stage)
     }
 
-    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): String = block("create")
+    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): com.socialdrive.app.data.remote.RemoteDraftRef = block("create")
     override suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>) = block("upload")
-    override suspend fun publishDrive(remoteDriveId: String, clientRequestId: String) = block("publish")
+    override suspend fun publishDrive(remoteDriveId: String, expectedVersion: Int, clientRequestId: String): com.socialdrive.app.data.remote.RemotePublishAck = block("publish")
 
     private suspend fun block(stage: String): Nothing {
         calls += stage

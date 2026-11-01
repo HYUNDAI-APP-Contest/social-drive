@@ -5,7 +5,19 @@ import java.security.MessageDigest
 import java.util.Base64
 import kotlinx.coroutines.CancellationException
 
-enum class RemoteFailureCode { OFFLINE, TIMEOUT, SERVER_BUSY, AUTHENTICATION, NOT_FOUND, CONFLICT, REJECTED, CONFIGURATION, UNKNOWN }
+enum class RemoteFailureCode {
+    OFFLINE,
+    TIMEOUT,
+    SERVER_BUSY,
+    AUTHENTICATION,
+    NOT_FOUND,
+    VERSION_CONFLICT,
+    UPLOAD_INCOMPLETE,
+    UPLOAD_EXPIRED,
+    REJECTED,
+    CONFIGURATION,
+    UNKNOWN,
+}
 
 class RemoteDriveException(
     val code: RemoteFailureCode,
@@ -22,6 +34,9 @@ data class AssetUploadCommand(
     val contentType: String,
     val content: ByteArray,
 )
+
+data class RemoteDraftRef(val id: String, val version: Int)
+data class RemotePublishAck(val version: Int)
 
 fun DraftSnapshot.assetUploads(): List<AssetUploadCommand> {
     // Contest-safe placeholders contain no original local reference, coordinate, or raw vehicle field.
@@ -63,15 +78,15 @@ private fun DraftSnapshot.uploadCommand(
  * use a cancellation-cooperative HTTP client and propagate [CancellationException] rather than swallowing it.
  */
 interface RemoteDriveApi {
-    suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): String
+    suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): RemoteDraftRef
     suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>)
-    suspend fun publishDrive(remoteDriveId: String, clientRequestId: String)
+    suspend fun publishDrive(remoteDriveId: String, expectedVersion: Int, clientRequestId: String): RemotePublishAck
 }
 
 /** Explicit fail-closed production boundary used when authenticated mobile configuration is absent. */
 class UnavailableRemoteDriveApi : RemoteDriveApi {
     private fun unavailable(): Nothing = throw RemoteDriveException(RemoteFailureCode.CONFIGURATION, retryable = false)
-    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): String = unavailable()
+    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): RemoteDraftRef = unavailable()
     override suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>) = unavailable()
-    override suspend fun publishDrive(remoteDriveId: String, clientRequestId: String) = unavailable()
+    override suspend fun publishDrive(remoteDriveId: String, expectedVersion: Int, clientRequestId: String): RemotePublishAck = unavailable()
 }

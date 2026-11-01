@@ -1,6 +1,7 @@
 package com.socialdrive.app.data.local
 
 import androidx.room.Entity
+import androidx.room.ColumnInfo
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
@@ -30,6 +31,7 @@ data class DraftEntity(
     val originalContentRef: String,
     val state: String,
     val remoteDriveId: String?,
+    val remoteVersion: Int?,
     val createdAtEpochMs: Long,
     val updatedAtEpochMs: Long,
     val publishedAtEpochMs: Long?,
@@ -47,6 +49,7 @@ data class UploadQueueEntity(
     val attempts: Int,
     val nextAttemptAtEpochMs: Long,
     val lastErrorCode: String?,
+    @ColumnInfo(defaultValue = "0") val uploadRewindCount: Int,
     val updatedAtEpochMs: Long,
 )
 

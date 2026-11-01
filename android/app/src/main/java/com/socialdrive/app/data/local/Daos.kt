@@ -46,11 +46,11 @@ interface DraftDao {
     @Query("UPDATE drive_drafts SET title = :title, description = :description, updatedAtEpochMs = :now WHERE id = :id AND state = 'DRAFT'")
     suspend fun updateEditableCopy(id: String, title: String, description: String, now: Long): Int
 
-    @Query("UPDATE drive_drafts SET state = :state, remoteDriveId = :remoteDriveId, updatedAtEpochMs = :now WHERE id = :id")
-    suspend fun updateRemoteState(id: String, state: String, remoteDriveId: String?, now: Long): Int
+    @Query("UPDATE drive_drafts SET state = :state, remoteDriveId = :remoteDriveId, remoteVersion = :remoteVersion, updatedAtEpochMs = :now WHERE id = :id")
+    suspend fun updateRemoteState(id: String, state: String, remoteDriveId: String?, remoteVersion: Int?, now: Long): Int
 
-    @Query("UPDATE drive_drafts SET state = 'PUBLISHED', remoteDriveId = :remoteDriveId, publishedAtEpochMs = :now, updatedAtEpochMs = :now WHERE id = :id")
-    suspend fun markPublished(id: String, remoteDriveId: String, now: Long): Int
+    @Query("UPDATE drive_drafts SET state = 'PUBLISHED', remoteDriveId = :remoteDriveId, remoteVersion = :remoteVersion, publishedAtEpochMs = :now, updatedAtEpochMs = :now WHERE id = :id")
+    suspend fun markPublished(id: String, remoteDriveId: String, remoteVersion: Int, now: Long): Int
 }
 
 @Dao
@@ -77,4 +77,30 @@ interface UploadQueueDao {
         lastErrorCode: String?,
         now: Long,
     ): Int
+
+    @Query("""
+        UPDATE upload_queue
+        SET status = 'FAILED', nextAttemptAtEpochMs = :now,
+            lastErrorCode = :lastErrorCode, updatedAtEpochMs = :now
+        WHERE draftId = :draftId AND stage = :stage AND status = 'RUNNING' AND attempts = :attempts
+    """)
+    suspend fun failRunningStage(draftId: String, stage: String, attempts: Int, lastErrorCode: String, now: Long): Int
+
+    @Query("""
+        UPDATE upload_queue
+        SET stage = 'UPLOAD', status = 'QUEUED', attempts = :attempts,
+            nextAttemptAtEpochMs = :now, lastErrorCode = 'UPLOAD_INCOMPLETE',
+            uploadRewindCount = uploadRewindCount + 1, updatedAtEpochMs = :now
+        WHERE draftId = :draftId AND stage = 'PUBLISH' AND status = 'RUNNING'
+          AND attempts = :attempts AND uploadRewindCount < :maxRewinds
+    """)
+    suspend fun rewindPublishToUpload(draftId: String, attempts: Int, maxRewinds: Int, now: Long): Int
+
+    @Query("""
+        UPDATE upload_queue
+        SET status = 'FAILED', lastErrorCode = 'UPLOAD_INCOMPLETE_LIMIT', updatedAtEpochMs = :now
+        WHERE draftId = :draftId AND stage = 'PUBLISH' AND status = 'RUNNING'
+          AND attempts = :attempts AND uploadRewindCount >= :maxRewinds
+    """)
+    suspend fun failPublishAtUploadLimit(draftId: String, attempts: Int, maxRewinds: Int, now: Long): Int
 }
