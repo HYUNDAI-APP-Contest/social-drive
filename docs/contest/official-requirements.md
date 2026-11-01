@@ -59,6 +59,8 @@ apk/[팀명]_SocialDrive_release.apk
 
 ## 3. 공식 평가축
 
+아래 네 평가축은 공식 페이지에 공개된 **1차 서류심사 기준**이다. 2차 PT 심사 기준은 공식 페이지에서 추후 안내 예정으로 명시되어 있다. 이 저장소에서 PT 슬라이드를 네 평가축에 연결하는 것은 발표 준비를 위한 내부 전략이지, 공개되지 않은 2차 평가 기준을 뜻하지 않는다.
+
 | 평가축 | 공식 확인 질문 | Social Drive가 제출물에서 증명할 것 |
 |---|---|---|
 | 차량특화성 | 모바일 대비 차량 환경만의 독자 가치가 있는가? 주행·정차 및 차량 기능과 결합됐는가? | Vehicle 상태에 따른 안전 전환, 주행/주차 역할 분리, NaviHelper 경로 전달 |
@@ -67,7 +69,7 @@ apk/[팀명]_SocialDrive_release.apk
 | 사업성 | 타깃, 예상 MAU, retention, 확대 가능성이 구체적인가? | 근거가 있는 MAU 산식, activation/W1/W4 지표, 콘텐츠 순환 구조 |
 | 개발 산출물 가산점 | 영상·GitHub·소스·APK가 준비됐는가? | 재현 가능한 README, release APK, 실기 영상, 테스트 결과 |
 
-세부 배점은 공개되지 않았다. 개발되지 않은 기능을 기획서의 실제 기능으로 표현해 기술 활용성을 부풀리지 않는다.
+1차 세부 배점은 공개되지 않았고 2차 PT 심사 기준도 아직 공개되지 않았다. 개발되지 않은 기능을 기획서의 실제 기능으로 표현해 기술 활용성을 부풀리지 않는다.
 
 출처: [공식 심사·시상 안내](https://appdevchallenge.auto-hmg.io/guide/judging-awards)
 
@@ -81,45 +83,49 @@ apk/[팀명]_SocialDrive_release.apk
 
 공모전 개발 환경 출처: [공식 개발 환경](https://appdevchallenge.auto-hmg.io/guide/development)
 
-Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-only/connect-sdk-pleos/Vehicle/intro), [NaviHelper 소개](https://document.pleos.ai/en/api-reference/connect-sdk-pleos/NaviHelper/intro)
+Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-only/connect-sdk-pleos/Vehicle/intro), [NaviHelper 소개](https://document.pleos.ai/en/docs/pleos-only/connect-sdk-pleos/NaviHelper/intro)
 
 ## 5. SDK 상태 truth table
 
 아래 표는 2026-11-01 공식 프로젝트 신청 가이드 기준이다. 제출 직전 Pleos Playground `Workspace > My Project`에서도 다시 확인한다.
 
-| 기능 | 공식 상태 | 이번 MVP 표현 | 금지 사항 |
+| 기능 | 공식 상태 | 2026-11-01 저장소 등급 | 승격 조건/금지 사항 |
 |---|---|---|---|
-| Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | AVD 실기 검증 후 `실제 SDK` | 검증 전 실제 동작 완료로 표현 금지 |
-| NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | AVD에서 목적지·경유지 callback 검증 후 `실제 SDK` | 단순 UI 또는 fake 응답을 실제 SDK로 표현 금지 |
-| FusedLocation | Coming Soon | `향후 확장` | 실제 위치 취득 기능으로 주장하거나 MVP 필수 의존성으로 사용 금지 |
-| SpeechToText | Coming Soon | `향후 확장` | 실제 음성 인식 기능으로 주장 금지 |
-| TextToSpeech | Coming Soon | `향후 확장` | 실제 음성 합성 기능으로 주장 금지 |
-| Vehicle Control | Coming Soon | MVP 제외 | 차량 제어를 구현·시연했다고 주장 금지 |
+| Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | `미구현` | adapter 구현과 AVD capability/callback 증거 후에만 `실제 SDK`. 그 전에는 현재형 설명 금지 |
+| NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | `미구현` | 실제 목적지·경유지 요청과 callback 증거 후에만 `실제 SDK`. fake 응답을 실제 SDK로 표현 금지 |
+| FusedLocation | Coming Soon | `향후 기능` | 실제 위치·경로점 수집 기능으로 주장하거나 MVP 필수 의존성으로 사용 금지 |
+| SpeechToText | Coming Soon | `향후 기능` | 실제 음성 인식 기능으로 주장 금지 |
+| TextToSpeech | Coming Soon | `향후 기능` | 실제 음성 합성 기능으로 주장 금지 |
+| Vehicle Control | Coming Soon | `향후 기능` | 차량 제어를 구현·시연했다고 주장 금지 |
 | preset route / motion simulator | 앱 내부 데모 데이터 | 항상 `데모 데이터` 배지 표시 | 실제 센서·위치·Vehicle callback처럼 연출 금지 |
 
 출처: [Pleos 프로젝트 생성 및 SDK 상태 가이드](https://document.pleos.ai/en/docs/pleos-only/create-my-project), [Vehicle SDK 2.3.2 설정](https://document.pleos.ai/en/docs/pleos-only/connect-sdk-pleos/Vehicle/project-setup), [NaviHelper 3.0.5 설정](https://document.pleos.ai/en/docs/pleos-only/connect-sdk-pleos/NaviHelper/importing-sdk)
 
 ## 6. 기능 표기 규칙
 
-기획서·영상·PT의 모든 기능은 다음 네 등급 중 하나로 표시한다.
+기획서·영상·PT의 모든 기능은 다음 여섯 등급 중 하나로 표시하며, 표 밖에서 별도 상태명을 만들지 않는다.
 
 | 표기 | 정의 | 필요한 증거 |
 |---|---|---|
 | `실제 SDK` | Pleos SDK가 대상 AVD에서 실행됨 | 버전, capability, permission, callback, release가 보이는 녹화와 로그 |
-| `앱 구현` | 저장소 코드와 로컬 테스트로 확인되지만 Pleos 실기와는 무관함 | commit, 테스트 명령과 결과, 화면 녹화 |
+| `앱 구현` | 현재 제출 브랜치에 통합되고 실행 검증된 앱 기능 | commit, 실행한 테스트 명령과 결과, 화면 녹화 |
+| `코드 존재(미통합)` | 별도 작업 브랜치에 코드가 있으나 제출 브랜치 통합·실행 증거가 없음 | branch/commit과 남은 통합·검증 항목 명시 |
 | `데모 데이터` | preset/fake로 동작함 | 화면에 지속적인 데모 표시 |
-| `향후 기능` | 아직 제공되지 않거나 구현하지 않은 계획 | 실제 화면 흐름에 섞지 않고 로드맵에만 표시 |
+| `미구현` | 이번 제출 목표지만 현재 코드 또는 실행 증거가 없음 | 구현·검증 전 현재형 서술 금지 |
+| `향후 기능` | Coming Soon이거나 이번 MVP 범위 밖의 계획 | 실제 화면 흐름에 섞지 않고 로드맵에만 표시 |
 
 ## 7. 2026-11-01 저장소 증거 상태
 
 | 영역 | 현재 위치/상태 | 현재 주장 가능한 수준 |
 |---|---|---|
 | 기본 `main` | 공모전 앱 기능 브랜치가 아직 병합되지 않은 기준점 | 오케스트레이터 기반만 존재하며 완성 앱으로 주장 불가 |
-| Android Compose·Room·안전 게시 큐 | `agent/issue-android-foundation` 별도 작업 브랜치 | 구현 커밋과 테스트 소스가 존재함. main 병합·실기 실행 전 |
-| AWS 최소 API | `agent/issue-backend-mvp` 별도 작업 브랜치 | API·보안 테스트 소스가 존재함. main 병합·배포·Android E2E 전 |
-| Vehicle/NaviHelper 실제 연동 | 별도 구현 작업 진행 대상 | 설계 계약은 있으나 AVD 실행 증거 미확보 |
-| release APK | 없음 | 제출 가능 상태 아님 |
-| 시연 영상 | 없음 | 제출 가능 상태 아님 |
+| Android recording/draft/queue 기반 | `agent/issue-android-foundation` 별도 작업 브랜치 | `코드 존재(미통합)`. 확인된 증거는 recording session, `highlightCount`, draft, pending queue, preset reference뿐임 |
+| 실제 경로점·위치 수집 | 확인된 구현 증거 없음 | `미구현`. RoutePoint 또는 실제 위치 샘플 수집·동의·철회가 구현됐다고 주장 금지 |
+| AWS 최소 API | `agent/issue-backend-mvp` 별도 작업 브랜치 | `코드 존재(미통합)`. main 병합·배포·Android E2E 전 |
+| Vehicle/NaviHelper 실제 연동 | 설계 계약만 존재 | `미구현`. 아직 Pleos AVD 검증 전 |
+| root `readme.md` | 운영 사전 활성화 안내 두 문장만 존재 | `미구현`. 공식 필수 네 항목(앱 소개·실행·환경·APK 위치)을 충족하도록 준비 필요 |
+| release APK | 없음 | `미구현`. 제출 가능 상태 아님 |
+| 시연 영상 | 없음 | `미구현`. 선택 가산점 산출물 준비 전 |
 
 `테스트 소스가 존재한다`와 `해당 테스트를 실제로 실행해 통과했다`를 구분한다. 테스트 명령, 실행 시각, commit SHA, 결과가 남기 전에는 통과로 표현하지 않는다.
 

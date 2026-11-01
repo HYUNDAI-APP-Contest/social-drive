@@ -1,4 +1,4 @@
-# Social Drive 7장 PT 및 시연 계획
+# Social Drive PT 및 시연 계획 — 내부 권장 7장 구성
 
 기준일: 2026-11-01
 
@@ -8,13 +8,17 @@
 
 ## 1. 발표 원칙
 
+7장 슬라이드, 90~150초 영상, 5분·7분 리허설 버전은 공모전 공식 규격이 아니라 팀의 **내부 권장안**이다. 공식 2차 PT 심사 기준과 발표 시간은 추후 안내 예정이므로 공지가 나오면 이 구성을 조정한다.
+
 1. 실제 앱 화면과 실제 실행 증거를 먼저 보여 준다.
-2. `실제 SDK`, `앱 구현`, `데모 데이터`, `향후 기능`을 같은 색상 체계로 끝까지 구분한다.
-3. Vehicle/NaviHelper는 Pleos AVD callback 증거가 있을 때만 실제 SDK로 표현한다.
+2. `실제 SDK`, `앱 구현`, `코드 존재(미통합)`, `데모 데이터`, `미구현`, `향후 기능`을 같은 색상 체계로 끝까지 구분한다.
+3. 현재 Vehicle/NaviHelper adapter는 `미구현`이다. Pleos AVD callback 증거가 생긴 뒤에만 `실제 SDK`로 승격한다.
 4. FusedLocation, STT, TTS, Vehicle Control은 실제 기능으로 말하지 않는다.
 5. MAU와 retention은 산식·검증 방법을 제시하고 근거 없는 숫자를 만들지 않는다.
 
-## 2. 7장 발표 덱
+## 2. 내부 권장 7장 발표 덱
+
+공식 네 평가축은 1차 서류심사 기준이다. 아래 슬라이드의 평가축 연결은 2차 공식 배점을 뜻하지 않고, 메시지를 일관되게 만드는 내부 발표 전략이다. 공식 2차 PT 기준은 추후 안내를 확인한다. [공식 심사 안내](https://appdevchallenge.auto-hmg.io/guide/judging-awards)
 
 ### 1장 — 한 번의 터치가 다음 사람의 드라이브가 된다
 
@@ -53,22 +57,22 @@
 
 각 카드에는 상태 배지를 넣는다.
 
-- Compose/Room/Worker: `앱 구현`
+- Compose/Room/Worker: 현재 `코드 존재(미통합)`
 - preset 경로: `데모 데이터`
-- Vehicle/NaviHelper: 실기 성공 전 `구현 중`, 성공 후에만 `실제 SDK`
+- Vehicle/NaviHelper: 현재 `미구현`, adapter와 AVD 실기 성공 후에만 `실제 SDK`
 
 ### 4장 — 모바일이 아니라 차량이어야 완성된다
 
 화면:
 
-- Vehicle 상태 → 안전 UI 전환
-- NaviHelper → 실제 주행으로 전환
+- Vehicle adapter 구현 목표 → 안전 UI 전환
+- NaviHelper adapter 구현 목표 → 실제 주행으로 전환
 - Room/WorkManager → 네트워크 단절 복구
-- actual/demo/future truth table
+- 여섯 상태 등급 truth table
 
 발표 문장:
 
-> Vehicle 상태가 사용자가 입력할 수 있는 순간을 결정하고, NaviHelper가 콘텐츠를 실제 주행으로 바꿉니다. 현재 Coming Soon인 SDK는 이번 MVP의 실제 기능으로 주장하지 않습니다.
+> 구현 목표는 Vehicle 상태로 사용자가 입력할 수 있는 순간을 결정하고, NaviHelper로 콘텐츠를 실제 주행에 연결하는 것입니다. 두 adapter는 아직 미구현·AVD 검증 전이며, Coming Soon SDK도 이번 MVP의 실제 기능으로 주장하지 않습니다.
 
 평가 연결: 기술 활용성. [공식 개발 환경](https://appdevchallenge.auto-hmg.io/guide/development), [공식 SDK 상태](https://document.pleos.ai/en/docs/pleos-only/create-my-project)
 
@@ -79,12 +83,12 @@
 ```text
 Driving / Unknown
 → 기록 상태와 하이라이트만
-→ Room 로컬 보존
+→ session·highlightCount·draft·queue 로컬 보존
 
 Parked
 → 편집·동의·게시
 → Worker가 motion 재검증
-→ 선택한 정보만 서버 전송
+→ 향후 동의·공개 범위 구현 후 선택한 정보만 서버 전송
 ```
 
 발표 포인트:
@@ -98,10 +102,11 @@ Parked
 
 왼쪽, 현재 코드 증거:
 
-- Android 별도 작업 브랜치: Compose, Room, WorkManager, 안전 gate
+- Android 별도 작업 브랜치: recording session, `highlightCount`, draft, pending queue, preset reference와 안전 gate 코드
 - 백엔드 별도 작업 브랜치: Cognito JWT, DynamoDB, private S3 계약
 - 테스트 소스: 안전 정책, Room migration, 오프라인 복구, API security
-- 아직 없는 증거: main 병합, AVD 실기 결과, 앱-AWS E2E, release APK
+- 아직 없는 증거: 실제 경로점·위치 수집, 위치 동의·철회 UI, main 병합, AVD 실기 결과, 앱-AWS E2E, release APK
+- root `readme.md`: 안내 두 문장뿐이며 공식 네 항목을 충족하지 않아 준비 필요
 
 오른쪽, retention loop:
 
@@ -123,7 +128,8 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 
 화면:
 
-- 11/15: 기획서, GitHub, release APK, 시연 영상
+- 11/15 필수: 기획서
+- 11/15 선택 가산점 목표: GitHub, 소스, release APK, 시연 영상
 - 11/23: 1차 결과
 - 12/3~4: 실제 동작 앱 PT
 - 남은 P0: Pleos 실기, Android-AWS E2E, release APK, 제출 검수
@@ -134,31 +140,31 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 
 공식 일정과 제출 조건: [참가자 모집 공고](https://appdevchallenge.auto-hmg.io/notice/c0a1a000-2026-4923-8000-000000000001), [공식 제출 안내](https://appdevchallenge.auto-hmg.io/guide/submission)
 
-## 3. 90~150초 시연 영상 shot list
+## 3. 내부 권장 90~150초 시연 영상 shot list
 
-권장 본편 길이: 약 125초. 선택 장면을 포함해도 150초를 넘기지 않는다.
+90~150초는 공식 제출 제한이 아니라 내부 편집 권장 길이다. 권장 본편은 약 125초이며 선택 장면을 포함해도 내부 목표상 150초를 넘기지 않는다.
 
 | 시간 | 장면 | 화면 배지 | 내레이션/증거 |
 |---|---|---|---|
 | 0–7초 | 로고, 앱명, 차량 화면 | 없음 | “한 번의 터치가 다음 사람의 드라이브가 됩니다.” |
 | 7–17초 | SNS→지도→내비 재입력 Before | 문제 정의 | “좋은 코스를 발견해도 장소를 다시 찾아야 합니다.” |
-| 17–29초 | 피드와 드라이브 상세 | `앱 구현` | 코스, 하이라이트, 목적지 확인 |
-| 29–43초 | `이 코스 따라가기`와 Navigation 앱 | 성공 시 `실제 SDK` | 실제 NaviHelper 요청과 callback을 한 화면 흐름으로 증명 |
-| 43–57초 | Virtual Console P→D, 앱 안전 전환 | 성공 시 `실제 SDK` | Vehicle capability와 상태 전환 증명 |
-| 57–70초 | 기록 화면에서 `방금 좋았어` 한 번 터치 | `앱 구현` 또는 `데모 데이터` | 주행 중 긴 입력이 없음을 보여 줌 |
-| 70–80초 | 앱 종료·재실행 후 세션/초안 복원 | `앱 구현` | Room persistence 증거 |
-| 80–91초 | D 또는 Unknown에서 게시 진입 거부 | `앱 구현` | fail-closed 안전 정책 |
-| 91–107초 | P에서 게시물 검토·게시 | `앱 구현` | 주행/주차 역할 분리 |
-| 107–117초 | 네트워크 중단→Pending→복구 | `앱 구현` | WorkManager와 원본 보존 |
+| 17–29초 | 피드와 드라이브 상세 | 현재 `코드 존재(미통합)` 또는 `데모 데이터` | 코스, 하이라이트, preset 목적지 확인 |
+| 29–43초 | `이 코스 따라가기`와 Navigation 앱 | 현재 `미구현`; 성공 시 `실제 SDK` | 실제 NaviHelper 요청과 callback을 한 화면 흐름으로 증명 |
+| 43–57초 | Virtual Console P→D, 앱 안전 전환 | 현재 `미구현`; 성공 시 `실제 SDK` | Vehicle capability와 상태 전환 증명 |
+| 57–70초 | 기록 화면에서 `방금 좋았어` 한 번 터치 | 현재 `코드 존재(미통합)` 또는 `데모 데이터` | 주행 중 긴 입력이 없음을 보여 줌 |
+| 70–80초 | 앱 종료·재실행 후 세션/초안 복원 | 검증 후 `앱 구현` | session·draft·queue persistence 증거. 실제 경로점 저장으로 표현 금지 |
+| 80–91초 | D 또는 Unknown에서 게시 진입 거부 | 검증 후 `앱 구현` | fail-closed 안전 정책 |
+| 91–107초 | P에서 게시물 검토·게시 | 검증 후 `앱 구현` | 주행/주차 역할 분리 |
+| 107–117초 | 네트워크 중단→Pending→복구 | 검증 후 `앱 구현` | WorkManager와 draft 보존 |
 | 117–125초 | 게시물이 피드에 등장 | 통합 성공 수준 표기 | retention loop 마무리 |
-| 125–132초, 선택 | 기술 truth table | 네 등급 모두 | actual/demo/future 구분 |
-| 132–140초, 선택 | GitHub·APK·테스트 카드 | `검증 증거` | commit, APK checksum, AVD와 실행 결과 |
+| 125–132초, 선택 | 기술 truth table | 여섯 등급 모두 | 공식 상태 등급 구분 |
+| 132–140초, 선택 | GitHub·APK·테스트 카드 | 해당 기능의 공식 상태 등급 | commit, APK checksum, AVD와 실행 결과 |
 
 ### 촬영 규칙
 
 - `실제 SDK` 배지는 Pleos AVD 실기와 callback이 확인된 장면에만 사용한다.
-- NaviHelper가 미완료면 29–43초를 `연동 예정 UI` 또는 `데모 데이터`로 표시한다.
-- Vehicle adapter가 미완료면 P/D 전환을 실제 SDK로 연출하지 않는다.
+- NaviHelper가 미구현이면 29–43초를 `미구현` 설명 카드로 대체하거나 fake 화면에 `데모 데이터`를 표시한다.
+- Vehicle adapter가 `미구현`이면 P/D 전환을 실제 SDK로 연출하지 않는다.
 - FusedLocation/STT/TTS/Vehicle Control 화면은 본편 실제 흐름에 넣지 않는다.
 - 민감한 계정, 토큰, Client Secret, 정확한 개인 위치, 콘솔 자격증명을 촬영하지 않는다.
 - 영상 마지막에 commit SHA, APK SHA-256, AVD 버전, 실행한 테스트 결과를 표시한다.
@@ -186,7 +192,7 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 
 ### 11월 10일 — 기능 동결
 
-- actual/demo/future 문구 동결
+- 여섯 상태 등급과 기능별 문구 동결
 - P0가 아닌 신규 기능 중단
 - 미완료 기능을 실제 제출 범위에서 제외
 
@@ -211,7 +217,8 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 
 ### 11월 15일 — 제출
 
-- 내부 마감 `[HH:MM KST]`까지 제출
+- 필수 접수양식(기획서)을 내부 마감 `[HH:MM KST]`까지 제출
+- 준비된 경우에만 GitHub·소스·APK·영상을 선택 가산점 자료로 함께 제출
 - 팀원 CC와 서명 재확인
 - 발신 메일과 최종 첨부파일을 보관
 
@@ -220,7 +227,7 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 - 11/23 결과 전에도 치명적 결함과 실기 증거 보완
 - 합격 시 실제 앱 중심으로 PT 자료 갱신
 - 네트워크 장애용 녹화 backup과 local demo backup 준비
-- 5분/7분 발표 버전 리허설
+- 내부 권장 5분/7분 발표 버전 리허설. 공식 발표 시간이 안내되면 교체
 - 예상 질문 답변: 모바일 차별성, 안전 강제, 위치정보, SDK 진실표, MAU 근거
 
 ## 5. Go / No-Go 게이트
@@ -230,7 +237,7 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 Go:
 
 - [ ] 핵심 3개 여정이 앱에서 끊김 없이 연결됨
-- [ ] actual/demo/future가 기능별로 확정됨
+- [ ] 여섯 상태 등급이 기능별로 확정됨
 - [ ] 미완료 SDK 기능 없이도 앱이 안전하게 동작함
 
 No-Go 대응:
@@ -254,9 +261,12 @@ No-Go 대응:
 
 ### 11월 14일 Submission Candidate
 
-Go:
+필수 제출 Go:
 
 - [ ] 공식 접수양식과 전원 서명 완료
+
+선택 가산점 산출물을 함께 낼 경우 추가 Go:
+
 - [ ] GitHub 심사 계정 접근 가능
 - [ ] README 필수 항목과 APK 경로 확인
 - [ ] 영상 링크를 로그아웃/별도 환경에서 재생 가능
@@ -269,15 +279,15 @@ Go:
 
 ### 모바일 앱과 무엇이 다른가?
 
-Vehicle 상태가 입력 가능 범위를 결정하고, NaviHelper가 콘텐츠를 차량의 실제 경로 안내로 전환한다. 모바일에서는 이 안전 전환과 차량 Navigation 앱까지의 완결된 흐름을 동일하게 제공하기 어렵다.
+완성 목표에서는 Vehicle 상태가 입력 가능 범위를 결정하고 NaviHelper가 콘텐츠를 차량의 실제 경로 안내로 전환한다. 현재 두 adapter는 미구현·AVD 검증 전이다. 이 목표가 검증되면 모바일과 달리 차량 상태 기반 안전 전환부터 차량 Navigation 앱까지 흐름을 완결할 수 있다.
 
 ### 주행 중 안전을 어떻게 강제하는가?
 
-Driving뿐 아니라 상태를 확인할 수 없는 Unknown도 편집·게시를 차단한다. UI 진입 시점과 WorkManager의 실제 원격 호출 직전 모두 motion을 재검증한다.
+별도 Android 작업 브랜치에는 Driving뿐 아니라 Unknown도 막는 정책과 Worker gate 코드가 존재하지만 아직 제출 브랜치에 통합·실행 검증되지 않았다. Vehicle adapter 구현 후 UI 진입 시점과 원격 호출 직전에 실제 motion을 재검증하는 것을 release Go 조건으로 삼는다.
 
 ### 위치정보는 언제 서버로 가는가?
 
-기록 중에는 Room에 로컬 저장하고, 사용자가 주차 후 공개 범위를 확인해 게시한 데이터만 업로드한다. 상세 동의·철회 UI는 release 전에 실제 화면과 정책 문구로 검증한다.
+현재 실제 위치·경로점 수집과 위치정보 동의·철회 UI는 미구현이며 preset reference만 사용한다. 향후 실제 위치 기능을 구현할 때 명시적 동의·철회와 공개 범위를 먼저 제공하고, 게시를 확정한 데이터만 업로드하는 것을 Go 조건으로 삼는다.
 
 ### 실제 SDK와 데모 기능은 무엇인가?
 

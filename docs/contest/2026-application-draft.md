@@ -32,12 +32,14 @@
 
 좋은 드라이브 코스를 발견하는 곳과 실제로 주행하는 곳이 분리되어 있다. SNS에서 사진이나 후기를 발견해도 지도에서 장소를 다시 찾고, 차량 내비게이션에 목적지와 경유지를 다시 입력해야 한다. 반대로 운전 중 좋았던 순간을 메모하거나 자세히 기록하려는 행동은 주의 분산과 충돌한다.
 
-Social Drive는 이 문제를 다음처럼 해결한다.
+Social Drive는 다음 경험을 제출 목표로 한다. 아래 항목 중 실제 SDK 연동과 실제 위치·경로점 수집은 2026-11-01 현재 아직 구현·검증되지 않았다.
 
 1. 주행 중에는 기록 시작·종료와 `방금 좋았어` 한 번의 터치만 제공한다.
-2. 경로와 하이라이트는 우선 차량 내부 로컬 DB에 보존한다.
+2. recording session, `highlightCount`, draft, pending queue와 preset reference를 로컬 DB에 보존한다.
 3. 제목·설명·공개 범위 확인은 주차 후에만 허용한다.
-4. 공개된 코스의 목적지와 경유지는 NaviHelper를 통해 차량 Navigation 앱으로 전달한다.
+4. 향후 NaviHelper adapter를 구현·검증한 뒤 공개 코스의 목적지와 경유지를 차량 Navigation 앱으로 전달한다.
+
+실제 위치 샘플과 경로점 수집, 위치정보 동의·철회 UI는 아직 미구현이다. preset 경로는 실제 위치가 아니라 `데모 데이터`다.
 
 ### 핵심 타깃
 
@@ -47,27 +49,31 @@ Social Drive는 이 문제를 다음처럼 해결한다.
 
 타깃 규모는 `[공식 또는 신뢰 가능한 출처 확보 후 입력]`한다. 근거 없는 차량 수나 시장 규모를 만들지 않는다.
 
-## 4. Before / After
+## 4. 목표 Before / After
+
+다음 표는 완성 목표다. 현재 구현 증거는 8절 상태표를 기준으로 한다.
 
 | Before | Social Drive 이후 |
 |---|---|
-| SNS에서 본 코스를 지도와 차량 내비에 다시 입력 | 게시물의 목적지·경유지를 NaviHelper로 전달 |
+| SNS에서 본 코스를 지도와 차량 내비에 다시 입력 | NaviHelper 검증 완료 후 게시물의 목적지·경유지를 전달 |
 | 운전 중 메모·검색으로 주의가 분산될 수 있음 | 큰 버튼 한 번으로 하이라이트만 로컬 기록 |
 | 차량 상태와 무관하게 편집 UI가 열릴 수 있음 | Driving과 Unknown에서 편집·게시를 fail-closed 차단 |
 | 연결이 끊기면 기록·업로드를 잃을 수 있음 | Room 초안과 WorkManager 큐로 재시작·오프라인 복구 |
-| 이동 정보가 수집 즉시 외부로 전송될 수 있음 | 게시 확정 전 로컬 보존, 사용자가 선택한 정보만 업로드 |
+| 이동 정보가 수집 즉시 외부로 전송될 수 있음 | 실제 위치 수집·동의 UI 구현 후, 게시 확정 전 로컬 보존과 선택 업로드를 적용 |
 
 ## 5. 차량특화성
 
+차량특화성·창의성·기술 활용성·사업성은 공개된 1차 서류심사 기준이다. 아래 문안은 1차 기획서에 맞춘 것이며, 2차 PT 평가 기준은 공식 추후 안내를 확인한다. 이 문안을 PT 구조에도 활용하는 것은 내부 발표 전략이다. [공식 심사 안내](https://appdevchallenge.auto-hmg.io/guide/judging-awards)
+
 Social Drive는 모바일 SNS를 차량 화면으로 옮긴 앱이 아니다.
 
-### 차량 상태가 UX를 결정한다
+### 차량 상태가 UX를 결정하는 구조를 구현한다
 
-Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unknown`을 판정한다. 서비스 오류, 권한 부족, 오래된 값처럼 안전을 증명할 수 없는 경우도 `Unknown`으로 처리하여 편집과 게시를 차단한다.
+Vehicle adapter 구현 목표는 Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unknown`을 판정하는 것이다. 서비스 오류, 권한 부족, 오래된 값처럼 안전을 증명할 수 없는 경우는 `Unknown`으로 처리해 편집과 게시를 차단한다. 현재는 adapter와 Pleos AVD 검증 전이므로 실제 Vehicle 상태 연동으로 표현하지 않는다.
 
 ### 콘텐츠가 실제 주행으로 완결된다
 
-사용자는 다른 사람의 게시물을 구경하는 데서 끝나지 않는다. 주차 상태에서 `이 코스 따라가기`를 누르면 NaviHelper에 목적지와 경유지를 전달하여 차량 Navigation 앱의 경로 안내로 이어진다.
+완성 목표에서는 사용자가 주차 상태에서 `이 코스 따라가기`를 누르면 NaviHelper에 목적지와 경유지를 전달하여 차량 Navigation 앱의 경로 안내로 이어진다. 현재는 NaviHelper adapter와 AVD callback 검증 전이다.
 
 ### 주행과 정차의 역할을 분리한다
 
@@ -78,11 +84,11 @@ Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unkno
 
 ## 6. 창의성
 
-Social Drive의 콘텐츠 단위는 장소 후기가 아니라 **실제로 달린 경로와 그 경로 위의 감정 하이라이트**다.
+Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 **실제로 달린 경로와 그 경로 위의 감정 하이라이트**다. 다만 현재 저장소에는 실제 경로점·위치 샘플 수집 증거가 없으며, 현 단계 화면은 preset reference를 사용한다.
 
 - “이 카페가 좋다”에서 “이 길의 이 구간이 좋았다”로 공유 단위를 바꾼다.
 - 순간 표시와 설명 작성을 주행/주차로 분리하여 안전과 표현력을 함께 확보한다.
-- 콘텐츠 소비가 NaviHelper를 통한 실제 주행으로 이어진다.
+- NaviHelper 구현·AVD 검증 후 콘텐츠 소비를 실제 주행으로 연결한다.
 - 따라 달린 사용자가 새로운 하이라이트와 코스를 만들면서 콘텐츠가 순환한다.
 
 ## 7. 3개 핵심 사용자 여정
@@ -92,10 +98,10 @@ Social Drive의 콘텐츠 단위는 장소 후기가 아니라 **실제로 달�
 1. 주차 상태에서 드라이브 기록을 시작한다.
 2. 주행이 시작되면 축약된 기록 화면으로 전환한다.
 3. 좋은 구간에서 `방금 좋았어`를 한 번 누른다.
-4. 경로점과 하이라이트를 Room에 로컬 저장한다.
+4. recording session과 `highlightCount`, draft, pending queue, preset reference를 Room에 저장한다.
 5. 네트워크가 없어도 세션과 초안을 보존한다.
 
-현재 증거: Compose 화면, 안전 정책, Room 엔터티와 복구 코드가 Android 별도 작업 브랜치에 존재한다. 실제 Vehicle callback과 실제 위치 입력은 AVD 증거 확보 전이며, preset 경로는 반드시 `데모 데이터`로 표시한다.
+현재 증거: Android 별도 작업 브랜치에서 확인된 영속 데이터는 recording session, `highlightCount`, draft, pending queue, preset reference다. 실제 경로점·위치 샘플 수집, 위치 동의·철회 UI, Vehicle callback은 구현·AVD 증거가 없다. preset 경로는 반드시 `데모 데이터`로 표시한다.
 
 ### 여정 B: 주차 후 안전하게 게시하기
 
@@ -113,21 +119,22 @@ Social Drive의 콘텐츠 단위는 장소 후기가 아니라 **실제로 달�
 1. 피드에서 드라이브를 선택한다.
 2. 목적지·경유지·하이라이트를 미리 본다.
 3. 주차 상태에서 `이 코스 따라가기`를 누른다.
-4. NaviHelper에 목적지와 경유지를 전달한다.
-5. 차량 Navigation 앱에서 안내를 시작한다.
+4. NaviHelper 구현·검증 후 목적지와 경유지를 전달한다.
+5. 실제 callback이 확인된 경우에만 차량 Navigation 앱 안내 시작을 시연한다.
 
-현재 증거: UI와 fake 흐름은 별도 Android 작업 브랜치에 존재한다. NaviHelper 3.0.5 실제 initialize/request/callback 영상이 확보되기 전에는 `실제 SDK`로 표현하지 않는다.
+현재 증거: UI와 fake 흐름은 별도 Android 작업 브랜치에 있으므로 `데모 데이터`다. NaviHelper adapter는 `미구현`이며 3.0.5 initialize/request/callback 영상도 없다.
 
 ## 8. 기술 활용성과 구현 상태
 
 | 기능 | 제출 목표 | 2026-11-01 현재 사실 | 표기 |
 |---|---|---|---|
-| Compose 피드·상세·기록·게시 UI | 핵심 흐름 제공 | Android 별도 브랜치에 구현 | `앱 구현` |
-| Room 로컬 초안·업로드 큐 | 오프라인/재시작 복구 | Android 별도 브랜치에 구현 | `앱 구현` |
-| motion 재검증 Worker | 주행 중 원격 게시 차단 | Android 별도 브랜치에 구현 | `앱 구현` |
-| Cognito/DynamoDB/S3 API | 사용자·피드·비공개 업로드 | 백엔드 별도 브랜치에 코드 존재, 배포·앱 통합 전 | `통합 예정` |
-| Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | 구현·AVD 증거 미확보 | `구현 중` |
-| NaviHelper 3.0.5 | 목적지·경유지 전달 | 구현·AVD 증거 미확보 | `구현 중` |
+| Compose 피드·상세·기록·게시 UI | 핵심 흐름 제공 | Android 별도 브랜치에 코드 존재, 제출 브랜치 통합·실행 전 | `코드 존재(미통합)` |
+| Room recording/draft/queue | 오프라인/재시작 복구 | session, `highlightCount`, draft, queue, preset reference 코드만 확인 | `코드 존재(미통합)` |
+| motion 재검증 Worker | 주행 중 원격 게시 차단 | Android 별도 브랜치에 코드 존재, Pleos motion 연동 전 | `코드 존재(미통합)` |
+| 실제 경로점·위치 수집과 동의·철회 UI | 실제 코스 생성과 개인정보 통제 | 확인된 구현 증거 없음 | `미구현` |
+| Cognito/DynamoDB/S3 API | 사용자·피드·비공개 업로드 | 백엔드 별도 브랜치에 코드 존재, 배포·앱 통합 전 | `코드 존재(미통합)` |
+| Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | adapter·AVD 증거 없음 | `미구현` |
+| NaviHelper 3.0.5 | 목적지·경유지 전달 | adapter·AVD 증거 없음 | `미구현` |
 | preset route/motion | 전체 흐름 시연 보조 | 데모 전용 | `데모 데이터` |
 | FusedLocation/STT/TTS/Vehicle Control | 향후 자연스러운 입력·안내 | 공식 Coming Soon | `향후 기능` |
 
@@ -135,17 +142,26 @@ Vehicle State와 NaviHelper는 현재 Ready to Use지만, FusedLocation·STT·TT
 
 ## 9. 안전·개인정보 보호
 
+### 현재 확인된 코드 증거
+
+- 별도 Android 작업 브랜치에 recording session, `highlightCount`, draft, pending queue와 preset reference 코드가 존재한다.
+- 별도 Android 작업 브랜치의 queue는 motion gate 구조를 포함하지만, 실제 Vehicle adapter는 아직 미구현이다.
+- 실제 경로점·위치 샘플 수집과 위치정보 동의·철회 UI는 아직 미구현이다.
+
+### 구현·검증해야 할 요구사항
+
 - `Driving`뿐 아니라 상태를 확인할 수 없는 `Unknown`도 편집·게시 차단
 - Worker가 실제 원격 호출 직전에 motion을 다시 확인
 - 주행 중 장문 입력, 설정 변경, 게시, 동영상·자동 스크롤 금지
-- 기록 데이터는 게시 확정 전까지 Room에 로컬 보존
-- 사용자가 게시하기로 선택한 필드만 서버 전송
+- 실제 위치 수집을 구현한다면 명시적 동의·철회와 공개 범위를 먼저 구현
+- 향후 수집하는 실제 위치·경로점은 게시 확정 전까지 Room에 로컬 보존
+- 향후 사용자가 게시하기로 선택한 필드만 서버 전송
 - 게시 성공 전 로컬 원본 삭제 금지
 - S3 객체는 비공개이며 짧게 만료되는 presigned URL 사용
 - 인증 토큰과 presigned URL을 Room이나 WorkManager input에 저장하지 않음
 - 좌표·주소·JWT·비밀키를 로그에 기록하지 않음
 - APK에 AWS 비밀키, 관리자 키, Client Secret을 포함하지 않음
-- 위치정보 동의와 철회 UI: `[최종 구현·검증 후 스크린샷/문구 삽입]`
+- 위치정보 동의·철회 UI: `미구현` — 구현·검증 후에만 스크린샷과 정책 문구 삽입
 
 ## 10. 사업성
 
@@ -173,11 +189,11 @@ W4 Retention = 가입 4주차에 기록·탐색·따라가기 중 하나를 수�
 - B: `[자동차/앱스토어 설치 전환 벤치마크 출처]`
 - C: `[클로즈드 베타 또는 사용자 테스트 결과]`
 
-### Retention loop
+### 목표 Retention loop
 
 ```text
 좋은 코스 발견
-→ NaviHelper로 따라가기
+→ NaviHelper 실제 검증 후 따라가기
 → 주행 중 하이라이트 생성
 → 주차 후 새 코스 게시
 → 지역별 콘텐츠 증가
@@ -204,13 +220,20 @@ W4 Retention = 가입 4주차에 기록·탐색·따라가기 중 하나를 수�
 
 ## 11. 제출 산출물
 
+### 11월 15일 필수 제출
+
 - [ ] 개인정보 동의가 포함된 공식 접수양식
+
+### 선택 제출·가산점 목표
+
 - [ ] GitHub 심사용 저장소와 접근 권한
 - [ ] `apk/[팀명]_SocialDrive_release.apk`
 - [ ] 설치·재실행 가능한 release APK 검증 기록
-- [ ] 90~150초 시연 영상
-- [ ] 실제 SDK/앱 구현/데모/향후 기능 truth table
-- [ ] README의 소개·실행·환경·APK 위치
+- [ ] 내부 권장 길이 90~150초의 시연 영상
+- [ ] 여섯 상태 등급을 적용한 기능 truth table
+- [ ] root README의 소개·실행·환경·APK 위치
 - [ ] 실행한 테스트 명령, commit SHA, 결과 로그
 
-기획서는 필수이며 GitHub·소스·APK·영상은 선택 가산점이다. 2차 PT 대상자는 실제 동작 앱을 준비해야 한다. [공식 제출 안내](https://appdevchallenge.auto-hmg.io/guide/submission)
+현재 root `readme.md`는 운영 사전 활성화 안내 두 문장뿐이어서 공식 네 항목을 충족하지 않는다. 선택 제출을 하려면 README를 별도로 준비해야 한다.
+
+기획서는 11월 15일 필수 제출이며 GitHub·소스·APK·영상은 선택 가산점이다. 90~150초는 공식 제한이 아니라 이 저장소의 내부 영상 권장 길이다. 2차 PT 대상자는 실제 동작 앱을 준비해야 한다. [공식 제출 안내](https://appdevchallenge.auto-hmg.io/guide/submission)
