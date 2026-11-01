@@ -8,6 +8,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PleosReadinessParserTest {
+    @Test fun currentUserDerivesFromPublicProcessUidRange() {
+        assertEquals(0, AndroidUserId.fromUid(10_142))
+        assertEquals(10, AndroidUserId.fromUid(1_010_142))
+    }
+
     @Test fun shortAndFullComponentsMapToOneVisibleGeneration() {
         val short = PleosReadinessParser.observe("42\n", fixture(), "42\n", 10)
         val full = PleosReadinessParser.observe("42", fixture(fullComponents = true), "42", 10)
@@ -34,6 +39,11 @@ class PleosReadinessParserTest {
         assertEquals("home_pid_missing_or_multiple", PleosReadinessParser.observe("42 43", fixture(), "43").reason)
         val inconsistent = fixture() + task("20", "ai.umos.drivingview/.DrivingViewActivity", state = "STOPPED")
         assertEquals("task_representation_inconsistent", PleosReadinessParser.observe("42", inconsistent, "42", 10).reason)
+        val contextBleed = fixture().replace(
+            "ai.umos.drivingview/.DrivingViewActivity t20",
+            "ai.umos.drivingview/.DrivingViewActivity t99",
+        )
+        assertEquals("task_record_context_mismatch", PleosReadinessParser.observe("42", contextBleed, "42", 10).reason)
         val otherUserDuplicate = fixture() + task("21", "ai.umos.drivingview/.DrivingViewActivity", userId = 0)
         assertNotNull(PleosReadinessParser.observe("42", otherUserDuplicate, "42", 10).snapshot)
     }

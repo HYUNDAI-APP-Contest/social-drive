@@ -76,6 +76,16 @@ internal class PleosReadinessSession(
 internal data class PleosOrganizerSnapshot(val homePid: String, val taskIds: List<String>)
 internal data class PleosObservation(val snapshot: PleosOrganizerSnapshot?, val reason: String)
 
+internal object AndroidUserId {
+    // Android assigns each user a non-overlapping range of 100,000 app UIDs.
+    private const val PER_USER_UID_RANGE = 100_000
+    fun fromUid(uid: Int): Int {
+        require(uid >= 0)
+        return uid / PER_USER_UID_RANGE
+    }
+    fun current(): Int = fromUid(android.os.Process.myUid())
+}
+
 internal object PleosReadinessParser {
     private const val HOME = "ai.umos.homescreen/ai.umos.homescreen.HomeActivity"
     private const val DRIVING = "ai.umos.drivingview/ai.umos.drivingview.DrivingViewActivity"
@@ -95,7 +105,9 @@ internal object PleosReadinessParser {
         if (dump.isBlank() || dump.contains("Permission Denial", ignoreCase = true)) {
             return PleosObservation(null, "activity_dump_unavailable")
         }
-        val tasks = canonicalize(parseTasks(dump), currentUserId)
+        val parsed = parseTasks(dump)
+        if (!parsed.consistent) return PleosObservation(null, "task_record_context_mismatch")
+        val tasks = canonicalize(parsed.tasks, currentUserId)
             ?: return PleosObservation(null, "task_representation_inconsistent")
         val ids = required.map { component -> tasks.filter { component in it.components }.map { it.id }.toSet() }
         val cardinalities = ids.joinToString(",") { it.size.toString() }
@@ -114,10 +126,11 @@ internal object PleosReadinessParser {
 
     private fun numericPid(raw: String): String? = raw.trim().takeIf { it.matches(Regex("[0-9]+")) }
 
-    private fun parseTasks(dump: String): List<TaskBlock> {
+    private fun parseTasks(dump: String): ParsedTasks {
         val tasks = mutableListOf<TaskBlock>()
         var task: TaskBlock? = null
         var activity: String? = null
+        var consistent = true
         dump.lineSequence().forEach { line ->
             TASK_HEADER.find(line)?.groupValues?.get(1)?.let { id ->
                 task = TaskBlock(id)
@@ -125,6 +138,7 @@ internal object PleosReadinessParser {
                 activity = null
             }
             ACTIVITY_RECORD.find(line)?.let { match ->
+                if (task?.id != match.groupValues[4]) consistent = false
                 activity = normalize(match.groupValues[2], match.groupValues[3])
                 val active = requireNotNull(activity)
                 task?.components?.add(active)
@@ -140,7 +154,7 @@ internal object PleosReadinessParser {
                 }
             }
         }
-        return tasks
+        return ParsedTasks(tasks, consistent)
     }
 
     private fun canonicalize(raw: List<TaskBlock>, currentUserId: Int?): List<CanonicalTask>? {
@@ -186,6 +200,8 @@ internal object PleosReadinessParser {
         val lifecycle: MutableMap<String, MutableSet<String>> = mutableMapOf(),
     )
 
+    private data class ParsedTasks(val tasks: List<TaskBlock>, val consistent: Boolean)
+
     private data class CanonicalTask(
         val id: String,
         val components: Set<String>,
@@ -195,7 +211,7 @@ internal object PleosReadinessParser {
     )
 
     private val TASK_HEADER = Regex("\\bTask\\{[^\\n]*#([0-9]+)\\b")
-    private val ACTIVITY_RECORD = Regex("ActivityRecord\\{[^\\n]*\\su([0-9]+)\\s+([A-Za-z0-9_.]+)/([A-Za-z0-9_.$]+)\\s+t[0-9]+")
+    private val ACTIVITY_RECORD = Regex("ActivityRecord\\{[^\\n]*\\su([0-9]+)\\s+([A-Za-z0-9_.]+)/([A-Za-z0-9_.$]+)\\s+t([0-9]+)")
     private val VISIBILITY = Regex("(?:^|\\s)mVisible=(true|false)(?:\\s|$)")
     private val LIFECYCLE = Regex("(?:^|\\s)state=(CREATED|STARTED|RESUMED|PAUSED|STOPPED|DESTROYED)(?:\\s|$)")
 }
@@ -277,7 +293,7 @@ private object PleosTaskReadiness {
         }
         val logGuard = PleosFatalLogGuard(System.currentTimeMillis() / 1_000.0, relevantPackages)
         val generation = StableOrganizerGeneration()
-        val currentUserId = android.os.Process.myUserHandle().identifier
+        val currentUserId = AndroidUserId.current()
         val deadline = SystemClock.elapsedRealtime() + READINESS_TIMEOUT_MILLIS
         var lastReason = "not_observed"
         while (SystemClock.elapsedRealtime() < deadline) {

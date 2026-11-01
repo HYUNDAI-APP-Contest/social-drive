@@ -243,7 +243,10 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.match(host, /state=\(CREATED\|STARTED\|RESUMED\|PAUSED\|STOPPED\|DESTROYED\)/);
   assert.match(host, /groupBy\(TaskBlock::id\)/);
   assert.match(host, /task_representation_inconsistent/);
-  assert.match(host, /myUserHandle\(\)\.identifier/);
+  assert.match(host, /PER_USER_UID_RANGE = 100_000/);
+  assert.match(host, /fromUid\(android\.os\.Process\.myUid\(\)\)/);
+  assert.doesNotMatch(host, /myUserHandle\(\)\.identifier/);
+  assert.match(host, /task_record_context_mismatch/);
   assert.match(host, /default_task_not_visible_active/);
   assert.match(host, /if \(current == previous\) return true/);
   assert.match(host, /pidof ai\.umos\.homescreen/);
@@ -262,10 +265,12 @@ test("instrumented safety suite covers lock back confirmation and parked publish
     "duplicateInvisibleMissingAndPidFlipFailClosed",
     "stableTrackerRequiresTwoCoherentObservationsAndResetsOnNullOrChange",
     "fatalGuardIgnoresOldBaselineAndRejectsNewRelevantFatalOrDuplicate",
+    "currentUserDerivesFromPublicProcessUidRange",
   ]) assert.ok(hostTest.includes(marker), marker);
   assert.match(hostTest, /Task with ID 20 not found/);
   assert.match(hostTest, /fixture\(\) \+ fixture\(\)/);
   assert.match(hostTest, /task_representation_inconsistent/);
+  assert.match(hostTest, /DrivingViewActivity t99/);
   assert.match(hostTest, /drivingVisible = false/);
   assert.match(hostTest, /naviState = "STOPPED"/);
 });
