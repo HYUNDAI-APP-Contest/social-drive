@@ -1,7 +1,9 @@
 package com.socialdrive.app
 
+import androidx.room.Room
 import androidx.room.testing.MigrationTestHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.socialdrive.app.data.local.RoomMigrations
@@ -11,6 +13,7 @@ import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlinx.coroutines.test.runTest
 
 @RunWith(AndroidJUnit4::class)
 class RoomMigrationTest {
@@ -54,5 +57,87 @@ class RoomMigrationTest {
         }
     }
 
-    companion object { private const val DATABASE = "migration-test" }
+    @Test
+    fun migrateTwoToThreeRepairsFailedUploadAndPublishWithoutRewindingTerminalRows() = runTest {
+        helper.createDatabase(FAILED_DATABASE, 2).apply {
+            for ((id, state) in listOf(
+                "failed-upload" to "QUEUED",
+                "failed-publish" to "QUEUED",
+                "published" to "PUBLISHED",
+                "deleted" to "DELETED",
+                "complete-failed" to "QUEUED",
+            )) {
+                execSQL(
+                    """INSERT INTO drive_drafts
+                        (id, recordingId, clientRequestId, title, description, coverPreset,
+                         originalContentRef, state, remoteDriveId, createdAtEpochMs,
+                         updatedAtEpochMs, publishedAtEpochMs)
+                       VALUES ('$id', 'recording-$id', 'request-$id', 'title', 'description',
+                         'route-memory-default', 'local-recording://$id', '$state', 'remote-$id',
+                         100, 200, ${if (state == "PUBLISHED") "200" else "NULL"})""".trimIndent(),
+                )
+            }
+            execSQL("INSERT INTO upload_queue VALUES ('failed-upload','request-failed-upload','UPLOAD','FAILED',3,200,'OFFLINE',200)")
+            execSQL("INSERT INTO upload_queue VALUES ('failed-publish','request-failed-publish','PUBLISH','FAILED',4,200,'SERVER_BUSY',200)")
+            execSQL("INSERT INTO upload_queue VALUES ('published','request-published','COMPLETE','PUBLISHED',5,0,NULL,200)")
+            execSQL("INSERT INTO upload_queue VALUES ('deleted','request-deleted','COMPLETE','DELETED',5,0,NULL,200)")
+            execSQL("INSERT INTO upload_queue VALUES ('complete-failed','request-complete-failed','COMPLETE','FAILED',5,0,'SERVER_BUSY',200)")
+            close()
+        }
+
+        helper.runMigrationsAndValidate(FAILED_DATABASE, 3, true, RoomMigrations.MIGRATION_2_3).use { database ->
+            for (id in listOf("failed-upload", "failed-publish")) {
+                database.query("SELECT stage, status, lastErrorCode, uploadRewindCount FROM upload_queue WHERE draftId = '$id'").use { cursor ->
+                    cursor.moveToFirst()
+                    assertEquals("CREATE", cursor.getString(0))
+                    assertEquals("QUEUED", cursor.getString(1))
+                    assertEquals("REMOTE_VERSION_REQUIRED", cursor.getString(2))
+                    assertEquals(0, cursor.getInt(3))
+                }
+            }
+            database.query("SELECT stage, status FROM upload_queue WHERE draftId = 'published'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("COMPLETE", cursor.getString(0))
+                assertEquals("PUBLISHED", cursor.getString(1))
+            }
+            database.query("SELECT stage, status FROM upload_queue WHERE draftId = 'deleted'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("COMPLETE", cursor.getString(0))
+                assertEquals("DELETED", cursor.getString(1))
+            }
+            database.query("SELECT stage, status, lastErrorCode FROM upload_queue WHERE draftId = 'complete-failed'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("COMPLETE", cursor.getString(0))
+                assertEquals("FAILED", cursor.getString(1))
+                assertEquals("SERVER_BUSY", cursor.getString(2))
+            }
+        }
+
+        val room = Room.databaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            SocialDriveDatabase::class.java,
+            FAILED_DATABASE,
+        ).addMigrations(*RoomMigrations.ALL).allowMainThreadQueries().build()
+        try {
+            val queue = requireNotNull(room.uploadQueueDao().find("failed-upload"))
+            assertEquals(1, room.uploadQueueDao().claimStage(queue.draftId, "CREATE", "QUEUED", 3, 4, 300))
+            val draft = requireNotNull(room.draftDao().find(queue.draftId))
+            assertEquals(
+                1,
+                room.draftDao().applyCreateResultCas(
+                    draft.id, draft.state, draft.remoteDriveId, null, "remote-failed-upload", 6, 301,
+                ),
+            )
+            assertEquals(1, room.uploadQueueDao().completeCreateStage(queue.draftId, 4, 301))
+            assertEquals(6, room.draftDao().find(queue.draftId)?.remoteVersion)
+            assertEquals("UPLOAD", room.uploadQueueDao().find(queue.draftId)?.stage)
+        } finally {
+            room.close()
+        }
+    }
+
+    companion object {
+        private const val DATABASE = "migration-test"
+        private const val FAILED_DATABASE = "migration-failed-repair-test"
+    }
 }

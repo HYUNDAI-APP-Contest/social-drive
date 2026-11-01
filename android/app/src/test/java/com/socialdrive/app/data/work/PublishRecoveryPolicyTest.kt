@@ -59,6 +59,19 @@ class PublishRecoveryPolicyTest {
     }
 
     @Test
+    fun `failed legacy row repaired to create is replaced immediately for version replay`() {
+        assertEquals(
+            RecoveryEnqueueMode.REPLACE,
+            PublishRecoveryPolicy.recoveryEnqueueMode(
+                status = "QUEUED",
+                stage = "CREATE",
+                lastErrorCode = "REMOTE_VERSION_REQUIRED",
+            ),
+        )
+        assertEquals(WorkerStageLease("CREATE", 5), WorkerTransitionContract.claim(WorkerQueueSnapshot("CREATE", "QUEUED", 4)))
+    }
+
+    @Test
     fun `stale rewind does not enqueue replacement`() = runBlocking {
         var scheduled = false
         val result = DurableRewindHandoff.commitThenSchedule(

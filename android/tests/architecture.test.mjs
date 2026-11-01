@@ -32,6 +32,9 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   assert.match(database, /Migration\(1, 2\)/);
   assert.match(database, /Migration\(2, 3\)/);
   assert.match(database, /REMOTE_VERSION_REQUIRED/);
+  assert.match(database, /status IN \('QUEUED', 'RUNNING', 'PAUSED_MOTION', 'FAILED'\)/);
+  assert.match(database, /stage NOT IN \('COMPLETE', 'PUBLISHED', 'DELETED'\)/);
+  assert.match(database, /remoteDriveId IS NOT NULL AND remoteVersion IS NULL/);
   assert.match(database, /addMigrations\(\*RoomMigrations\.ALL\)/);
   assert.doesNotMatch(database, /fallbackToDestructiveMigration/);
   assert.doesNotMatch(daos, /@Delete|DELETE FROM drive_drafts/);
@@ -57,6 +60,10 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   assert.match(migrationTest, /originalContentRef/);
   assert.match(migrationTest, /remoteVersion/);
   assert.match(migrationTest, /uploadRewindCount/);
+  assert.match(migrationTest, /failed-upload/);
+  assert.match(migrationTest, /failed-publish/);
+  assert.match(migrationTest, /"PUBLISHED"/);
+  assert.match(migrationTest, /"DELETED"/);
 });
 
 test("publish queue is stable restart-safe and keeps ephemeral credentials out of Room", () => {
@@ -272,7 +279,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 40/);
+  assert.match(coreRunner, /expectedTests = 41/);
   assert.match(readme, /does not compile Android framework code, the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 
@@ -379,6 +386,7 @@ test("publish concurrency and upload recovery retain frozen versions and bounded
     "version conflict always stops", "rewinds only within", "expired upload remains", "commits before",
     "restart recovery", "stale rewind", "one exact lease", "stale create cannot overwrite",
     "stale upload pause and failure", "stale publish acknowledgement", "legacy create replay fails closed",
+    "failed legacy row repaired to create",
   ]) {
     assert.ok(policyTest.includes(marker), marker);
   }

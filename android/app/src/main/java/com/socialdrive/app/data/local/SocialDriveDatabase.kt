@@ -40,8 +40,12 @@ object RoomMigrations {
             database.execSQL("""
                 UPDATE upload_queue
                 SET stage = 'CREATE', status = 'QUEUED', lastErrorCode = 'REMOTE_VERSION_REQUIRED'
-                WHERE draftId IN (SELECT id FROM drive_drafts WHERE remoteDriveId IS NOT NULL)
-                  AND status IN ('QUEUED', 'RUNNING', 'PAUSED_MOTION')
+                WHERE draftId IN (
+                    SELECT id FROM drive_drafts
+                    WHERE remoteDriveId IS NOT NULL AND remoteVersion IS NULL
+                )
+                  AND status IN ('QUEUED', 'RUNNING', 'PAUSED_MOTION', 'FAILED')
+                  AND stage NOT IN ('COMPLETE', 'PUBLISHED', 'DELETED')
             """.trimIndent())
         }
     }

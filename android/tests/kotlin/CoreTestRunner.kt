@@ -8,7 +8,7 @@ import java.lang.reflect.InvocationTargetException
 import org.junit.Test
 
 fun main() {
-    val expectedTests = 40
+    val expectedTests = 41
     val classes = listOf(
         IntegrationContractsTest::class.java,
         CloudDriveClientTest::class.java,
