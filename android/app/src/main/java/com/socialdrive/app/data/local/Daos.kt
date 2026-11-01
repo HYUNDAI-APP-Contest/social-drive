@@ -130,6 +130,7 @@ interface UploadQueueDao {
         WHERE draftId = :draftId AND stage = :stage AND status = :expectedStatus
           AND attempts = :expectedAttempts
           AND :expectedStatus IN ('QUEUED', 'FAILED', 'PAUSED_MOTION')
+          AND NOT (:expectedStatus = 'FAILED' AND COALESCE(lastErrorCode, '') = 'VERSION_CONFLICT')
     """)
     suspend fun claimStage(
         draftId: String,

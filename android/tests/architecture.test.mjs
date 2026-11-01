@@ -306,7 +306,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 62/);
+  assert.match(coreRunner, /expectedTests = 63/);
   assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 
@@ -555,6 +555,7 @@ test("version conflicts are durable explicit parked-only reviews", () => {
   assert.match(daos, /fetchGeneration = :fetchGeneration AND state = 'FETCHING'/);
   assert.match(daos, /replayCount = replayCount \+ 1/);
   assert.match(daos, /replayCount < :maxReplays/);
+  assert.match(daos, /NOT \(:expectedStatus = 'FAILED' AND COALESCE\(lastErrorCode, ''\) = 'VERSION_CONFLICT'\)/);
   assert.match(workers, /withContext\(NonCancellable\)[\s\S]*failVersionConflictCas[\s\S]*insertIfAbsent/);
   assert.match(repository, /executionGate\.execute/);
   assert.match(repository, /catch \(cancelled: CancellationException\)[\s\S]*withContext\(NonCancellable\)[\s\S]*"INTERRUPTED"/);
@@ -563,6 +564,11 @@ test("version conflicts are durable explicit parked-only reviews", () => {
   assert.match(repository, /claimFetch[\s\S]*getOwnedDrive[\s\S]*storeSnapshotCas/);
   assert.match(repository, /queueReplayCas[\s\S]*adoptConflictVersionCas[\s\S]*queueConflictReplayCas/);
   assert.match(scheduler, /replacePublishOnly/);
+  const workChainTest = read("app/src/androidTest/java/com/socialdrive/app/PublishWorkChainTest.kt");
+  assert.match(workChainTest, /restartedPublishWorkerCannotClaimCommittedConflictFailure/);
+  assert.match(workChainTest, /assertEquals\(0, remote\.publishCalls\)/);
+  assert.match(workChainTest, /transientFailedRowRemainsClaimableWithinWorkerRetryPolicy/);
+  assert.match(workChainTest, /replayQueuedRestartCreatesPublishOnlyChain[\s\S]*assertEquals\(1, remote\.publishCalls\)/);
   assert.match(remote, /short-lived links, response headers and request IDs never cross it/);
   assert.match(actualReview, /UnavailableRemoteConflictReviewApi/);
   assert.doesNotMatch(actualReview, /DemoRemoteConflictReviewApi/);

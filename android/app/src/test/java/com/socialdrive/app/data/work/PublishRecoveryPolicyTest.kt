@@ -16,6 +16,21 @@ class PublishRecoveryPolicyTest {
     }
 
     @Test
+    fun `normal worker claim rejects conflict failure but accepts transient failure`() {
+        assertNull(
+            WorkerTransitionContract.claim(
+                WorkerQueueSnapshot("PUBLISH", "FAILED", 3, "VERSION_CONFLICT"),
+            ),
+        )
+        assertEquals(
+            WorkerStageLease("PUBLISH", 4),
+            WorkerTransitionContract.claim(
+                WorkerQueueSnapshot("PUBLISH", "FAILED", 3, "SERVER_BUSY"),
+            ),
+        )
+    }
+
+    @Test
     fun `upload incomplete rewinds only within the durable bound`() {
         assertEquals(PublishFailureAction.REWIND_UPLOAD, PublishRecoveryPolicy.decide(RemoteFailureCode.UPLOAD_INCOMPLETE, 0))
         assertEquals(PublishFailureAction.REWIND_UPLOAD, PublishRecoveryPolicy.decide(RemoteFailureCode.UPLOAD_INCOMPLETE, 1))

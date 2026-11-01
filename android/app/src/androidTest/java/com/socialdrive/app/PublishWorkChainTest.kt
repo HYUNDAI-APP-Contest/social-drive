@@ -15,8 +15,10 @@ import com.socialdrive.app.data.PublishQueueRepository
 import com.socialdrive.app.data.RecordingRepository
 import com.socialdrive.app.data.local.LocalState
 import com.socialdrive.app.data.local.ConflictState
+import com.socialdrive.app.data.local.DraftEntity
 import com.socialdrive.app.data.local.PublishConflictEntity
 import com.socialdrive.app.data.local.SocialDriveDatabase
+import com.socialdrive.app.data.local.UploadQueueEntity
 import com.socialdrive.app.data.remote.RemoteDriveApi
 import com.socialdrive.app.data.remote.AssetUploadCommand
 import com.socialdrive.app.data.remote.RemoteDraftRef
@@ -26,6 +28,7 @@ import com.socialdrive.app.data.work.PublishScheduler
 import com.socialdrive.app.data.work.PublishWorkerDependencies
 import com.socialdrive.app.data.work.PublishWorkerFactory
 import com.socialdrive.app.data.work.PublishRescheduler
+import com.socialdrive.app.data.work.PublishWorkChainEnqueuer
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.safety.ParkedExecutionGate
 import java.util.concurrent.TimeUnit
@@ -176,6 +179,79 @@ class PublishWorkChainTest {
     }
 
     @Test
+    fun restartedPublishWorkerCannotClaimCommittedConflictFailure() = runTest {
+        database.draftDao().insert(
+            DraftEntity(
+                "draft-crash", "recording-crash", "request-crash", "local title", "local body",
+                "route-memory-default", "local-recording://recording-crash", LocalState.QUEUED,
+                "drive-remote-crash", 4, 1_200L, 1_201L, null,
+            ),
+        )
+        database.uploadQueueDao().upsert(
+            UploadQueueEntity(
+                "draft-crash", "request-crash", LocalState.PUBLISH, LocalState.FAILED,
+                3, 1_201L, LocalState.VERSION_CONFLICT, 0, 1_201L,
+            ),
+        )
+        database.publishConflictDao().insertIfAbsent(
+            PublishConflictEntity(
+                "draft-crash", "request-crash", "drive-remote-crash", 4,
+                null, null, null, null, ConflictState.DETECTED, 0, 1,
+                1_201L, null, null, null,
+            ),
+        )
+
+        val manager = WorkManager.getInstance(context)
+        PublishWorkChainEnqueuer(manager).replacePublishOnly("draft-crash")
+        val work = manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName("draft-crash"))
+            .get(5, TimeUnit.SECONDS)
+        val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
+        work.forEach { driver.setAllConstraintsMet(it.id) }
+
+        assertEquals(0, remote.publishCalls)
+        val queue = requireNotNull(database.uploadQueueDao().find("draft-crash"))
+        assertEquals(LocalState.FAILED, queue.status)
+        assertEquals(LocalState.VERSION_CONFLICT, queue.lastErrorCode)
+        assertEquals(3, queue.attempts)
+        assertEquals(ConflictState.DETECTED, database.publishConflictDao().find("draft-crash")?.state)
+    }
+
+    @Test
+    fun transientFailedRowRemainsClaimableWithinWorkerRetryPolicy() = runTest {
+        database.uploadQueueDao().upsert(
+            UploadQueueEntity(
+                "draft-conflict-direct", "request-conflict-direct", LocalState.PUBLISH, LocalState.FAILED,
+                2, 1_300L, LocalState.VERSION_CONFLICT, 0, 1_300L,
+            ),
+        )
+        assertEquals(
+            0,
+            database.uploadQueueDao().claimStage(
+                "draft-conflict-direct", LocalState.PUBLISH, LocalState.FAILED, 2, 3, 1_301L,
+            ),
+        )
+        assertEquals(
+            LocalState.VERSION_CONFLICT,
+            database.uploadQueueDao().find("draft-conflict-direct")?.lastErrorCode,
+        )
+        database.uploadQueueDao().upsert(
+            UploadQueueEntity(
+                "draft-transient", "request-transient", LocalState.PUBLISH, LocalState.FAILED,
+                2, 1_300L, "SERVER_BUSY", 0, 1_300L,
+            ),
+        )
+        assertEquals(
+            1,
+            database.uploadQueueDao().claimStage(
+                "draft-transient", LocalState.PUBLISH, LocalState.FAILED, 2, 3, 1_301L,
+            ),
+        )
+        val queue = requireNotNull(database.uploadQueueDao().find("draft-transient"))
+        assertEquals(LocalState.RUNNING, queue.status)
+        assertEquals(null, queue.lastErrorCode)
+    }
+
+    @Test
     fun replayQueuedRestartCreatesPublishOnlyChain() = runTest {
         val values = ArrayDeque(listOf("recording-r", "draft-r", "request-r"))
         val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 1_100L })
@@ -195,6 +271,11 @@ class PublishWorkChainTest {
         assertEquals(1, work.size)
         assertEquals(0, remote.createCalls)
         assertEquals(0, remote.uploadCalls)
+        val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
+        work.forEach { driver.setAllConstraintsMet(it.id) }
+        assertEquals(1, remote.publishCalls)
+        assertEquals(LocalState.COMPLETE, database.uploadQueueDao().find(draft.id)?.stage)
+        assertEquals(ConflictState.RESOLVED, database.publishConflictDao().find(draft.id)?.state)
     }
 }
 

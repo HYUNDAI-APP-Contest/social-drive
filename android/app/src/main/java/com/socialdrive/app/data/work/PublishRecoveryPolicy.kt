@@ -6,7 +6,12 @@ enum class PublishFailureAction { REWIND_UPLOAD, STOP_PERMANENT, STANDARD_FAILUR
 enum class RecoveryEnqueueMode { KEEP, REPLACE }
 data class RewindHandoffResult(val committed: Boolean, val scheduled: Boolean)
 data class WorkerStageLease(val stage: String, val attempt: Int)
-data class WorkerQueueSnapshot(val stage: String, val status: String, val attempts: Int)
+data class WorkerQueueSnapshot(
+    val stage: String,
+    val status: String,
+    val attempts: Int,
+    val lastErrorCode: String? = null,
+)
 data class DraftRemoteSnapshot(val state: String, val remoteDriveId: String?, val remoteVersion: Int?)
 
 /**
@@ -17,7 +22,10 @@ object WorkerTransitionContract {
     private val claimableStatuses = setOf("QUEUED", "FAILED", "PAUSED_MOTION")
 
     fun claim(snapshot: WorkerQueueSnapshot): WorkerStageLease? =
-        snapshot.takeIf { it.status in claimableStatuses }
+        snapshot.takeIf {
+            it.status in claimableStatuses &&
+                !(it.status == "FAILED" && it.lastErrorCode == "VERSION_CONFLICT")
+        }
             ?.let { WorkerStageLease(stage = it.stage, attempt = it.attempts + 1) }
 
     fun owns(snapshot: WorkerQueueSnapshot, lease: WorkerStageLease): Boolean =

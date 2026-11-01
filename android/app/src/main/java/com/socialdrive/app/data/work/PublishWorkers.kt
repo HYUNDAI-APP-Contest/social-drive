@@ -55,7 +55,7 @@ abstract class StagedPublishWorker(
     protected suspend fun claim(draftId: String, queue: UploadQueueEntity): WorkerStageLease? {
         val now = dependencies.clock()
         val lease = WorkerTransitionContract.claim(
-            WorkerQueueSnapshot(queue.stage, queue.status, queue.attempts),
+            WorkerQueueSnapshot(queue.stage, queue.status, queue.attempts, queue.lastErrorCode),
         ) ?: return null
         val claimed = dependencies.database.uploadQueueDao().claimStage(
             draftId = draftId,
