@@ -1,8 +1,7 @@
 package com.socialdrive.app
 
-import androidx.activity.compose.setContent
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -15,6 +14,8 @@ import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.ThemeMode
 import com.socialdrive.app.ui.screens.HomeScreen
 import com.socialdrive.app.ui.theme.SocialDriveTheme
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -22,7 +23,11 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class HomeSafetyUiTest {
     @get:Rule
-    val compose = createAndroidComposeRule<MainActivity>()
+    val compose = createEmptyComposeRule()
+    private val host = PleosComposeHost()
+
+    @Before fun launchHost() = host.launch()
+    @After fun closeHost() = host.close()
 
     @Test
     fun drivingHomeHidesFeedFiltersAndSettings() {
@@ -43,17 +48,15 @@ class HomeSafetyUiTest {
 
     private fun showRestrictedHome(motion: MotionState) {
         val drives = FakeDriveRepository().drives()
-        compose.runOnUiThread {
-            compose.activity.setContent {
-                SocialDriveTheme(ThemeMode.Night) {
-                    HomeScreen(
-                        state = ContentState.Content(drives),
-                        motion = motion,
-                        demoMode = DemoContentMode.Content,
-                        blockedMessage = null,
-                        onDetail = {}, onRecord = {}, onSettings = {}, onRetry = {}, onDemoModeChange = {},
-                    )
-                }
+        host.setContent {
+            SocialDriveTheme(ThemeMode.Night) {
+                HomeScreen(
+                    state = ContentState.Content(drives),
+                    motion = motion,
+                    demoMode = DemoContentMode.Content,
+                    blockedMessage = null,
+                    onDetail = {}, onRecord = {}, onSettings = {}, onRetry = {}, onDemoModeChange = {},
+                )
             }
         }
         compose.waitForIdle()
@@ -63,7 +66,11 @@ class HomeSafetyUiTest {
 @RunWith(AndroidJUnit4::class)
 class NavigationSafetyUiTest {
     @get:Rule
-    val compose = createAndroidComposeRule<MainActivity>()
+    val compose = createEmptyComposeRule()
+    private val host = PleosComposeHost()
+
+    @Before fun launchHost() = host.launch()
+    @After fun closeHost() = host.close()
 
     @Test
     fun systemBackDuringRecordingShowsTheSameStopConfirmation() {

@@ -215,15 +215,18 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.equal(fs.existsSync(path.join(root, relative)), true);
   const ui = read(relative);
   const conflictUi = read("app/src/androidTest/java/com/socialdrive/app/ConflictReviewUiTest.kt");
+  const host = read("app/src/androidTest/java/com/socialdrive/app/PleosComposeHost.kt");
+  const hostTest = read("app/src/androidTest/java/com/socialdrive/app/PleosReadinessParserTest.kt");
   for (const marker of [
     "MotionState.Driving", "MotionState.Unknown", "assertDoesNotExist", "pressBack()",
     "기록을 종료할까요?", "parkedUserCanReachPublishThroughDetailOnly", "드라이브 게시",
   ]) assert.ok(ui.includes(marker), marker);
   for (const source of [ui, conflictUi]) {
-    assert.match(source, /createAndroidComposeRule<MainActivity>\(\)/);
-    assert.match(source, /compose\.runOnUiThread[\s\S]*compose\.activity\.setContent/);
+    assert.match(source, /createEmptyComposeRule\(\)/);
+    assert.match(source, /PleosComposeHost\(\)/);
     assert.match(source, /compose\.waitForIdle\(\)/);
     assert.doesNotMatch(source, /createComposeRule/);
+    assert.doesNotMatch(source, /createAndroidComposeRule/);
     assert.doesNotMatch(
       source,
       /import androidx\.compose\.ui\.test\.assertDoesNotExist/,
@@ -231,6 +234,27 @@ test("instrumented safety suite covers lock back confirmation and parked publish
     );
     assert.match(source, /\.assertDoesNotExist\(\)/);
   }
+  assert.match(host, /awaitStableGeneration\(\)[\s\S]*ActivityScenario\.launch\(MainActivity::class\.java\)/);
+  assert.match(host, /moveToState\(Lifecycle\.State\.RESUMED\)/);
+  assert.match(host, /observe\(homePidBefore: String, dump: String, homePidAfter: String\)/);
+  assert.match(host, /PleosOrganizerSnapshot\(after, ids\.map \{ it\.single\(\) \}\)/);
+  assert.match(host, /TASK_HEADER[\s\S]*ACTIVITY_RECORD/);
+  assert.match(host, /\(\?:mVisible\|visible\)=true/);
+  assert.match(host, /if \(current == previous\) return true/);
+  assert.match(host, /pidof ai\.umos\.homescreen/);
+  assert.doesNotMatch(host, /pidof ai\.umos\.(?:drivingview|maps)/);
+  assert.match(host, /dumpsys activity activities/);
+  assert.match(host, /logcat -d -v epoch -T/);
+  assert.doesNotMatch(host, /logcat -c|force-stop|\bsu\b|adoptShellPermissionIdentity/);
+  assert.match(host, /duplicate_listener/);
+  assert.match(host, /active\.close\(\)[\s\S]*Lifecycle\.State\.DESTROYED/);
+  assert.doesNotMatch(host, /(?:Thread|SystemClock)\.sleep|createAndroidComposeRule/);
+  for (const marker of [
+    "shortAndFullComponentsMapToOneVisibleGeneration",
+    "duplicateInvisibleMissingAndPidFlipFailClosed",
+    "stableTrackerRequiresTwoCoherentObservationsAndResetsOnNullOrChange",
+    "fatalGuardIgnoresOldBaselineAndRejectsNewRelevantFatalOrDuplicate",
+  ]) assert.ok(hostTest.includes(marker), marker);
 });
 
 test("content and upload states are observable in the demo", () => {

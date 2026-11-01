@@ -1,8 +1,7 @@
 package com.socialdrive.app
 
-import androidx.activity.compose.setContent
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import com.socialdrive.app.domain.ConflictReviewUiState
 import com.socialdrive.app.domain.ConflictUiPhase
@@ -10,11 +9,17 @@ import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.ThemeMode
 import com.socialdrive.app.ui.screens.ConflictReviewScreen
 import com.socialdrive.app.ui.theme.SocialDriveTheme
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
 class ConflictReviewUiTest {
-    @get:Rule val compose = createAndroidComposeRule<MainActivity>()
+    @get:Rule val compose = createEmptyComposeRule()
+    private val host = PleosComposeHost()
+
+    @Before fun launchHost() = host.launch()
+    @After fun closeHost() = host.close()
 
     @Test fun parkedReadyShowsSafeCopyAndExplicitActions() {
         content(MotionState.Parked, ConflictReviewUiState(ConflictUiPhase.SnapshotReady, 8, "서버 제목", "서버 요약", 0))
@@ -39,11 +44,9 @@ class ConflictReviewUiTest {
     }
 
     private fun content(motion: MotionState, state: ConflictReviewUiState) {
-        compose.runOnUiThread {
-            compose.activity.setContent {
-                SocialDriveTheme(ThemeMode.Night) {
-                    ConflictReviewScreen(state, motion, {}, {}, {}, {})
-                }
+        host.setContent {
+            SocialDriveTheme(ThemeMode.Night) {
+                ConflictReviewScreen(state, motion, {}, {}, {}, {})
             }
         }
         compose.waitForIdle()
