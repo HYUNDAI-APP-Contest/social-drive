@@ -19,7 +19,7 @@ P0-1의 완료는 `0d31576`에 대한 정적·core 계약 승인이다. 이는 `
 
 | 영역 | 확인된 증거 | 아직 증명되지 않은 것 |
 |---|---|---|
-| Android 통합 HEAD | `0d315763353a54c65352fffab2d6cb7222ec4a83`이 PLEOS `89078a0`과 cloud contract 포함; 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, 수동 SQLite migration predicate PASS | main 병합, Gradle, Android instrumentation, vendor adapter, APK, Pleos AVD runtime/callback |
+| Android 통합 HEAD | `0d315763353a54c65352fffab2d6cb7222ec4a83`이 PLEOS `89078a0`과 cloud contract 포함; 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, `수동 SQLite predicate/migration PASS` | Room instrumentation, main 병합, Gradle, Android instrumentation, vendor adapter, APK, Pleos AVD runtime/callback |
 | Android local data | recording session, `highlightCount`, draft, pending queue, preset reference 코드가 별도 브랜치에 존재 | 실제 위치 샘플·route point 수집, 동의·철회 UI |
 | Cloud contract | backend `ddbd61fde381d09bc4605c758126ebf6ba0a5ea5` 계약이 `0d31576` core에 통합되어 P0-1 정적·core 승인 완료 | concrete Cognito/API host와 no-redirect HTTP adapter 설정이 없어 actual cloud unavailable; AWS E2E 미검증 |
 | 현재 제출 worktree의 `infra/` | Cognito, HTTP API, DynamoDB, private S3 scaffold와 `/users/me`, `/feed` skeleton 확인 | 최신 backend branch의 전체 drive/publish/upload 계약을 대표하지 않음 |
@@ -52,7 +52,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - `POST /drives/{id}/publish`
 - create manifest의 `COVER`·`ROUTE`, upload refresh, private S3 presigned PUT contract
 - local `clientRequestId`와 create body `clientDraftId`·`Idempotency-Key`의 동일 값 매핑
-- PATCH/publish의 `expectedVersion`, 409 version conflict와 idempotency replay 계약
+- PATCH/publish의 `expectedVersion`과 409 fail-closed 계약; latest GET·UI review·explicit replay는 미구현 후속
 - manifest 입력의 lowercase hex SHA-256과 server 응답의 RFC 4648 base64 `x-amz-checksum-sha256` 구분
 
 ## 3. GitHub Issue 1 — 완료(정적·core 승인)
@@ -65,10 +65,10 @@ BACKEND_CONTRACT_PATH=infra/API.md
 
 - latest: `0d315763353a54c65352fffab2d6cb7222ec4a83`
 - includes: PLEOS `89078a0` + backend `ddbd61f` cloud contract
-- evidence: independent `APPROVE`, core Kotlin 41/41, npm 23/23, manual SQLite migration predicate PASS
+- evidence: independent `APPROVE`, core Kotlin 41/41, npm 23/23, `수동 SQLite predicate/migration PASS`
 - status: `코드 존재(미통합)`; P0-1 정적·core 범위 완료
 - unavailable: concrete Cognito/API host와 no-redirect HTTP adapter 설정이 없어 actual cloud 호출 불가
-- unverified: `main` 병합, Gradle, Android instrumentation, vendor adapter, APK, Pleos AVD, AWS E2E
+- unverified: Room instrumentation, `main` 병합, Gradle, Android instrumentation, vendor adapter, APK, Pleos AVD, AWS E2E
 
 ### 권장 label
 
@@ -93,7 +93,8 @@ BACKEND_CONTRACT_PATH=infra/API.md
   - PATCH와 publish에 현재 local/server state의 `expectedVersion`을 명시적으로 전송
   - 401/403/404/409/422/429/5xx를 typed error로 매핑
   - 존재하지 않거나 다른 owner의 drive에 대한 PATCH/DELETE는 구분하지 않고 동일한 UI-safe `404 NOT_FOUND`로 매핑
-  - 409 version conflict와 idempotency replay/conflict를 구분하고, version conflict는 최신 drive 재조회·사용자 재검토 뒤 새 `expectedVersion`으로만 replay하며 자동 overwrite하지 않음
+  - 409 version conflict에서는 automatic overwrite와 latest-version adoption을 금지하고 queue를 `FAILED/version conflict`로 유지하며 원본 draft를 보존
+  - latest GET→UI conflict 표시→사용자 명시적 review→새 `expectedVersion` replay는 아직 미구현인 후속 범위
 - S3 presigned PUT 구현
   - URL과 임시 header는 메모리에서만 사용
   - API bearer token을 S3 요청에 전달하지 않음
@@ -120,7 +121,8 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - [x] presigned PUT에는 API authorization header가 없고 허용된 host·method·headers만 사용한다.
 - [x] presigned URL 만료 시 `POST /drives/{id}/uploads`를 refresh stage로 사용하며 최초 create와 동일한 canonical manifest만 허용한다. asset 추가·삭제·교체 또는 metadata 변경은 fail closed한다.
 - [x] feed cursor가 opaque string으로 왕복하며 client가 decode/조작하지 않는다.
-- [x] PATCH와 publish는 `expectedVersion`을 보내며 409 version conflict에서 자동 overwrite/publish하지 않는다. 최신 drive를 다시 읽고 사용자에게 충돌을 보여 준 뒤, 명시적 재검토가 끝난 경우에만 갱신된 `expectedVersion`으로 replay한다.
+- [x] PATCH와 publish는 `expectedVersion`을 보내며 409 version conflict에서 automatic overwrite 또는 latest-version adoption을 하지 않는다. queue는 `FAILED/version conflict`를 유지하고 original draft는 향후 명시적 review를 위해 보존한다.
+- [ ] 409 뒤 latest GET, UI conflict 표시, 사용자 명시적 review, 갱신된 `expectedVersion` replay를 구현한다. 이는 P0-1 승인 증거에 포함되지 않은 후속 작업이다.
 - [x] 존재하지 않는 drive와 non-owner drive의 PATCH/DELETE는 모두 동일한 UI-safe `404 NOT_FOUND`로 처리되어 존재 여부를 노출하지 않는다.
 - [x] validation 422와 rate-limit 429가 각각 UI-safe validation/retry 상태로 변환된다.
 - [x] motion이 Parked에서 Driving/Unknown으로 바뀌면 다음 remote stage를 실행하지 않고 draft를 보존한다.
@@ -137,7 +139,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
   - 만료 URL→`POST /drives/{id}/uploads` refresh→같은 manifest PUT 성공
   - refresh manifest의 asset/type/size/checksum 불일치 시 PUT·publish 미호출
   - 같은 key+payload의 idempotent create replay와 같은 key+다른 payload의 409 conflict 구분
-  - PATCH/publish `expectedVersion`, stale version 409→latest GET→명시적 재검토 전 replay 금지
+  - PATCH/publish `expectedVersion`, stale version 409→`FAILED/version conflict`, original intact, automatic GET/version adoption/replay 없음
   - cursor pagination
   - missing/non-owner PATCH·DELETE가 구분 불가능한 `404 NOT_FOUND`로 매핑됨
   - 422 validation, 429/5xx retry policy
@@ -312,7 +314,7 @@ Backend contract: ddbd61fde381d09bc4605c758126ebf6ba0a5ea5
 Review: APPROVE
 Core Kotlin: 41/41
 npm: 23/23
-SQLite migration predicate: PASS (manual)
+SQLite: 수동 SQLite predicate/migration PASS
 ```
 
 완료 판정은 정적·core 계약 범위에 한정한다. concrete Cognito/API host와 no-redirect HTTP adapter 설정이 없으므로 actual cloud는 unavailable이다. worker가 실제 endpoint나 credential을 추정해 채우지 않는다.
@@ -321,6 +323,7 @@ SQLite migration predicate: PASS (manual)
 
 - base를 Android 통합 HEAD `0d31576`으로 고정
 - P0-1의 API DTO·deletion error model·upload queue 계약 보존
+- version conflict 후 latest GET·UI conflict·명시적 review·replay는 P0-2/P0-3 또는 별도 Issue의 미완료 acceptance로 유지
 - FusedLocation/TTS/STT/Vehicle Control을 production dependency에 추가하지 않음
 - actual route collection은 계속 unavailable로 두고 `DemoPreset`을 명시적으로 구분
 - 위치 동의·철회 상태와 purge/cancel 동작을 core/DB/UI test로 검증

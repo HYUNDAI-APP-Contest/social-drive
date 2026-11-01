@@ -12,7 +12,7 @@
 
 1. 실제 앱 화면과 실제 실행 증거를 먼저 보여 준다.
 2. `실제 SDK`, `앱 구현`, `코드 존재(미통합)`, `데모 데이터`, `미구현`, `향후 기능`을 같은 색상 체계로 끝까지 구분한다.
-3. PLEOS `89078a0`과 cloud contract를 포함한 Android 통합 HEAD `0d31576`은 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, SQLite predicate PASS지만 `코드 존재(미통합)` 상태다. main 미병합과 actual cloud configuration·vendor adapter·Gradle·instrumentation·APK·AVD·AWS E2E 미검증을 표시하고, runtime 증거가 생긴 뒤에만 상태를 승격한다.
+3. PLEOS `89078a0`과 cloud contract를 포함한 Android 통합 HEAD `0d31576`은 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, `수동 SQLite predicate/migration PASS`지만 `코드 존재(미통합)` 상태다. 이는 Room instrumentation 결과가 아니다. main 미병합과 actual cloud configuration·vendor adapter·Gradle·instrumentation·APK·AVD·AWS E2E 미검증을 표시하고, runtime 증거가 생긴 뒤에만 상태를 승격한다.
 4. FusedLocation, STT, TTS, Vehicle Control은 실제 기능으로 말하지 않는다.
 5. MAU와 retention은 산식·검증 방법을 제시하고 근거 없는 숫자를 만들지 않는다.
 
@@ -105,7 +105,7 @@ Parked
 - Android 별도 작업 브랜치: recording session, `highlightCount`, draft, pending queue, preset reference와 안전 gate 코드
 - Android 통합 HEAD `0d31576`: backend `ddbd61f`의 Cognito JWT, DynamoDB, private S3 계약 통합; P0-1 정적·core 승인 완료
 - 테스트 소스: 안전 정책, Room migration, 오프라인 복구, API security
-- 통합 코드 증거: `0d31576`이 PLEOS `89078a0`과 cloud contract 포함; 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, SQLite predicate PASS
+- 통합 코드 증거: `0d31576`이 PLEOS `89078a0`과 cloud contract 포함; 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, `수동 SQLite predicate/migration PASS` (Room instrumentation 결과 아님)
 - 아직 없는 증거: 실제 경로점·위치 수집, 위치 동의·철회 UI, main 병합, concrete Cognito/API host·no-redirect HTTP adapter 설정, vendor adapter, Gradle·instrumentation, AVD 실기, 앱-AWS E2E, release APK
 - root `readme.md`: 공식 네 항목의 문서 구조 완료. 빌드·AVD·APK 실증 결과는 아직 갱신 필요
 

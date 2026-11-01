@@ -32,7 +32,7 @@
 
 좋은 드라이브 코스를 발견하는 곳과 실제로 주행하는 곳이 분리되어 있다. SNS에서 사진이나 후기를 발견해도 지도에서 장소를 다시 찾고, 차량 내비게이션에 목적지와 경유지를 다시 입력해야 한다. 반대로 운전 중 좋았던 순간을 메모하거나 자세히 기록하려는 행동은 주의 분산과 충돌한다.
 
-Social Drive는 다음 경험을 제출 목표로 한다. PLEOS `89078a0`과 cloud contract를 포함한 Android 통합 HEAD `0d31576`은 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, SQLite migration predicate PASS 상태다. P0-1은 정적·core 범위에서 완료됐지만 main 미병합이며 concrete Cognito/API host·no-redirect HTTP adapter 설정이 없어 actual cloud는 사용할 수 없다. Gradle·Android instrumentation·vendor adapter·APK·Pleos AVD·AWS E2E도 미검증이고, 실제 위치·경로점 수집은 아직 구현되지 않았다.
+Social Drive는 다음 경험을 제출 목표로 한다. PLEOS `89078a0`과 cloud contract를 포함한 Android 통합 HEAD `0d31576`은 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, `수동 SQLite predicate/migration PASS` 상태다. 이는 Room instrumentation 결과가 아니다. P0-1은 정적·core 범위에서 완료됐지만 main 미병합이며 concrete Cognito/API host·no-redirect HTTP adapter 설정이 없어 actual cloud는 사용할 수 없다. Gradle·Android instrumentation·vendor adapter·APK·Pleos AVD·AWS E2E도 미검증이고, 실제 위치·경로점 수집은 아직 구현되지 않았다.
 
 1. 주행 중에는 기록 시작·종료와 `방금 좋았어` 한 번의 터치만 제공한다.
 2. recording session, `highlightCount`, draft, pending queue와 preset reference를 로컬 DB에 보존한다.
@@ -145,7 +145,7 @@ Vehicle State와 NaviHelper는 현재 Ready to Use지만, FusedLocation·STT·TT
 ### 현재 확인된 코드 증거
 
 - 별도 Android 작업 브랜치에 recording session, `highlightCount`, draft, pending queue와 preset reference 코드가 존재한다.
-- 별도 Android 통합 HEAD `0d31576`의 queue는 motion gate와 cloud contract를 포함한다. 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, SQLite predicate PASS지만 main 미병합·actual cloud config·vendor adapter·Gradle·instrumentation·APK·AVD·AWS E2E 미검증이다.
+- 별도 Android 통합 HEAD `0d31576`의 queue는 motion gate와 cloud contract를 포함한다. 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, `수동 SQLite predicate/migration PASS`지만 Room instrumentation과 main 병합·actual cloud config·vendor adapter·Gradle·instrumentation·APK·AVD·AWS E2E는 미검증이다.
 - 실제 경로점·위치 샘플 수집과 위치정보 동의·철회 UI는 아직 미구현이다.
 
 ### 구현·검증해야 할 요구사항

@@ -8,7 +8,7 @@
 
 - Vehicle SDK 2.3.2와 NaviHelper 3.0.5 adapter의 최초 구현 커밋은 `6475287`이며 1차 독립 검토에서 `CHANGES_REQUIRED`였습니다.
 - race/lifecycle/permission 지적은 `98a2978`과 `6e930d6`에서 보완됐고, PLEOS 기준 커밋 `89078a0` 위에 cloud contract를 통합한 최신 Android HEAD는 `0d31576`입니다.
-- `0d31576`은 독립 검토 `APPROVE`이며 production core Kotlin 테스트 41/41, npm 테스트 23/23, 수동 SQLite migration predicate 검사가 통과했습니다. P0-1은 정적·core 계약 범위에서 완료됐습니다.
+- `0d31576`은 독립 검토 `APPROVE`이며 production core Kotlin 테스트 41/41, npm 테스트 23/23, `수동 SQLite predicate/migration PASS` 증거가 있습니다. 이는 Room instrumentation 결과가 아닙니다. P0-1은 정적·core 계약 범위에서 완료됐습니다.
 - 이 `APPROVE`는 실제 SDK나 cloud runtime 성공을 뜻하지 않습니다. `main` 미병합이며 concrete Cognito/API host 및 no-redirect HTTP adapter 설정이 없어 actual cloud는 사용할 수 없습니다. Gradle·Android instrumentation·vendor adapter·APK·Pleos AVD·AWS E2E도 아직 검증되지 않았습니다.
 - 현재 확인된 Android 영속 데이터 범위는 recording session, `highlightCount`, draft, pending queue, preset reference입니다.
 - 실제 위치·경로점 수집과 위치정보 동의·철회 UI는 아직 구현되지 않았습니다.
@@ -48,7 +48,7 @@ Social Drive의 목표 흐름은 다음과 같습니다.
 | 등급 | 기능 | 2026-11-01 증거 |
 |---|---|---|
 | `실제 SDK` | 없음 | Pleos AVD callback과 release 증거가 아직 없음 |
-| `코드 존재(미통합)` | Vehicle/NaviHelper adapter + Cognito/API/S3 contract | 통합 HEAD `0d31576` (`89078a0` 포함); 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, SQLite predicate PASS. `main` 미병합, actual cloud configuration·Gradle·instrumentation·vendor adapter·APK·AVD·AWS E2E 미검증 |
+| `코드 존재(미통합)` | Vehicle/NaviHelper adapter + Cognito/API/S3 contract | 통합 HEAD `0d31576` (`89078a0` 포함); 독립 검토 `APPROVE`, core Kotlin 41/41, npm 23/23, `수동 SQLite predicate/migration PASS`. `main` 미병합, actual cloud configuration·Gradle·Room/Android instrumentation·vendor adapter·APK·AVD·AWS E2E 미검증 |
 | `코드 존재(미통합)` | recording session, `highlightCount`, draft, pending queue, preset reference | 별도 Android 작업 코드에 존재하나 제출 브랜치 통합·실행 증거 전 |
 | `데모 데이터` | preset route / fake motion | 실제 위치나 실제 Vehicle callback이 아님 |
 | `미구현` | 실제 위치·경로점 수집, 위치 동의·철회 UI, release APK | 구현 또는 검증 증거 없음 |
