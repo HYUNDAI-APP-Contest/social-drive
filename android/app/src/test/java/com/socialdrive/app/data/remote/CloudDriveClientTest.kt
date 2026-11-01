@@ -331,6 +331,24 @@ class CloudDriveClientTest {
             CloudFailureKind.VERSION_CONFLICT,
             assertFailsWith<CloudDriveException> { harness.client.deleteDrive("drive-remote-0001", key) }.kind,
         )
+        harness.api.responses += errorResponse(409, "RESOURCE_CONFLICT", retryable = true)
+        val arbitraryConflict = assertFailsWith<CloudDriveException> {
+            harness.client.deleteDrive("drive-remote-0001", key)
+        }
+        assertEquals(CloudFailureKind.VERSION_CONFLICT, arbitraryConflict.kind)
+        assertEquals(false, arbitraryConflict.retryable)
+        harness.api.responses += errorResponse(409, "IDEMPOTENCY_CONFLICT", retryable = true)
+        val idempotencyConflict = assertFailsWith<CloudDriveException> {
+            harness.client.deleteDrive("drive-remote-0001", key)
+        }
+        assertEquals(CloudFailureKind.IDEMPOTENCY_CONFLICT, idempotencyConflict.kind)
+        assertEquals(false, idempotencyConflict.retryable)
+        harness.api.responses += HttpResponse(409, body = "not-json".toByteArray())
+        val malformedConflict = assertFailsWith<CloudDriveException> {
+            harness.client.deleteDrive("drive-remote-0001", key)
+        }
+        assertEquals(CloudFailureKind.VERSION_CONFLICT, malformedConflict.kind)
+        assertEquals(false, malformedConflict.retryable)
         harness.api.responses += errorResponse(503, "SERVER_BUSY", retryable = true)
         val busy = assertFailsWith<CloudDriveException> { harness.client.deleteDrive("drive-remote-0001", key) }
         assertEquals(CloudFailureKind.RETRYABLE, busy.kind)
@@ -349,6 +367,11 @@ class CloudDriveClientTest {
             adapter.deletePublishedDrive("drive-remote-0001", key)
         }
         assertEquals(DeleteFailureCode.NOT_FOUND, missing.failureCode)
+        harness.api.responses += errorResponse(409, "IDEMPOTENCY_CONFLICT", retryable = true)
+        val conflict = assertFailsWith<RemoteDeleteException> {
+            adapter.deletePublishedDrive("drive-remote-0001", key)
+        }
+        assertEquals(DeleteFailureCode.IDEMPOTENCY_CONFLICT, conflict.failureCode)
     }
 
     @Test

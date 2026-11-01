@@ -160,6 +160,7 @@ class CloudDriveClient(
             "/drives/$driveId",
             headers = mapOf("Idempotency-Key" to stableKeyHash),
             expectedStatuses = setOf(204),
+            terminalDeleteConflict = true,
         )
     }
 
@@ -169,6 +170,7 @@ class CloudDriveClient(
         headers: Map<String, String> = emptyMap(),
         body: JsonValue? = null,
         expectedStatuses: Set<Int>,
+        terminalDeleteConflict: Boolean = false,
     ): JsonValue {
         val token = try {
             auth.freshBearerToken()
@@ -190,7 +192,7 @@ class CloudDriveClient(
             throw CloudDriveException(CloudFailureKind.RETRYABLE, "API_TRANSPORT", retryable = true)
         }
         if (response.body.size > MAX_RESPONSE_BYTES) throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
-        if (response.status !in expectedStatuses) throw parseApiError(response)
+        if (response.status !in expectedStatuses) throw parseApiError(response, terminalDeleteConflict)
         if (response.status == 204) return JsonValue.NullValue
         return try {
             JsonCodec.parse(response.body)
@@ -201,12 +203,20 @@ class CloudDriveClient(
         }
     }
 
-    private fun parseApiError(response: HttpResponse): CloudDriveException {
+    private fun parseApiError(response: HttpResponse, terminalDeleteConflict: Boolean): CloudDriveException {
         val fallbackRetry = response.status == 408 || response.status == 429 || response.status >= 500
         val envelope = runCatching { JsonCodec.parse(response.body).objectValue().requiredObject("error") }.getOrNull()
         val code = envelope?.get("code")?.let { (it as? JsonValue.StringValue)?.value } ?: "HTTP_${response.status}"
         val retryable = envelope?.get("retryable")?.let { (it as? JsonValue.BooleanValue)?.value } ?: fallbackRetry
         val requestId = envelope?.get("requestId")?.let { (it as? JsonValue.StringValue)?.value }
+        if (terminalDeleteConflict && response.status == 409) {
+            val kind = if (code == "IDEMPOTENCY_CONFLICT") {
+                CloudFailureKind.IDEMPOTENCY_CONFLICT
+            } else {
+                CloudFailureKind.VERSION_CONFLICT
+            }
+            return CloudDriveException(kind, code, retryable = false, requestId = requestId)
+        }
         val kind = when {
             response.status == 401 -> CloudFailureKind.AUTHENTICATION
             response.status == 403 -> CloudFailureKind.FORBIDDEN

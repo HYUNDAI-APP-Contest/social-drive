@@ -27,7 +27,8 @@ class CloudRemoteDeleteApi(private val client: CloudDriveClient) : RemoteDeleteA
                 CloudFailureKind.AUTHENTICATION -> DeleteFailureCode.AUTHENTICATION
                 CloudFailureKind.FORBIDDEN -> DeleteFailureCode.FORBIDDEN
                 CloudFailureKind.NOT_FOUND -> DeleteFailureCode.NOT_FOUND
-                CloudFailureKind.VERSION_CONFLICT, CloudFailureKind.IDEMPOTENCY_CONFLICT -> DeleteFailureCode.VERSION_CONFLICT
+                CloudFailureKind.VERSION_CONFLICT -> DeleteFailureCode.VERSION_CONFLICT
+                CloudFailureKind.IDEMPOTENCY_CONFLICT -> DeleteFailureCode.IDEMPOTENCY_CONFLICT
                 CloudFailureKind.RETRYABLE, CloudFailureKind.UPLOAD_EXPIRED -> DeleteFailureCode.SERVER_BUSY
                 CloudFailureKind.VALIDATION, CloudFailureKind.CONTRACT -> DeleteFailureCode.REJECTED
                 else -> DeleteFailureCode.UNKNOWN

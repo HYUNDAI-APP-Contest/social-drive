@@ -5,6 +5,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.Configuration
+import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkManager
 import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.WorkManagerTestInitHelper
@@ -33,6 +34,10 @@ import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.safety.ParkedExecutionGate
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -90,6 +95,22 @@ class PublishedDeleteWorkTest {
     }
 
     @Test
+    fun allDelete409VariantsStopWithoutAutomaticRetry() = runTest {
+        seed("draft-delete-7")
+        remote.failure = DeleteFailureCode.VERSION_CONFLICT
+        runDelete("draft-delete-7")
+        assertEquals(DeleteRequestState.VERSION_CONFLICT.name, database.publishedDeleteDao().find("draft-delete-7")?.state)
+
+        seed("draft-delete-8")
+        remote.failure = DeleteFailureCode.IDEMPOTENCY_CONFLICT
+        runDelete("draft-delete-8")
+        assertEquals(DeleteRequestState.VERSION_CONFLICT.name, database.publishedDeleteDao().find("draft-delete-8")?.state)
+
+        DeleteWorkScheduler(WorkManager.getInstance(context), database, motion).recoverAfterProcessRestart()
+        assertEquals(2, remote.calls)
+    }
+
+    @Test
     fun motionChangeBeforeExecutionMakesZeroRemoteCallsAndRestoresAttempt() = runTest {
         seed("draft-delete-3")
         motion.transitionTo(MotionState.Unknown)
@@ -129,6 +150,36 @@ class PublishedDeleteWorkTest {
         )
     }
 
+    @Test
+    fun externalCancellationDurablyHandsOffLeaseAndSameProcessReplayConfirms() = runTest {
+        seed("draft-delete-6")
+        remote.blockUntilCancelled = true
+        val manager = WorkManager.getInstance(context)
+        val scheduler = DeleteWorkScheduler(manager, database, motion)
+        scheduler.enqueue("draft-delete-6")
+        val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
+        manager.getWorkInfosForUniqueWork(DeleteWorkScheduler.uniqueName("draft-delete-6"))
+            .get(5, TimeUnit.SECONDS).forEach { driver.setAllConstraintsMet(it.id) }
+        remote.entered.await()
+
+        manager.cancelUniqueWork(DeleteWorkScheduler.uniqueName("draft-delete-6")).result.get(5, TimeUnit.SECONDS)
+        withTimeout(5_000) {
+            while (database.publishedDeleteDao().find("draft-delete-6")?.state == DeleteRequestState.RUNNING.name) delay(10)
+        }
+        val interrupted = requireNotNull(database.publishedDeleteDao().find("draft-delete-6"))
+        assertEquals(DeleteRequestState.RETRY_WAIT.name, interrupted.state)
+        assertEquals("INTERRUPTED", interrupted.lastErrorCode)
+
+        remote.blockUntilCancelled = false
+        scheduler.enqueue("draft-delete-6", ExistingWorkPolicy.REPLACE)
+        manager.getWorkInfosForUniqueWork(DeleteWorkScheduler.uniqueName("draft-delete-6"))
+            .get(5, TimeUnit.SECONDS).filter { !it.state.isFinished }.forEach { driver.setAllConstraintsMet(it.id) }
+        withTimeout(5_000) {
+            while (database.publishedDeleteDao().find("draft-delete-6")?.state != DeleteRequestState.CONFIRMED.name) delay(10)
+        }
+        assertEquals(2, remote.calls)
+    }
+
     private suspend fun seed(
         draftId: String,
         state: DeleteRequestState = DeleteRequestState.DELETE_PENDING,
@@ -164,8 +215,14 @@ class PublishedDeleteWorkTest {
 private class DeleteRemote : RemoteDeleteApi {
     var calls = 0
     var failure: DeleteFailureCode? = null
+    var blockUntilCancelled = false
+    val entered = CompletableDeferred<Unit>()
     override suspend fun deletePublishedDrive(remoteDriveId: String, stableKeyHash: String): RemoteDeleteConfirmed {
         calls += 1
+        if (blockUntilCancelled) {
+            entered.complete(Unit)
+            awaitCancellation()
+        }
         failure?.let { throw RemoteDeleteException(it) }
         return RemoteDeleteConfirmed
     }

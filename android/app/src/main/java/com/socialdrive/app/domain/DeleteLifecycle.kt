@@ -22,6 +22,7 @@ enum class DeleteFailureCode {
     FORBIDDEN,
     NOT_FOUND,
     VERSION_CONFLICT,
+    IDEMPOTENCY_CONFLICT,
     REJECTED,
     UNKNOWN,
 }
@@ -53,7 +54,8 @@ object DeleteLifecyclePolicy {
         DeleteFailureCode.NOT_FOUND -> DeleteFailureDecision.Stop(DeleteRequestState.NOT_FOUND_UNCONFIRMED)
         DeleteFailureCode.AUTHENTICATION, DeleteFailureCode.FORBIDDEN ->
             DeleteFailureDecision.Stop(DeleteRequestState.AUTH_REQUIRED)
-        DeleteFailureCode.VERSION_CONFLICT -> DeleteFailureDecision.Stop(DeleteRequestState.VERSION_CONFLICT)
+        DeleteFailureCode.VERSION_CONFLICT, DeleteFailureCode.IDEMPOTENCY_CONFLICT ->
+            DeleteFailureDecision.Stop(DeleteRequestState.VERSION_CONFLICT)
         DeleteFailureCode.OFFLINE, DeleteFailureCode.TIMEOUT, DeleteFailureCode.SERVER_BUSY -> {
             if (attempt >= MAX_ATTEMPTS) {
                 DeleteFailureDecision.Stop(DeleteRequestState.FAILED_PERMANENT)
@@ -66,6 +68,11 @@ object DeleteLifecyclePolicy {
         DeleteFailureCode.REJECTED, DeleteFailureCode.UNKNOWN ->
             DeleteFailureDecision.Stop(DeleteRequestState.FAILED_PERMANENT)
     }
+
+    /** External cancellation is replay-safe only after the current lease durably leaves RUNNING. */
+    fun interrupted(attempt: Int, nowEpochMs: Long): DeleteFailureDecision =
+        if (attempt >= MAX_ATTEMPTS) DeleteFailureDecision.Stop(DeleteRequestState.FAILED_PERMANENT)
+        else DeleteFailureDecision.Retry(nowEpochMs)
 
     /**
      * Stable, non-secret request identity persisted in Room and sent as Idempotency-Key.

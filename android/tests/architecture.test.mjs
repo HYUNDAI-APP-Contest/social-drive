@@ -314,7 +314,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 71/);
+  assert.match(coreRunner, /expectedTests = 72/);
   assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 
@@ -551,9 +551,13 @@ test("published delete is parked durable idempotent bounded and fail closed", ()
   assert.match(dao, /state = 'RUNNING'.*attempts = :runningAttempt/s);
   assert.match(dao, /NOT EXISTS \([\s\S]*published_delete_requests/);
   assert.match(worker, /executionGate\.execute/);
+  assert.match(worker, /catch \(cancelled: CancellationException\)[\s\S]*withContext\(NonCancellable\)[\s\S]*persistInterruptedLease/);
+  assert.match(worker, /persistInterruptedLease[\s\S]*"INTERRUPTED"/);
   assert.match(worker, /RemoteDeleteConfirmed|confirmCas/);
   assert.match(worker, /local original draft is deliberately retained/);
   assert.match(client, /"Idempotency-Key" to stableKeyHash/);
+  assert.match(client, /terminalDeleteConflict = true/);
+  assert.match(client, /terminalDeleteConflict && response\.status == 409[\s\S]*retryable = false/);
   assert.match(remote, /404 must be surfaced as NOT_FOUND/);
   assert.match(app, /deleteWorkScheduler\.recoverAfterProcessRestart\(\)[\s\S]*publishScheduler\.recoverAfterProcessRestart\(\)/);
   assert.match(actualFactory, /UnavailableRemoteDeleteApi/);
@@ -563,9 +567,11 @@ test("published delete is parked durable idempotent bounded and fail closed", ()
   for (const marker of [
     "backend204ConfirmsTombstoneAndRetainsLocalOriginal",
     "backend404IsNotTreatedAsDeletionReceipt",
+    "allDelete409VariantsStopWithoutAutomaticRetry",
     "motionChangeBeforeExecutionMakesZeroRemoteCallsAndRestoresAttempt",
     "tombstoneBlocksPublishClaimEvenIfQueueRowExists",
     "processRestartNormalizesRunningLeaseBeforeUniqueRecovery",
+    "externalCancellationDurablyHandsOffLeaseAndSameProcessReplayConfirms",
   ]) assert.ok(androidTest.includes(marker), marker);
 });
 

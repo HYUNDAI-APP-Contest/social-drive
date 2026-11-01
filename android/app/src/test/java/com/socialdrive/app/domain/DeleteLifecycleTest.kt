@@ -39,9 +39,20 @@ class DeleteLifecycleTest {
                 DeleteLifecyclePolicy.decideFailure(code, 1, 0),
             )
         }
+        for (code in listOf(DeleteFailureCode.VERSION_CONFLICT, DeleteFailureCode.IDEMPOTENCY_CONFLICT)) {
+            assertEquals(
+                DeleteFailureDecision.Stop(DeleteRequestState.VERSION_CONFLICT),
+                DeleteLifecyclePolicy.decideFailure(code, 1, 0),
+            )
+        }
+    }
+
+    @Test
+    fun `external cancellation leaves a durable replay handoff unless attempts are exhausted`() {
+        assertEquals(DeleteFailureDecision.Retry(5_000), DeleteLifecyclePolicy.interrupted(1, 5_000))
         assertEquals(
-            DeleteFailureDecision.Stop(DeleteRequestState.VERSION_CONFLICT),
-            DeleteLifecyclePolicy.decideFailure(DeleteFailureCode.VERSION_CONFLICT, 1, 0),
+            DeleteFailureDecision.Stop(DeleteRequestState.FAILED_PERMANENT),
+            DeleteLifecyclePolicy.interrupted(DeleteLifecyclePolicy.MAX_ATTEMPTS, 5_000),
         )
     }
 

@@ -24,8 +24,10 @@ import com.socialdrive.app.safety.ParkedExecutionGate
 import com.socialdrive.app.safety.ParkedExecutionResult
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 data class DeleteWorkerDependencies(
     val database: SocialDriveDatabase,
@@ -73,11 +75,29 @@ class DeletePublishedDriveWorker(
             // A 204 confirms only the remote deletion. The local original draft is deliberately retained.
             Result.success()
         } catch (cancelled: CancellationException) {
+            // WorkManager/app cancellation is distinct from a motion pause. Persist the lease handoff
+            // before rethrowing so an idempotent replay can be scheduled in this process or after restart.
+            withContext(NonCancellable) {
+                persistInterruptedLease(draftId, lease.attempt)
+            }
             throw cancelled
         } catch (failure: RemoteDeleteException) {
             persistFailure(draftId, lease.attempt, failure.failureCode)
         } catch (_: Throwable) {
             persistFailure(draftId, lease.attempt, DeleteFailureCode.UNKNOWN)
+        }
+    }
+
+    private suspend fun persistInterruptedLease(draftId: String, attempt: Int) {
+        val now = dependencies.clock()
+        when (val decision = DeleteLifecyclePolicy.interrupted(attempt, now)) {
+            is DeleteFailureDecision.Retry -> dependencies.database.publishedDeleteDao().failCas(
+                draftId, attempt, DeleteRequestState.RETRY_WAIT.name,
+                decision.nextAttemptAtEpochMs, "INTERRUPTED", now,
+            )
+            is DeleteFailureDecision.Stop -> dependencies.database.publishedDeleteDao().failCas(
+                draftId, attempt, decision.state.name, 0, "INTERRUPTED", now,
+            )
         }
     }
 
