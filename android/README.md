@@ -1,6 +1,6 @@
 # Social Drive Android demo
 
-An offline-first visual foundation for the Hyundai app contest. The current build intentionally uses deterministic fake data so the product flow can be reviewed before AWS and Pleos SDK integration.
+An offline-first visual foundation for the Hyundai app contest with isolated `demo` and `pleos` integration flavors.
 
 ## Included flow
 
@@ -11,7 +11,10 @@ An offline-first visual foundation for the Hyundai app contest. The current buil
 - Loading, content, empty, offline, error, permission-denied, and retry content contracts
 - On-screen demo controls for every content and upload state
 - Confirmed recording stop: parked sessions continue to publish; driving/unknown sessions retain a draft without opening editing
-- Explicit demo badges and capability boundaries for future Pleos adapters
+- Explicit actual/demo/unavailable badges and fail-closed Pleos boundaries
+- Pleos Vehicle 2.3.2 lifecycle integration; no documented parking/gear proof is inferred, so actual motion remains `Unknown`
+- Pleos NaviHelper 3.0.5 route adapter with named coordinate validation, one-waypoint limit, duplicate request exclusion, and privacy-safe errors
+- Honest Coming Soon status for Fused Location, TTS, STT, and Vehicle Control (no dependencies or permissions included)
 - Room-backed recording sessions, durable drafts, and a staged upload queue with exported schemas and non-destructive migrations
 - A unique WorkManager chain per draft (`create → asset upload → publish`) that resumes after process restart
 - Stable `clientRequestId` values, local-original retention through publish acknowledgement, and no persisted presigned URLs or tokens
@@ -23,9 +26,9 @@ An offline-first visual foundation for the Hyundai app contest. The current buil
 Requirements: JDK 17+, Android SDK 35, and an emulator or device. From this directory:
 
 ```bash
-./gradlew testDebugUnitTest
-./gradlew assembleDebug
-./gradlew connectedDebugAndroidTest
+./gradlew testDemoDebugUnitTest
+./gradlew assembleDemoDebug
+./gradlew connectedDemoDebugAndroidTest
 ```
 
 Open `android/` in Android Studio to run the `app` configuration. The first Gradle run downloads public Android and Compose dependencies. Both wrapper scripts fall back to the pinned Gradle 8.9 distribution when the binary wrapper JAR is absent and verify the official SHA-256 before execution. Do not place SDK secrets or AWS credentials in this project.
@@ -41,12 +44,15 @@ npm test
 | Area | Current behavior | Future boundary |
 | --- | --- | --- |
 | Route and drive feed | Preset normalized artwork and Korean copy | Authenticated feed API and cached feed entities |
-| Motion state | Settings simulation | `CarUxRestrictions`/Pleos vehicle capability |
-| Navigation | Capability placeholder | NaviHelper adapter |
+| Motion state | Demo flavor simulation | Pleos flavor initializes Vehicle 2.3.2 but remains fail-closed `Unknown`; the public Brake API is not proof of parking |
+| Navigation | Demo feedback; fake records contain no coordinates | Pleos flavor initializes NaviHelper 3.0.5 and accepts only validated, privacy-reviewed route input |
 | Recording | Room session and draft persistence | Approved sensor adapter writing privacy-minimized samples |
 | Publish | Room/WorkManager queue with injected fake API | Cognito API adapter that consumes presigned URLs only in memory |
 
 Driving or unknown motion cannot enter detail, publish, or editable settings. AWS keys, precise coordinates, and raw vehicle state must never be added to the APK.
+The Pleos flavor declares only `CAR_DRIVE` and `NAVI_ROUTE_SEARCH`. It does not include Fused Location, TTS, STT, or vehicle-control dependencies. A standard Android emulator cannot prove Pleos runtime behavior; use the matching Pleos Connect Emulator and approved SDK access before making a release claim.
+
+The pinned repository, artifacts, permissions, lifecycle, listener, and route request shapes follow the current official Pleos guides: [Vehicle SDK import](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/Vehicle/project-setup), [Vehicle permissions](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/Vehicle/vehicle-permission), [NaviHelper import](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/importing-sdk), [initialization/release](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/initialization-and-release), [event listeners](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/event-listeners), and [waypoint routes](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/route-with-waypoints).
 The instrumented safety suite verifies that Driving/Unknown home states contain no feed or settings controls, system Back during recording opens the shared stop confirmation, and only the parked flow reaches publish.
 The publish admission check also fails closed for Driving and Unknown even if it is called outside Compose. Queued work stores only opaque local/remote IDs and retry metadata. The immutable `originalContentRef` and draft row remain until and after a successful publish acknowledgement; cleanup requires a separate future retention policy.
 Once a draft enters the queue its editable copy is locked (`state = DRAFT` is required for updates), so a retry cannot upload content different from the frozen local payload. The production API adapter must reissue an upload session using the stable idempotency key, sign checksum and content type, and treat only the same checksum as a replay; presigned URLs remain memory-only.

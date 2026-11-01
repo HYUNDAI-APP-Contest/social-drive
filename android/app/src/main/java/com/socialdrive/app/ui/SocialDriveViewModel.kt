@@ -8,7 +8,11 @@ import com.socialdrive.app.data.DraftSnapshot
 import com.socialdrive.app.data.EnqueueResult
 import com.socialdrive.app.data.local.RecordingEntity
 import com.socialdrive.app.domain.MotionState
+import com.socialdrive.app.domain.NavigationRequest
+import com.socialdrive.app.domain.NavigationRequestResult
+import com.socialdrive.app.domain.NavigationState
 import com.socialdrive.app.domain.UploadState
+import com.socialdrive.app.domain.VehicleMotionStatus
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -30,6 +34,10 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
         .flatMapLatest { draft -> draft?.let { app.publishQueueRepository.observeState(it.id) } ?: flowOf(UploadState.Draft) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UploadState.Draft)
 
+    val vehicleMotion: StateFlow<VehicleMotionStatus> = app.vehicleMotionSource.status
+    val navigationState: StateFlow<NavigationState> = app.navigationGateway.state
+    val navigationCapability = app.navigationGateway.capability
+
     suspend fun startRecording() = app.recordingRepository.start()
 
     suspend fun addHighlight() {
@@ -44,8 +52,13 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     suspend fun enqueuePublish(motionState: MotionState): EnqueueResult =
         latestDraft.value?.let { app.publishScheduler.enqueue(it.id, motionState) } ?: EnqueueResult.MissingDraft
 
-    suspend fun updateMotionState(motionState: MotionState) {
-        app.parkedExecutionGate.transitionTo(motionState)
-        if (motionState == MotionState.Parked) app.publishScheduler.recoverAfterProcessRestart()
+    suspend fun requestDemoMotion(motionState: MotionState): Boolean =
+        app.vehicleMotionSource.requestSimulation(motionState)
+
+    suspend fun requestNavigation(request: NavigationRequest): NavigationRequestResult {
+        if (vehicleMotion.value.motion != MotionState.Parked) {
+            return NavigationRequestResult.Rejected("주차 상태가 확인된 뒤 경로를 요청할 수 있어요.")
+        }
+        return app.navigationGateway.requestRoute(request)
     }
 }

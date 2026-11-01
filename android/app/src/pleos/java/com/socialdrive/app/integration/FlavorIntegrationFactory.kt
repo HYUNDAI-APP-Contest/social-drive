@@ -1,0 +1,217 @@
+package com.socialdrive.app.integration
+
+import android.content.Context
+import ai.pleos.playground.navi.constants.NaviErrorCode
+import ai.pleos.playground.navi.constants.WaypointIndex
+import ai.pleos.playground.navi.data.RequestWaypointInfo
+import ai.pleos.playground.navi.data.RouteInfo
+import ai.pleos.playground.navi.data.RouteStartInfo
+import ai.pleos.playground.navi.data.RouteWithWaypointsRequest
+import ai.pleos.playground.navi.helper.NaviHelper
+import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
+import ai.pleos.playground.vehicle.Vehicle
+import com.socialdrive.app.domain.CapabilityState
+import com.socialdrive.app.domain.CapabilityStatus
+import com.socialdrive.app.domain.IntegrationBundle
+import com.socialdrive.app.domain.IntegrationSource
+import com.socialdrive.app.domain.MotionState
+import com.socialdrive.app.domain.NavigationGateway
+import com.socialdrive.app.domain.NavigationPlace
+import com.socialdrive.app.domain.NavigationRequest
+import com.socialdrive.app.domain.NavigationRequestResult
+import com.socialdrive.app.domain.NavigationRequestValidator
+import com.socialdrive.app.domain.NavigationState
+import com.socialdrive.app.domain.NavigationValidation
+import com.socialdrive.app.domain.VehicleMotionSource
+import com.socialdrive.app.domain.VehicleMotionStatus
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import java.util.concurrent.atomic.AtomicBoolean
+
+object FlavorIntegrationFactory {
+    fun create(context: Context): IntegrationBundle = IntegrationBundle(
+        vehicleMotionSource = PleosVehicleMotionSource(context.applicationContext),
+        navigationGateway = PleosNavigationGateway(context.applicationContext),
+    )
+}
+
+/**
+ * Vehicle v2.3.2 lifecycle is real, but its public Brake surface documents pedal status only.
+ * A pedal value is not proof that the vehicle is parked. Until a documented parking/gear
+ * signal is approved, every lifecycle/capability/read/callback/error path remains Unknown.
+ */
+private class PleosVehicleMotionSource(context: Context) : VehicleMotionSource {
+    private val vehicle = Vehicle(context)
+    private val actualUnavailable = CapabilityStatus(
+        CapabilityState.Unavailable,
+        IntegrationSource.Actual,
+        "실차 · 주차 신호 없음",
+    )
+    private val mutableStatus = MutableStateFlow(VehicleMotionStatus(MotionState.Unknown, actualUnavailable))
+    override val status: StateFlow<VehicleMotionStatus> = mutableStatus.asStateFlow()
+
+    override suspend fun initialize() {
+        mutableStatus.value = VehicleMotionStatus(MotionState.Unknown, actualUnavailable)
+        runCatching { vehicle.initialize() }
+            .onFailure { failClosed() }
+        capabilityResult()
+        currentValueResult()
+        callbackResult()
+    }
+
+    // The published capability/get/callback surface has no verified parking or gear contract.
+    private fun capabilityResult() = failClosed()
+    private fun currentValueResult() = failClosed()
+    private fun callbackResult() = failClosed()
+
+    private fun failClosed() {
+        mutableStatus.value = VehicleMotionStatus(MotionState.Unknown, actualUnavailable)
+    }
+
+    override suspend fun requestSimulation(motion: MotionState): Boolean = false
+
+    override fun release() {
+        runCatching { vehicle.release() }
+        failClosed()
+    }
+}
+
+private class PleosNavigationGateway(context: Context) : NavigationGateway {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val helper = NaviHelper(context)
+    private val requestMutex = Mutex()
+    private val requestOutstanding = AtomicBoolean(false)
+    private val completionScheduled = AtomicBoolean(false)
+    private val released = AtomicBoolean(false)
+    private val actualUnavailable = CapabilityStatus(CapabilityState.Unavailable, IntegrationSource.Actual, "실차 · 연결 안 됨")
+    private val actualAvailable = CapabilityStatus(CapabilityState.Available, IntegrationSource.Actual, "실차")
+    private val mutableCapability = MutableStateFlow(actualUnavailable)
+    private val mutableState = MutableStateFlow<NavigationState>(NavigationState.Idle(actualUnavailable))
+    private var activeLabel: String? = null
+    private var listenerRegistered = false
+
+    override val state: StateFlow<NavigationState> = mutableState.asStateFlow()
+    override val capability: StateFlow<CapabilityStatus> = mutableCapability.asStateFlow()
+
+    private val listener = object : NaviHelperEventListener {
+        override fun onRouteStarted(routeStartInfo: RouteStartInfo) = completeAfterFeedback(success = true)
+        override fun onRoutingCompleted() = completeAfterFeedback(success = true)
+        override fun onError(errorCode: NaviErrorCode) = completeAfterFeedback(
+            success = false,
+            errorMessage = safeErrorMessage(errorCode),
+        )
+    }
+
+    override suspend fun initialize() {
+        released.set(false)
+        helper.initialize(
+            onConnected = {
+                if (!listenerRegistered) {
+                    helper.addListener(listener)
+                    listenerRegistered = true
+                }
+                mutableCapability.value = actualAvailable
+                mutableState.value = NavigationState.Idle(actualAvailable)
+            },
+            onFailed = {
+                mutableCapability.value = actualUnavailable
+                mutableState.value = NavigationState.Failed("차량 내비게이션에 연결할 수 없어요.")
+            },
+        )
+    }
+
+    override suspend fun requestRoute(request: NavigationRequest): NavigationRequestResult {
+        val validation = NavigationRequestValidator.validate(request)
+        if (validation is NavigationValidation.Invalid) {
+            mutableState.value = NavigationState.Failed(validation.userMessage)
+            return NavigationRequestResult.Rejected(validation.userMessage)
+        }
+        if (mutableCapability.value.capability != CapabilityState.Available) {
+            return NavigationRequestResult.Rejected("차량 내비게이션 연결을 확인해 주세요.")
+        }
+        if (!requestMutex.tryLock()) return NavigationRequestResult.Busy
+
+        requestOutstanding.set(true)
+        completionScheduled.set(false)
+        activeLabel = request.destination.name
+        mutableState.value = NavigationState.Requesting(request.requestId, request.destination.name)
+        return runCatching {
+            if (request.waypoints.isEmpty()) {
+                helper.requestRoute(request.destination.toRouteInfo())
+            } else {
+                helper.requestRouteWithWaypoints(
+                    RouteWithWaypointsRequest(
+                        destination = request.destination.toRouteInfo(),
+                        waypoints = listOf(request.waypoints.single().toWaypointInfo()),
+                    ),
+                )
+            }
+            NavigationRequestResult.Accepted
+        }.getOrElse {
+            mutableState.value = NavigationState.Failed("경로 요청을 전달하지 못했어요. 잠시 후 다시 시도해 주세요.")
+            unlockRequest()
+            NavigationRequestResult.Rejected("경로 요청을 전달하지 못했어요.")
+        }
+    }
+
+    private fun completeAfterFeedback(success: Boolean, errorMessage: String = "") {
+        if (!completionScheduled.compareAndSet(false, true)) return
+        val label = activeLabel ?: return
+        scope.launch {
+            delay(250)
+            if (released.get()) return@launch
+            mutableState.value = if (success) NavigationState.Active(label) else NavigationState.Failed(errorMessage)
+            activeLabel = null
+            unlockRequest()
+        }
+    }
+
+    private fun unlockRequest() {
+        if (requestOutstanding.compareAndSet(true, false)) requestMutex.unlock()
+    }
+
+    override fun release() {
+        released.set(true)
+        if (listenerRegistered) runCatching { helper.removeListener(listener) }
+        listenerRegistered = false
+        runCatching { helper.release() }
+        activeLabel = null
+        unlockRequest()
+        mutableCapability.value = actualUnavailable
+        mutableState.value = NavigationState.Idle(actualUnavailable)
+    }
+
+    private fun safeErrorMessage(errorCode: NaviErrorCode): String = when (errorCode) {
+        NaviErrorCode.CAUSE_LOW_BATTERY -> "배터리 상태 때문에 경로를 시작할 수 없어요."
+        NaviErrorCode.CAUSE_SEARCH_ROUTE_OVER_DISTANCE -> "탐색 가능한 거리를 초과했어요."
+        NaviErrorCode.CAUSE_SEARCH_ROUTE_TOO_SHORT_DISTANCE -> "목적지가 현재 위치와 너무 가까워요."
+        NaviErrorCode.CAUSE_SEARCH_ROUTE -> "경로 탐색 서비스가 응답하지 않아요."
+        else -> "차량 내비게이션에서 경로를 처리하지 못했어요."
+    }
+}
+
+private fun NavigationPlace.toRouteInfo() = RouteInfo(
+    latitude = latitude,
+    longitude = longitude,
+    poiName = name,
+    poiId = "",
+    address = "",
+    poiSubId = "0",
+)
+
+private fun NavigationPlace.toWaypointInfo() = RequestWaypointInfo(
+    latitude = latitude,
+    longitude = longitude,
+    poiName = name,
+    waypointIndex = WaypointIndex.FIRST,
+    poiId = "",
+    address = "",
+    poiSubId = "0",
+)

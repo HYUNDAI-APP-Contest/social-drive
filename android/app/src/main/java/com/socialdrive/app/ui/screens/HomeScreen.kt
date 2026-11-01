@@ -26,16 +26,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.ContentState
+import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.DriveSummary
 import com.socialdrive.app.domain.DemoContentMode
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.ui.components.DriveSummaryCard
+import com.socialdrive.app.ui.components.IntegrationStatusChip
 import com.socialdrive.app.ui.components.SafetyRestrictionBanner
 
 @Composable
 fun HomeScreen(
     state: ContentState<List<DriveSummary>>,
     motion: MotionState,
+    vehicleStatus: CapabilityStatus? = null,
     demoMode: DemoContentMode,
     blockedMessage: String?,
     onDetail: (String) -> Unit,
@@ -45,7 +48,7 @@ fun HomeScreen(
     onDemoModeChange: (DemoContentMode) -> Unit,
 ) {
     if (motion != MotionState.Parked) {
-        DrivingHome(motion, blockedMessage, onRecord)
+        DrivingHome(motion, vehicleStatus, blockedMessage, onRecord)
         return
     }
     Column(Modifier.fillMaxSize()) {
@@ -61,6 +64,7 @@ fun HomeScreen(
                 Icon(Icons.Rounded.FiberManualRecord, contentDescription = null)
                 Text(" 기록 시작")
             }
+            if (vehicleStatus != null) IntegrationStatusChip(vehicleStatus, Modifier.padding(start = 12.dp))
             IconButton(onClick = onSettings, modifier = Modifier.padding(start = 12.dp)) {
                 Icon(Icons.Rounded.Settings, contentDescription = "설정 열기")
             }
@@ -96,18 +100,25 @@ fun HomeScreen(
 }
 
 @Composable
-private fun DrivingHome(motion: MotionState, blockedMessage: String?, onRecord: () -> Unit) {
+private fun DrivingHome(
+    motion: MotionState,
+    vehicleStatus: CapabilityStatus?,
+    blockedMessage: String?,
+    onRecord: () -> Unit,
+) {
     Column(
         Modifier.fillMaxSize().padding(32.dp),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Icon(Icons.Rounded.DirectionsCar, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
-        Text(
-            if (motion == MotionState.Driving) "주행에 집중하세요" else "차량 상태를 확인하고 있어요",
-            style = MaterialTheme.typography.headlineLarge,
-            modifier = Modifier.padding(top = 16.dp),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Icon(Icons.Rounded.DirectionsCar, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
+            Text(
+                if (motion == MotionState.Driving) "주행에 집중하세요" else "차량 상태를 확인하고 있어요",
+                style = MaterialTheme.typography.headlineLarge,
+            )
+            if (vehicleStatus != null) IntegrationStatusChip(vehicleStatus)
+        }
         SafetyRestrictionBanner(
             blockedMessage ?: if (motion == MotionState.Driving) "피드와 설정은 주차 후 이용할 수 있어요." else "주차 상태가 확인될 때까지 탐색 기능을 잠갔어요.",
             Modifier.padding(vertical = 20.dp),

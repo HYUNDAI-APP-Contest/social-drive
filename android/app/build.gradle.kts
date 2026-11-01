@@ -18,7 +18,24 @@ android {
         testInstrumentationRunner = "com.socialdrive.app.SocialDriveTestRunner"
     }
 
-    buildFeatures { compose = true }
+    flavorDimensions += "integration"
+    productFlavors {
+        create("demo") {
+            dimension = "integration"
+            applicationIdSuffix = ".demo"
+            versionNameSuffix = "-demo"
+            buildConfigField("String", "INTEGRATION_MODE", "\"demo\"")
+        }
+        create("pleos") {
+            dimension = "integration"
+            buildConfigField("String", "INTEGRATION_MODE", "\"pleos\"")
+        }
+    }
+
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -56,6 +73,8 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    "pleosImplementation"("ai.pleos.playground:Vehicle:2.3.2")
+    "pleosImplementation"("ai.pleos.playground:NaviHelper:3.0.5")
     ksp("androidx.room:room-compiler:2.6.1")
 
     testImplementation("junit:junit:4.13.2")

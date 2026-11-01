@@ -12,11 +12,13 @@ import com.socialdrive.app.data.remote.RemoteDriveApi
 import com.socialdrive.app.data.work.PublishScheduler
 import com.socialdrive.app.data.work.PublishWorkerDependencies
 import com.socialdrive.app.data.work.PublishWorkerFactory
+import com.socialdrive.app.integration.FlavorIntegrationFactory
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.safety.ParkedExecutionGate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 open class SocialDriveApplication : Application(), Configuration.Provider {
@@ -24,7 +26,10 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
 
     val database: SocialDriveDatabase by lazy { SocialDriveDatabase.create(this) }
     val remoteDriveApi: RemoteDriveApi by lazy { FakeRemoteDriveApi() }
-    val parkedExecutionGate by lazy { ParkedExecutionGate(MotionState.Unknown) }
+    val integrationBundle by lazy { FlavorIntegrationFactory.create(this) }
+    val vehicleMotionSource get() = integrationBundle.vehicleMotionSource
+    val navigationGateway get() = integrationBundle.navigationGateway
+    val parkedExecutionGate by lazy { ParkedExecutionGate(vehicleMotionSource.status.value.motion) }
     val recordingRepository: RecordingRepository by lazy { RecordingRepository(database) }
     val draftRepository: DraftRepository by lazy { DraftRepository(database) }
     val publishQueueRepository: PublishQueueRepository by lazy { PublishQueueRepository(database) }
@@ -43,7 +48,25 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        applicationScope.launch {
+            vehicleMotionSource.initialize()
+            navigationGateway.initialize()
+        }
+        applicationScope.launch {
+            vehicleMotionSource.status.collect { status ->
+                parkedExecutionGate.transitionTo(status.motion)
+                if (status.motion == MotionState.Parked) {
+                    publishScheduler.recoverAfterProcessRestart()
+                }
+            }
+        }
         recoverQueuedWork()
+    }
+
+    override fun onTerminate() {
+        navigationGateway.release()
+        vehicleMotionSource.release()
+        super.onTerminate()
     }
 
     protected open fun recoverQueuedWork() {

@@ -24,6 +24,7 @@ import com.socialdrive.app.domain.ContentState
 import com.socialdrive.app.domain.DemoContentMode
 import com.socialdrive.app.domain.DriveSessionState
 import com.socialdrive.app.domain.MotionState
+import com.socialdrive.app.domain.NavigationRequestResult
 import com.socialdrive.app.domain.RecordingSnapshot
 import com.socialdrive.app.domain.ThemeMode
 import com.socialdrive.app.domain.UploadState
@@ -46,8 +47,11 @@ fun SocialDriveApp(
     val activeRecording by offlineViewModel.activeRecording.collectAsStateWithLifecycle()
     val latestDraft by offlineViewModel.latestDraft.collectAsStateWithLifecycle()
     val persistedUploadState by offlineViewModel.uploadState.collectAsStateWithLifecycle()
+    val vehicleMotion by offlineViewModel.vehicleMotion.collectAsStateWithLifecycle()
+    val navigationState by offlineViewModel.navigationState.collectAsStateWithLifecycle()
+    val navigationCapability by offlineViewModel.navigationCapability.collectAsStateWithLifecycle()
     var destination by rememberSaveable { mutableStateOf(AppDestination.Home) }
-    var motion by rememberSaveable { mutableStateOf(MotionState.Parked) }
+    val motion = vehicleMotion.motion
     var theme by rememberSaveable { mutableStateOf(ThemeMode.Night) }
     var selectedDrive by rememberSaveable { mutableStateOf("demo-coast") }
     var blockedMessage by rememberSaveable { mutableStateOf<String?>(null) }
@@ -60,9 +64,11 @@ fun SocialDriveApp(
         if (persistedUploadState != UploadState.Draft) demoUploadState = null
     }
     LaunchedEffect(motion) {
-        offlineViewModel.updateMotionState(motion)
+        if (motion != MotionState.Parked && destination !in setOf(AppDestination.Home, AppDestination.Recording)) {
+            blockedMessage = "주차 상태를 확인할 수 없어 안전 화면으로 돌아왔어요."
+            destination = AppDestination.Home
+        }
     }
-
     fun navigate(target: AppDestination) {
         val decision = SafetyPolicy.canNavigate(target, motion)
         if (decision.allowed) {
@@ -113,6 +119,7 @@ fun SocialDriveApp(
                     AppDestination.Home -> HomeScreen(
                         state = demoContentState(demoContentMode, repository),
                         motion = motion,
+                        vehicleStatus = vehicleMotion.integration,
                         demoMode = demoContentMode,
                         blockedMessage = blockedMessage,
                         onDetail = { selectedDrive = it; navigate(AppDestination.Detail) },
@@ -127,7 +134,17 @@ fun SocialDriveApp(
                     )
                     AppDestination.Detail -> DetailScreen(
                         drive = requireNotNull(repository.drive(selectedDrive)),
-                        navigationCapability = CapabilityState.Unavailable,
+                        navigationCapability = navigationCapability,
+                        navigationState = navigationState,
+                        onRequestNavigation = { request ->
+                            scope.launch {
+                                when (val result = offlineViewModel.requestNavigation(request)) {
+                                    NavigationRequestResult.Accepted -> Unit
+                                    NavigationRequestResult.Busy -> blockedMessage = "이전 경로 요청을 처리하고 있어요."
+                                    is NavigationRequestResult.Rejected -> blockedMessage = result.userMessage
+                                }
+                            }
+                        },
                         onBack = { navigate(AppDestination.Home) },
                         onPublish = { navigate(AppDestination.Publish) },
                     )
@@ -136,8 +153,8 @@ fun SocialDriveApp(
                             elapsed = "01:24:17",
                             distance = "64.2 km",
                             highlights = activeRecording?.highlightCount ?: 0,
-                            gps = CapabilityState.Available,
-                            vehicle = CapabilityState.Unavailable,
+                            gps = CapabilityState.Unavailable,
+                            vehicle = vehicleMotion.integration.capability,
                         ),
                         onHighlight = { scope.launch { offlineViewModel.addHighlight() } },
                         onRequestStop = { stopConfirmationRequested = true },
@@ -176,11 +193,18 @@ fun SocialDriveApp(
                     AppDestination.Settings -> SettingsScreen(
                         motion = motion,
                         theme = theme,
+                        vehicleStatus = vehicleMotion.integration,
+                        navigationStatus = navigationCapability,
                         onMotionChange = {
-                            motion = it
-                            if (it != MotionState.Parked) {
-                                blockedMessage = "주행 상태로 전환되어 탐색과 설정을 잠갔어요."
-                                destination = AppDestination.Home
+                            scope.launch {
+                                if (offlineViewModel.requestDemoMotion(it)) {
+                                    if (it != MotionState.Parked) {
+                                        blockedMessage = "주행 상태로 전환되어 탐색과 설정을 잠갔어요."
+                                        destination = AppDestination.Home
+                                    }
+                                } else {
+                                    blockedMessage = "실차 상태는 앱에서 바꿀 수 없어요."
+                                }
                             }
                         },
                         onThemeChange = { theme = it },

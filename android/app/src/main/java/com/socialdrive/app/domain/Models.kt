@@ -43,6 +43,8 @@ data class DriveSummary(
     val highlights: Int,
     val route: List<RoutePoint>,
     val moments: List<DriveMoment>,
+    /** Null unless the source supplied a privacy-reviewed destination. Demo fixtures keep this null. */
+    val navigationRequest: NavigationRequest? = null,
 )
 
 data class RecordingSnapshot(

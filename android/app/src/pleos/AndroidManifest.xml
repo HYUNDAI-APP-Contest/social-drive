@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Read-only brake-domain access. It is never treated as proof of Parked. -->
+    <uses-permission android:name="pleos.car.permission.CAR_DRIVE" />
+    <!-- The only NaviHelper operation used is route search. -->
+    <uses-permission android:name="pleos.car.permission.NAVI_ROUTE_SEARCH" />
+</manifest>

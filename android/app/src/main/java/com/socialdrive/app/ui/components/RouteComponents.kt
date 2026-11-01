@@ -40,6 +40,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.DriveSummary
+import com.socialdrive.app.domain.CapabilityStatus
+import com.socialdrive.app.domain.IntegrationSource
 import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.ui.theme.LocalRouteMemoryColors
@@ -120,6 +122,25 @@ private fun Metric(icon: androidx.compose.ui.graphics.vector.ImageVector, text: 
 fun DemoDataBadge(modifier: Modifier = Modifier) {
     Surface(modifier, shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = .86f)) {
         Text("DEMO", Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+@Composable
+fun IntegrationStatusChip(status: CapabilityStatus, modifier: Modifier = Modifier) {
+    val label = when (status.source) {
+        IntegrationSource.Actual -> "ACTUAL · ${status.label}"
+        IntegrationSource.Demo -> "DEMO · ${status.label}"
+        IntegrationSource.Unavailable -> "UNAVAILABLE"
+    }
+    Surface(modifier.clip(CircleShape), color = MaterialTheme.colorScheme.secondaryContainer) {
+        Text(
+            label,
+            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

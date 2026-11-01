@@ -24,6 +24,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,7 +34,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.DriveSummary
 import com.socialdrive.app.domain.CapabilityState
+import com.socialdrive.app.domain.CapabilityStatus
+import com.socialdrive.app.domain.NavigationRequest
+import com.socialdrive.app.domain.NavigationState
 import com.socialdrive.app.ui.components.DemoDataBadge
+import com.socialdrive.app.ui.components.IntegrationStatusChip
 import com.socialdrive.app.ui.components.RouteRibbon
 import com.socialdrive.app.ui.components.SafetyRestrictionBanner
 
@@ -41,17 +46,33 @@ import com.socialdrive.app.ui.components.SafetyRestrictionBanner
 @Composable
 fun DetailScreen(
     drive: DriveSummary,
-    navigationCapability: CapabilityState,
+    navigationCapability: CapabilityStatus,
+    navigationState: NavigationState,
+    onRequestNavigation: (NavigationRequest) -> Unit,
     onBack: () -> Unit,
     onPublish: () -> Unit,
 ) {
     var showCapabilitySheet by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(navigationState) {
+        feedback = when (navigationState) {
+            is NavigationState.Requesting -> "차량 내비게이션에 경로를 요청하고 있어요."
+            is NavigationState.Active -> "차량 내비게이션에서 경로를 시작했어요."
+            is NavigationState.Failed -> navigationState.userMessage
+            is NavigationState.Idle -> feedback
+        }
+    }
     if (showCapabilitySheet) {
         ModalBottomSheet(onDismissRequest = { showCapabilitySheet = false }) {
             Column(Modifier.fillMaxWidth().padding(28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("NaviHelper 연결 준비 중", style = MaterialTheme.typography.headlineMedium)
-                Text("현재는 공모전용 데모 경로입니다. 실제 차량 capability 승인이 완료되면 목적지와 경유지만 안전하게 전달합니다.")
+                Text("NaviHelper 안내", style = MaterialTheme.typography.headlineMedium)
+                Text(
+                    if (drive.navigationRequest == null) {
+                        "이 데모 기록에는 실제 좌표가 포함되지 않아 차량 내비게이션으로 보내지 않아요."
+                    } else {
+                        "차량 내비게이션 연결 상태를 확인해 주세요."
+                    },
+                )
                 Text("서버가 차량을 직접 제어하지 않습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 TextButton(onClick = { showCapabilitySheet = false }) { Text("확인") }
             }
@@ -65,6 +86,7 @@ fun DetailScreen(
                 Text("${drive.date} · ${drive.duration} · ${drive.distance}", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             DemoDataBadge()
+            IntegrationStatusChip(navigationCapability, Modifier.padding(start = 8.dp))
             IconButton(onClick = { feedback = "데모에서는 개인정보 보호를 위해 외부 공유를 실행하지 않아요." }) {
                 Icon(Icons.Rounded.Share, contentDescription = "드라이브 공유 안내")
             }
@@ -76,13 +98,17 @@ fun DetailScreen(
             }
             Button(
                 onClick = {
-                    if (navigationCapability == CapabilityState.Available) feedback = "안전 확인 후 NaviHelper로 경로를 전달합니다."
-                    else showCapabilitySheet = true
+                    val request = drive.navigationRequest
+                    if (navigationCapability.capability == CapabilityState.Available && request != null) {
+                        feedback = "차량 내비게이션에 경로를 요청하고 있어요."
+                        onRequestNavigation(request)
+                    } else showCapabilitySheet = true
                 },
-                Modifier.align(Alignment.BottomEnd).padding(20.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(20.dp),
+                enabled = navigationState !is NavigationState.Requesting,
             ) {
                 Icon(Icons.Rounded.Navigation, contentDescription = null)
-                Text(" 이 길 따라가기")
+                Text(if (navigationState is NavigationState.Requesting) " 요청 중…" else " 이 길 따라가기")
             }
         }
         Column(Modifier.fillMaxWidth().padding(24.dp)) {

@@ -110,7 +110,7 @@ test("Gradle bootstrap pins and verifies its distribution", () => {
 
 test("driving home returns before parked feed and settings UI", () => {
   const home = read("app/src/main/java/com/socialdrive/app/ui/screens/HomeScreen.kt");
-  assert.match(home, /if \(motion != MotionState\.Parked\) \{\s*DrivingHome\(motion, blockedMessage, onRecord\)\s*return\s*\}/);
+  assert.match(home, /if \(motion != MotionState\.Parked\) \{\s*DrivingHome\(motion, vehicleStatus, blockedMessage, onRecord\)\s*return\s*\}/);
   assert.doesNotMatch(home, /onDemoParked|주차 상태로 전환/);
   assert.match(home, /private fun DriveGrid[\s\S]*LazyVerticalGrid/);
 });
@@ -148,8 +148,81 @@ test("content and upload states are observable in the demo", () => {
 test("detail actions provide capability and privacy feedback", () => {
   const detail = read("app/src/main/java/com/socialdrive/app/ui/screens/DetailScreen.kt");
   assert.match(detail, /ModalBottomSheet/);
-  assert.match(detail, /navigationCapability == CapabilityState\.Available/);
+  assert.match(detail, /navigationCapability\.capability == CapabilityState\.Available/);
+  assert.match(detail, /NavigationState\.Requesting/);
   assert.match(detail, /외부 공유를 실행하지 않아요/);
+});
+
+test("Pleos dependencies permissions and flavors are least-privilege isolated", () => {
+  const settings = read("settings.gradle.kts");
+  const build = read("app/build.gradle.kts");
+  const mainManifest = read("app/src/main/AndroidManifest.xml");
+  const pleosManifest = read("app/src/pleos/AndroidManifest.xml");
+  assert.match(settings, /https:\/\/nexus-playground\.pleos\.ai\/repository\/maven-releases\//);
+  assert.match(settings, /includeGroup\("ai\.pleos\.playground"\)/);
+  assert.match(build, /flavorDimensions \+= "integration"/);
+  assert.match(build, /create\("demo"\)/);
+  assert.match(build, /create\("pleos"\)/);
+  assert.match(build, /"pleosImplementation"\("ai\.pleos\.playground:Vehicle:2\.3\.2"\)/);
+  assert.match(build, /"pleosImplementation"\("ai\.pleos\.playground:NaviHelper:3\.0\.5"\)/);
+  assert.doesNotMatch(build, /(?:implementation|demoImplementation).*?(?:Vehicle|NaviHelper)/);
+  assert.doesNotMatch(mainManifest, /uses-permission/);
+  const permissions = [...pleosManifest.matchAll(/uses-permission android:name="([^"]+)"/g)].map((match) => match[1]);
+  assert.deepEqual(permissions.sort(), [
+    "pleos.car.permission.CAR_DRIVE",
+    "pleos.car.permission.NAVI_ROUTE_SEARCH",
+  ]);
+  for (const forbidden of ["FusedLocation", "TextToSpeech", "SpeechToText", "CONTROL_CAR_"]) {
+    assert.doesNotMatch(build + pleosManifest, new RegExp(forbidden));
+  }
+});
+
+test("actual adapters fail closed and never fall back to demo state", () => {
+  const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
+  const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");
+  const app = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
+  const pleos = read("app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
+  const demo = read("app/src/demo/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
+  assert.match(application, /FlavorIntegrationFactory\.create\(this\)/);
+  assert.match(application, /vehicleMotionSource\.status\.collect[\s\S]*parkedExecutionGate\.transitionTo\(status\.motion\)/);
+  assert.match(pleos, /Vehicle\(context\)/);
+  assert.match(pleos, /vehicle\.initialize\(\)/);
+  assert.match(pleos, /capabilityResult[\s\S]*currentValueResult[\s\S]*callbackResult/);
+  assert.match(pleos, /VehicleMotionStatus\(MotionState\.Unknown, actualUnavailable\)/);
+  assert.match(pleos, /requestSimulation\(motion: MotionState\): Boolean = false/);
+  assert.doesNotMatch(pleos, /DemoVehicle|FakePleos|VehicleMotionStatus\(MotionState\.Parked/);
+  assert.match(demo, /requestSimulation[\s\S]*mutableStatus\.value/);
+  assert.match(viewModel, /vehicleMotion\.value\.motion != MotionState\.Parked[\s\S]*NavigationRequestResult\.Rejected/);
+  assert.match(app, /LaunchedEffect\(motion\)[\s\S]*motion != MotionState\.Parked[\s\S]*destination = AppDestination\.Home/);
+});
+
+test("navigation validates named coordinates and serializes requests without logging private places", () => {
+  const contract = read("app/src/main/java/com/socialdrive/app/domain/IntegrationContracts.kt");
+  const pleos = read("app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
+  const detail = read("app/src/main/java/com/socialdrive/app/ui/screens/DetailScreen.kt");
+  for (const marker of ["val name: String", "val latitude: Double", "val longitude: Double", "isFinite()", "-90.0..90.0", "-180.0..180.0", "MAX_WAYPOINTS"]) {
+    assert.ok(contract.includes(marker), marker);
+  }
+  assert.match(pleos, /if \(!requestMutex\.tryLock\(\)\) return NavigationRequestResult\.Busy/);
+  assert.ok(pleos.indexOf("NavigationState.Requesting") < pleos.indexOf("helper.requestRoute("));
+  assert.match(pleos, /delay\(250\)/);
+  assert.match(pleos, /NaviHelperEventListener/);
+  assert.match(pleos, /safeErrorMessage/);
+  assert.doesNotMatch(pleos, /android\.util\.Log|println\(|printStackTrace/);
+  assert.match(detail, /drive\.navigationRequest == null/);
+  assert.match(detail, /실제 좌표가 포함되지 않아/);
+});
+
+test("integration UI is explicit about actual demo unavailable and coming-soon features", () => {
+  const components = read("app/src/main/java/com/socialdrive/app/ui/components/RouteComponents.kt");
+  const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
+  for (const marker of ["IntegrationSource.Actual", "IntegrationSource.Demo", "IntegrationSource.Unavailable"]) {
+    assert.ok(components.includes(marker), marker);
+  }
+  for (const marker of ["Fused Location", "TTS / STT", "Vehicle Control", "Coming Soon"]) {
+    assert.ok(settings.includes(marker), marker);
+  }
+  assert.match(settings, /vehicleStatus\.source == IntegrationSource\.Demo/);
 });
 
 test("preview matrix includes day night driving recording and failed upload", () => {
@@ -163,7 +236,9 @@ test("all required product boundaries and screens exist", () => {
     "app/src/main/java/com/socialdrive/app/domain/Models.kt",
     "app/src/main/java/com/socialdrive/app/data/fake/FakeDriveRepository.kt",
     "app/src/main/java/com/socialdrive/app/safety/SafetyPolicy.kt",
-    "app/src/main/java/com/socialdrive/app/integration/PleosGateway.kt",
+    "app/src/main/java/com/socialdrive/app/domain/IntegrationContracts.kt",
+    "app/src/demo/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt",
+    "app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt",
     "app/src/main/java/com/socialdrive/app/ui/screens/HomeScreen.kt",
     "app/src/main/java/com/socialdrive/app/ui/screens/DetailScreen.kt",
     "app/src/main/java/com/socialdrive/app/ui/screens/RecordingScreen.kt",
@@ -178,8 +253,8 @@ test("unknown vehicle motion fails closed for parked-only actions", () => {
   assert.match(safety, /motion\s*==\s*MotionState\.Parked/);
 });
 
-test("fake app source contains no precise geographic coordinates or credentials", () => {
-  const sourceRoot = path.join(root, "app/src/main/java");
+test("fake data fixtures contain no precise geographic coordinates or credentials", () => {
+  const sourceRoot = path.join(root, "app/src/main/java/com/socialdrive/app/data/fake");
   const source = kotlinFiles(sourceRoot).map((file) => fs.readFileSync(file, "utf8")).join("\n");
   assert.doesNotMatch(source, /\b(?:latitude|longitude|access[_-]?key|secret[_-]?key)\b/i);
   assert.doesNotMatch(source, /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/);
