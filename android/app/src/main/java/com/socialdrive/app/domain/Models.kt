@@ -8,6 +8,10 @@ enum class ThemeMode { System, Day, Night }
 
 enum class CapabilityState { Available, Unavailable, PermissionDenied }
 
+enum class DriveSessionState { Idle, Recording, Finishing, DraftReady }
+
+enum class DemoContentMode { Loading, Content, Empty, Offline, Error, PermissionDenied, Retry }
+
 sealed interface ContentState<out T> {
     data object Loading : ContentState<Nothing>
     data class Content<T>(val value: T) : ContentState<T>

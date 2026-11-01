@@ -10,12 +10,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,15 +25,28 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.ui.components.SafetyRestrictionBanner
 import com.socialdrive.app.ui.components.UploadStateChip
 
 @Composable
-fun PublishScreen(canEdit: Boolean, onBack: () -> Unit, onPublished: () -> Unit) {
+fun PublishScreen(
+    canEdit: Boolean,
+    uploadState: UploadState,
+    onUploadStateChange: (UploadState) -> Unit,
+    onBack: () -> Unit,
+    onDone: () -> Unit,
+) {
     var title by remember { mutableStateOf("빛나는 해안도로의 저녁") }
     var description by remember { mutableStateOf("바다를 따라 만난 좋은 순간을 나눠요.") }
     var consent by remember { mutableStateOf(false) }
+    LaunchedEffect(uploadState) {
+        if (uploadState == UploadState.Uploading) {
+            delay(900)
+            onUploadStateChange(UploadState.Published)
+        }
+    }
     Column(Modifier.fillMaxSize().padding(24.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, contentDescription = "뒤로가기") }
@@ -39,7 +54,7 @@ fun PublishScreen(canEdit: Boolean, onBack: () -> Unit, onPublished: () -> Unit)
                 Text("드라이브 게시", style = MaterialTheme.typography.headlineMedium)
                 Text("대표 이미지 → 이야기 → 공개 범위 → 동의", color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            UploadStateChip(UploadState.Draft)
+            UploadStateChip(uploadState)
         }
         if (!canEdit) SafetyRestrictionBanner("주차 상태를 확인한 뒤 게시물을 편집할 수 있어요.", Modifier.padding(vertical = 12.dp))
         Row(
@@ -65,8 +80,33 @@ fun PublishScreen(canEdit: Boolean, onBack: () -> Unit, onPublished: () -> Unit)
                     Text("게시할 데모 경로와 하이라이트 정보를 확인했습니다.")
                 }
                 Text("정밀 위치와 원시 차량 상태는 업로드하지 않습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Button(onClick = onPublished, enabled = canEdit && consent, modifier = Modifier.fillMaxWidth()) { Text("안전하게 게시하기") }
+                Text("업로드 상태 데모", style = MaterialTheme.typography.titleMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    UploadState.entries.forEach { state ->
+                        FilterChip(
+                            selected = uploadState == state,
+                            onClick = { onUploadStateChange(state) },
+                            enabled = canEdit,
+                            label = { Text(state.shortLabel()) },
+                        )
+                    }
+                }
+                when (uploadState) {
+                    UploadState.Published -> Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("피드에서 확인하기") }
+                    UploadState.Uploading -> Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("안전하게 업로드 중…") }
+                    UploadState.Failed -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canEdit && consent, modifier = Modifier.fillMaxWidth()) { Text("업로드 다시 시도") }
+                    UploadState.Queued -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canEdit && consent, modifier = Modifier.fillMaxWidth()) { Text("네트워크 연결 후 업로드") }
+                    UploadState.Draft -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canEdit && consent, modifier = Modifier.fillMaxWidth()) { Text("안전하게 게시하기") }
+                }
             }
         }
     }
+}
+
+private fun UploadState.shortLabel() = when (this) {
+    UploadState.Draft -> "초안"
+    UploadState.Queued -> "오프라인"
+    UploadState.Uploading -> "업로드"
+    UploadState.Failed -> "실패"
+    UploadState.Published -> "완료"
 }

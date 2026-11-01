@@ -26,7 +26,10 @@ if [ ! -x "$GRADLE_BIN" ]; then
   command -v unzip >/dev/null 2>&1 || { echo "unzip is required to bootstrap Gradle." >&2; exit 1; }
   mkdir -p "$BOOTSTRAP_DIR"
   ARCHIVE="$BOOTSTRAP_DIR/$DIST_NAME.zip"
-  curl --fail --location --retry 2 "$DIST_URL" --output "$ARCHIVE"
+  curl --fail --location --retry 2 "$DIST_URL" --output "$ARCHIVE" || {
+    echo "Unable to download the pinned Gradle distribution. Check network access." >&2
+    exit 1
+  }
   if command -v shasum >/dev/null 2>&1; then
     ACTUAL_SHA=$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')
   else

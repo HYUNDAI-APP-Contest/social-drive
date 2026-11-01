@@ -17,9 +17,12 @@ import com.socialdrive.app.data.fake.FakeDriveRepository
 import com.socialdrive.app.domain.AppDestination
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.ContentState
+import com.socialdrive.app.domain.DemoContentMode
+import com.socialdrive.app.domain.DriveSessionState
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.RecordingSnapshot
 import com.socialdrive.app.domain.ThemeMode
+import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.safety.SafetyPolicy
 import com.socialdrive.app.ui.screens.DetailScreen
 import com.socialdrive.app.ui.screens.HomeScreen
@@ -36,6 +39,9 @@ fun SocialDriveApp(repository: FakeDriveRepository = remember { FakeDriveReposit
     var selectedDrive by rememberSaveable { mutableStateOf("demo-coast") }
     var blockedMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var highlights by rememberSaveable { mutableIntStateOf(0) }
+    var demoContentMode by rememberSaveable { mutableStateOf(DemoContentMode.Content) }
+    var sessionState by rememberSaveable { mutableStateOf(DriveSessionState.Idle) }
+    var uploadState by rememberSaveable { mutableStateOf(UploadState.Draft) }
 
     fun navigate(target: AppDestination) {
         val decision = SafetyPolicy.canNavigate(target, motion)
@@ -55,15 +61,20 @@ fun SocialDriveApp(repository: FakeDriveRepository = remember { FakeDriveReposit
             Box(Modifier.fillMaxSize()) {
                 when (destination) {
                     AppDestination.Home -> HomeScreen(
-                        state = ContentState.Content(repository.drives()),
+                        state = demoContentState(demoContentMode, repository),
+                        motion = motion,
+                        demoMode = demoContentMode,
                         blockedMessage = blockedMessage,
                         onDetail = { selectedDrive = it; navigate(AppDestination.Detail) },
-                        onRecord = { navigate(AppDestination.Recording) },
+                        onRecord = { sessionState = DriveSessionState.Recording; navigate(AppDestination.Recording) },
                         onSettings = { navigate(AppDestination.Settings) },
-                        onRetry = {},
+                        onRetry = { demoContentMode = DemoContentMode.Content },
+                        onDemoModeChange = { demoContentMode = it },
+                        onDemoParked = { motion = MotionState.Parked; blockedMessage = null },
                     )
                     AppDestination.Detail -> DetailScreen(
                         drive = requireNotNull(repository.drive(selectedDrive)),
+                        navigationCapability = CapabilityState.Unavailable,
                         onBack = { navigate(AppDestination.Home) },
                         onPublish = { navigate(AppDestination.Publish) },
                     )
@@ -75,18 +86,36 @@ fun SocialDriveApp(repository: FakeDriveRepository = remember { FakeDriveReposit
                             gps = CapabilityState.Available,
                             vehicle = CapabilityState.Unavailable,
                         ),
+                        motion = motion,
                         onHighlight = { highlights += 1 },
-                        onStop = { navigate(AppDestination.Home) },
+                        onStop = {
+                            sessionState = DriveSessionState.DraftReady
+                            uploadState = UploadState.Draft
+                            if (motion == MotionState.Parked) {
+                                navigate(AppDestination.Publish)
+                            } else {
+                                blockedMessage = "기록을 초안으로 안전하게 보존했습니다. 주차 상태가 확인되면 게시할 수 있어요."
+                                destination = AppDestination.Home
+                            }
+                        },
                     )
                     AppDestination.Publish -> PublishScreen(
                         canEdit = SafetyPolicy.canEdit(motion),
+                        uploadState = uploadState,
+                        onUploadStateChange = { uploadState = it },
                         onBack = { navigate(AppDestination.Detail) },
-                        onPublished = { navigate(AppDestination.Home) },
+                        onDone = { sessionState = DriveSessionState.Idle; navigate(AppDestination.Home) },
                     )
                     AppDestination.Settings -> SettingsScreen(
                         motion = motion,
                         theme = theme,
-                        onMotionChange = { motion = it },
+                        onMotionChange = {
+                            motion = it
+                            if (it != MotionState.Parked) {
+                                blockedMessage = "주행 상태로 전환되어 탐색과 설정을 잠갔어요."
+                                destination = AppDestination.Home
+                            }
+                        },
                         onThemeChange = { theme = it },
                         onBack = { navigate(AppDestination.Home) },
                     )
@@ -94,4 +123,17 @@ fun SocialDriveApp(repository: FakeDriveRepository = remember { FakeDriveReposit
             }
         }
     }
+}
+
+private fun demoContentState(
+    mode: DemoContentMode,
+    repository: FakeDriveRepository,
+): ContentState<List<com.socialdrive.app.domain.DriveSummary>> = when (mode) {
+    DemoContentMode.Loading -> ContentState.Loading
+    DemoContentMode.Content -> ContentState.Content(repository.drives())
+    DemoContentMode.Empty -> ContentState.Empty
+    DemoContentMode.Offline -> ContentState.Offline(repository.drives())
+    DemoContentMode.Error -> ContentState.Error("피드를 불러오지 못했어요. 저장된 기록은 안전합니다.")
+    DemoContentMode.PermissionDenied -> ContentState.PermissionDenied("위치")
+    DemoContentMode.Retry -> ContentState.Retry("연결이 불안정합니다. 잠시 후 다시 시도해 주세요.")
 }
