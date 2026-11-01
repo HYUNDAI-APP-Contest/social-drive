@@ -7,6 +7,7 @@ import com.socialdrive.app.data.local.RoutePrivacyEntity
 import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.domain.FutureRouteCollector
 import com.socialdrive.app.domain.LiveUnavailableReason
+import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.PendingRouteUploadCanceller
 import com.socialdrive.app.domain.PublishedDeleteDecision
 import com.socialdrive.app.domain.RouteConsentDecision
@@ -24,6 +25,7 @@ import kotlinx.coroutines.sync.withLock
 class RoutePrivacyRepository(
     private val database: SocialDriveDatabase,
     private val pendingUploads: PendingRouteUploadCanceller,
+    private val currentMotion: () -> MotionState,
     private val collector: FutureRouteCollector = UnavailableFutureRouteCollector,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
@@ -50,6 +52,7 @@ class RoutePrivacyRepository(
             draftId = draftId,
             isPublished = draft?.state == LocalState.PUBLISHED,
             confirmed = confirmed,
+            currentMotion = currentMotion,
         )
     }
 

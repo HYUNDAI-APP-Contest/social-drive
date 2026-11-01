@@ -242,6 +242,7 @@ fun SocialDriveApp(
                                     PublishedDeleteDecision.DeletePending -> "삭제 대기를 저장했어요. 실제 서버 삭제는 연결 구현 후 별도 실행됩니다."
                                     PublishedDeleteDecision.ConfirmationRequired -> "삭제 확인이 필요해요."
                                     PublishedDeleteDecision.NotPublished -> "게시된 기록만 삭제 요청할 수 있어요."
+                                    is PublishedDeleteDecision.MotionRejected -> "주차 상태가 다시 확인되지 않아 삭제 대기를 저장하지 않았어요."
                                 }
                             }
                         },

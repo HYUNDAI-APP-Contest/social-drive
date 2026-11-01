@@ -187,6 +187,7 @@ class OfflinePersistenceTest {
         val privacy = RoutePrivacyRepository(
             database,
             PendingRouteUploadCanceller { cancelled = it },
+            currentMotion = { MotionState.Parked },
             clock = { 1_001L },
         )
 
@@ -208,10 +209,23 @@ class OfflinePersistenceTest {
         val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 1_100L })
         val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
         database.draftDao().markPublished(draft.id, "remote-published", 2, 1_101L)
-        val privacy = RoutePrivacyRepository(database, PendingRouteUploadCanceller {}, clock = { 1_102L })
+        var authoritativeMotion = MotionState.Parked
+        val privacy = RoutePrivacyRepository(
+            database,
+            PendingRouteUploadCanceller {},
+            currentMotion = { authoritativeMotion },
+            clock = { 1_102L },
+        )
 
         assertEquals(PublishedDeleteDecision.ConfirmationRequired, privacy.requestPublishedDelete(draft.id, false))
         assertEquals(null, database.routePrivacyDao().findDeleteRequest(draft.id))
+        authoritativeMotion = MotionState.Driving
+        assertEquals(PublishedDeleteDecision.MotionRejected(MotionState.Driving), privacy.requestPublishedDelete(draft.id, true))
+        assertEquals(null, database.routePrivacyDao().findDeleteRequest(draft.id))
+        authoritativeMotion = MotionState.Unknown
+        assertEquals(PublishedDeleteDecision.MotionRejected(MotionState.Unknown), privacy.requestPublishedDelete(draft.id, true))
+        assertEquals(null, database.routePrivacyDao().findDeleteRequest(draft.id))
+        authoritativeMotion = MotionState.Parked
         assertEquals(PublishedDeleteDecision.DeletePending, privacy.requestPublishedDelete(draft.id, true))
         assertEquals(LocalState.DELETE_PENDING, database.routePrivacyDao().findDeleteRequest(draft.id)?.state)
         assertEquals(LocalState.PUBLISHED, database.draftDao().find(draft.id)?.state)

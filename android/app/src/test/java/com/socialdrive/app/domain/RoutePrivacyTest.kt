@@ -76,12 +76,57 @@ class RoutePrivacyTest {
     }
 
     @Test
-    fun `published delete requires confirmation and only writes local pending state`() = runBlocking {
+    fun `parked published delete requires confirmation and writes local pending state`() = runBlocking {
         val harness = Harness()
-        assertEquals(PublishedDeleteDecision.NotPublished, harness.coordinator.requestPublishedDelete("draft-1", false, true))
-        assertEquals(PublishedDeleteDecision.ConfirmationRequired, harness.coordinator.requestPublishedDelete("draft-1", true, false))
-        assertEquals(PublishedDeleteDecision.DeletePending, harness.coordinator.requestPublishedDelete("draft-1", true, true))
+        assertEquals(
+            PublishedDeleteDecision.NotPublished,
+            harness.coordinator.requestPublishedDelete("draft-1", false, true) { MotionState.Parked },
+        )
+        assertEquals(
+            PublishedDeleteDecision.ConfirmationRequired,
+            harness.coordinator.requestPublishedDelete("draft-1", true, false) { MotionState.Parked },
+        )
+        assertEquals(
+            PublishedDeleteDecision.DeletePending,
+            harness.coordinator.requestPublishedDelete("draft-1", true, true) { MotionState.Parked },
+        )
         assertEquals(listOf("delete-pending:draft-1"), harness.store.deleteEvents)
+    }
+
+    @Test
+    fun `driving direct delete call is rejected without persistence`() = runBlocking {
+        val harness = Harness()
+        assertEquals(
+            PublishedDeleteDecision.MotionRejected(MotionState.Driving),
+            harness.coordinator.requestPublishedDelete("draft-1", true, true) { MotionState.Driving },
+        )
+        assertEquals(emptyList(), harness.store.deleteEvents)
+    }
+
+    @Test
+    fun `unknown direct delete call is rejected without persistence`() = runBlocking {
+        val harness = Harness()
+        assertEquals(
+            PublishedDeleteDecision.MotionRejected(MotionState.Unknown),
+            harness.coordinator.requestPublishedDelete("draft-1", true, true) { MotionState.Unknown },
+        )
+        assertEquals(emptyList(), harness.store.deleteEvents)
+    }
+
+    @Test
+    fun `parked dialog changing to driving before confirm is revalidated and rejected`() = runBlocking {
+        val harness = Harness()
+        var motion = MotionState.Parked
+        assertEquals(
+            PublishedDeleteDecision.ConfirmationRequired,
+            harness.coordinator.requestPublishedDelete("draft-1", true, false) { motion },
+        )
+        motion = MotionState.Driving
+        assertEquals(
+            PublishedDeleteDecision.MotionRejected(MotionState.Driving),
+            harness.coordinator.requestPublishedDelete("draft-1", true, true) { motion },
+        )
+        assertEquals(emptyList(), harness.store.deleteEvents)
     }
 
     private class Harness {

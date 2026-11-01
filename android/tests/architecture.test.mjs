@@ -286,7 +286,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 48/);
+  assert.match(coreRunner, /expectedTests = 51/);
   assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 
@@ -444,6 +444,7 @@ test("unknown vehicle motion fails closed for parked-only actions", () => {
 test("route source consent withdrawal and delete pending stay privacy safe", () => {
   const domain = read("app/src/main/java/com/socialdrive/app/domain/RoutePrivacy.kt");
   const repository = read("app/src/main/java/com/socialdrive/app/data/RoutePrivacyRepository.kt");
+  const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
   const routeFake = read("app/src/main/java/com/socialdrive/app/data/fake/FakeDriveRepository.kt");
   const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
   const daos = read("app/src/main/java/com/socialdrive/app/data/local/Daos.kt");
@@ -463,6 +464,9 @@ test("route source consent withdrawal and delete pending stay privacy safe", () 
   assert.doesNotMatch(productionKotlin, /LiveAvailable\s*\(/);
   assert.match(domain, /stopAndAwait\(\)[\s\S]*withdrawAndPurge\(\)[\s\S]*pendingUploads\.cancel/);
   assert.match(repository, /RoomRoutePrivacyMutationStore/);
+  assert.match(repository, /currentMotion = currentMotion/);
+  assert.match(application, /currentMotion = \{ vehicleMotionSource\.status\.value\.motion \}/);
+  assert.match(domain, /motion != MotionState\.Parked[\s\S]*MotionRejected/);
   assert.doesNotMatch(repository, /RemoteDriveApi|CloudDriveClient|deleteDrive/);
   assert.match(entities, /normalized_route_points/);
   assert.match(entities, /published_delete_requests/);
@@ -478,7 +482,8 @@ test("route source consent withdrawal and delete pending stay privacy safe", () 
   assert.equal((routeFake.match(/routeSource = RouteSource\.DemoPreset/g) ?? []).length, 3);
   for (const marker of [
     "zero points before explicit consent", "atomically purges and tombstones", "late fake point",
-    "requires confirmation and only writes local pending",
+    "parked published delete requires confirmation", "driving direct delete call", "unknown direct delete call",
+    "changing to driving before confirm",
   ]) assert.ok(suite.includes(marker), marker);
 });
 

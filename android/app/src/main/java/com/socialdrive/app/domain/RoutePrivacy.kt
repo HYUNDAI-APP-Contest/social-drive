@@ -100,6 +100,7 @@ fun interface PendingRouteUploadCanceller {
 sealed interface PublishedDeleteDecision {
     data object ConfirmationRequired : PublishedDeleteDecision
     data object NotPublished : PublishedDeleteDecision
+    data class MotionRejected(val motion: MotionState) : PublishedDeleteDecision
     data object DeletePending : PublishedDeleteDecision
 }
 
@@ -137,9 +138,13 @@ class RoutePrivacyCoordinator(
         draftId: String,
         isPublished: Boolean,
         confirmed: Boolean,
+        currentMotion: () -> MotionState,
     ): PublishedDeleteDecision = mutationMutex.withLock {
         if (!isPublished) return@withLock PublishedDeleteDecision.NotPublished
         if (!confirmed) return@withLock PublishedDeleteDecision.ConfirmationRequired
+        // Read the authoritative source at the mutation boundary, never the dialog's captured UI state.
+        val motion = currentMotion()
+        if (motion != MotionState.Parked) return@withLock PublishedDeleteDecision.MotionRejected(motion)
         store.markPublishedDeletePending(draftId)
         PublishedDeleteDecision.DeletePending
     }

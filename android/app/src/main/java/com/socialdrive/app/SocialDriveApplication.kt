@@ -43,6 +43,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
             PendingRouteUploadCanceller {
                 WorkManager.getInstance(this).cancelAllWorkByTag(PublishScheduler.ROUTE_UPLOAD_TAG)
             },
+            currentMotion = { vehicleMotionSource.status.value.motion },
         )
     }
     val publishScheduler: PublishScheduler by lazy {
