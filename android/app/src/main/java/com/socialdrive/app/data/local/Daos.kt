@@ -43,7 +43,7 @@ interface DraftDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(draft: DraftEntity)
 
-    @Query("UPDATE drive_drafts SET title = :title, description = :description, updatedAtEpochMs = :now WHERE id = :id AND state != 'PUBLISHED'")
+    @Query("UPDATE drive_drafts SET title = :title, description = :description, updatedAtEpochMs = :now WHERE id = :id AND state = 'DRAFT'")
     suspend fun updateEditableCopy(id: String, title: String, description: String, now: Long): Int
 
     @Query("UPDATE drive_drafts SET state = :state, remoteDriveId = :remoteDriveId, updatedAtEpochMs = :now WHERE id = :id")
@@ -61,7 +61,7 @@ interface UploadQueueDao {
     @Query("SELECT * FROM upload_queue WHERE draftId = :draftId")
     suspend fun find(draftId: String): UploadQueueEntity?
 
-    @Query("SELECT * FROM upload_queue WHERE status IN ('QUEUED', 'RUNNING') ORDER BY updatedAtEpochMs")
+    @Query("SELECT * FROM upload_queue WHERE status IN ('QUEUED', 'RUNNING', 'PAUSED_MOTION') ORDER BY updatedAtEpochMs")
     suspend fun recoverable(): List<UploadQueueEntity>
 
     @Upsert

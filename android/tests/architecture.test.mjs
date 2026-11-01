@@ -31,6 +31,19 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   assert.match(database, /addMigrations\(RoomMigrations\.MIGRATION_1_2\)/);
   assert.doesNotMatch(database, /fallbackToDestructiveMigration/);
   assert.doesNotMatch(daos, /@Delete|DELETE FROM drive_drafts/);
+  assert.match(daos, /state = 'DRAFT'/);
+  assert.doesNotMatch(daos, /state != 'PUBLISHED'/);
+  const schema1 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/1.json"));
+  const schema2 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/2.json"));
+  assert.equal(schema1.database.version, 1);
+  assert.equal(schema2.database.version, 2);
+  const queue1 = schema1.database.entities.find((entity) => entity.tableName === "upload_queue");
+  const queue2 = schema2.database.entities.find((entity) => entity.tableName === "upload_queue");
+  assert.equal(queue1.fields.some((field) => field.columnName === "lastErrorCode"), false);
+  assert.equal(queue2.fields.some((field) => field.columnName === "lastErrorCode"), true);
+  const migrationTest = read("app/src/androidTest/java/com/socialdrive/app/RoomMigrationTest.kt");
+  assert.match(migrationTest, /runMigrationsAndValidate\(DATABASE, 2, true, RoomMigrations\.MIGRATION_1_2\)/);
+  assert.match(migrationTest, /originalContentRef/);
 });
 
 test("publish queue is stable restart-safe and keeps ephemeral credentials out of Room", () => {
@@ -39,6 +52,7 @@ test("publish queue is stable restart-safe and keeps ephemeral credentials out o
   const scheduler = read("app/src/main/java/com/socialdrive/app/data/work/PublishScheduler.kt");
   const workers = read("app/src/main/java/com/socialdrive/app/data/work/PublishWorkers.kt");
   const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
+  const remote = read("app/src/main/java/com/socialdrive/app/data/remote/RemoteDriveApi.kt");
   assert.doesNotMatch(entities, /presigned|credential|accessToken|uploadUrl/i);
   assert.match(repositories, /findByRecording\(id\)/);
   assert.match(repositories, /clientRequestId = "drive-\$\{ids\.create\(\)\}"/);
@@ -49,6 +63,10 @@ test("publish queue is stable restart-safe and keeps ephemeral credentials out o
   assert.match(application, /publishScheduler\.recoverAfterProcessRestart/);
   for (const worker of ["CreateDriveWorker", "UploadAssetsWorker", "PublishDriveWorker"]) assert.match(scheduler, new RegExp(worker));
   assert.match(workers, /original draft is retained after acknowledgement/);
+  assert.equal((workers.match(/pauseUnlessParked\(id, queue\.stage/g) ?? []).length, 3);
+  assert.match(scheduler, /motionStateSource\.current\(\) != MotionState\.Parked[\s\S]*pauseRecoverableForMotion/);
+  for (const marker of ["idempotencyKey", "checksumSha256Base64", "same checksum as success", "permanent conflict"]) assert.match(remote, new RegExp(marker));
+  assert.match(remote, /putIfAbsent\(session, command\.checksumSha256Base64\)/);
 });
 
 test("Compose observes Room state and Android tests cover persistence and unique work", () => {

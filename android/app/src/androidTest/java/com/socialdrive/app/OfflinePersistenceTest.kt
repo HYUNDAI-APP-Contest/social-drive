@@ -58,7 +58,9 @@ class OfflinePersistenceTest {
         val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 200L })
         val queue = PublishQueueRepository(database, clock = { 200L })
         val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
+        val drafts = com.socialdrive.app.data.DraftRepository(database)
 
+        assertEquals(true, drafts.updateCopy(draft.id, "게시 전 제목", "게시 전 설명"))
         assertTrue(queue.enqueue(draft.id, MotionState.Driving) is EnqueueResult.Rejected)
         assertTrue(queue.enqueue(draft.id, MotionState.Unknown) is EnqueueResult.Rejected)
         assertEquals(null, database.uploadQueueDao().find(draft.id))
@@ -69,7 +71,7 @@ class OfflinePersistenceTest {
         assertEquals(LocalState.CREATE, persisted.stage)
         assertEquals(draft.clientRequestId, persisted.clientRequestId)
         assertNotEquals("", persisted.clientRequestId)
-        assertEquals(false, com.socialdrive.app.data.DraftRepository(database).updateCopy(draft.id, "바뀐 제목", "바뀐 설명"))
+        assertEquals(false, drafts.updateCopy(draft.id, "바뀐 제목", "바뀐 설명"))
 
         database.draftDao().markPublished(draft.id, "remote-demo", 300L)
         val published = requireNotNull(database.draftDao().find(draft.id))

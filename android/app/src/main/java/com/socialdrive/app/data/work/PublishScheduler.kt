@@ -12,20 +12,29 @@ import androidx.work.WorkManager
 import com.socialdrive.app.data.EnqueueResult
 import com.socialdrive.app.data.PublishQueueRepository
 import com.socialdrive.app.domain.MotionState
+import com.socialdrive.app.safety.MotionStateSource
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class PublishScheduler(
     private val workManager: WorkManager,
     private val queue: PublishQueueRepository,
+    private val motionStateSource: MotionStateSource,
 ) {
+    private val recoveryMutex = Mutex()
     suspend fun enqueue(draftId: String, motionState: MotionState): EnqueueResult {
         val result = queue.enqueue(draftId, motionState)
         if (result is EnqueueResult.Enqueued || result is EnqueueResult.AlreadyQueued) schedule(draftId)
         return result
     }
 
-    suspend fun recoverAfterProcessRestart() {
-        queue.recoverable().forEach(::schedule)
+    suspend fun recoverAfterProcessRestart() = recoveryMutex.withLock {
+        if (motionStateSource.current() != MotionState.Parked) {
+            queue.pauseRecoverableForMotion()
+        } else {
+            queue.recoverable().forEach(::schedule)
+        }
     }
 
     private fun schedule(draftId: String) {

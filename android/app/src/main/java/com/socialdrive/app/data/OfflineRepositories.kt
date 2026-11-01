@@ -26,6 +26,7 @@ data class DraftSnapshot(
     val clientRequestId: String,
     val title: String,
     val description: String,
+    val coverPreset: String,
     val originalContentRef: String,
     val state: String,
 )
@@ -109,6 +110,7 @@ class PublishQueueRepository(
             LocalState.QUEUED -> UploadState.Queued
             LocalState.RUNNING -> UploadState.Uploading
             LocalState.FAILED -> UploadState.Failed
+            LocalState.PAUSED_MOTION -> UploadState.Queued
             LocalState.PUBLISHED -> UploadState.Published
             else -> UploadState.Draft
         }
@@ -142,6 +144,23 @@ class PublishQueueRepository(
     }
 
     suspend fun recoverable(): List<String> = database.uploadQueueDao().recoverable().map { it.draftId }
+
+    suspend fun pauseRecoverableForMotion() {
+        val now = clock()
+        database.withTransaction {
+            database.uploadQueueDao().recoverable().forEach { item ->
+                database.uploadQueueDao().updateStage(
+                    draftId = item.draftId,
+                    stage = item.stage,
+                    status = LocalState.PAUSED_MOTION,
+                    attempts = item.attempts,
+                    nextAttemptAt = now,
+                    lastErrorCode = "MOTION_NOT_PARKED",
+                    now = now,
+                )
+            }
+        }
+    }
 }
 
 private fun DraftEntity.toSnapshot() = DraftSnapshot(
@@ -150,6 +169,7 @@ private fun DraftEntity.toSnapshot() = DraftSnapshot(
     clientRequestId = clientRequestId,
     title = title,
     description = description,
+    coverPreset = coverPreset,
     originalContentRef = originalContentRef,
     state = state,
 )

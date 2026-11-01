@@ -59,6 +59,9 @@ fun SocialDriveApp(
     LaunchedEffect(persistedUploadState) {
         if (persistedUploadState != UploadState.Draft) demoUploadState = null
     }
+    LaunchedEffect(motion) {
+        offlineViewModel.updateMotionState(motion)
+    }
 
     fun navigate(target: AppDestination) {
         val decision = SafetyPolicy.canNavigate(target, motion)

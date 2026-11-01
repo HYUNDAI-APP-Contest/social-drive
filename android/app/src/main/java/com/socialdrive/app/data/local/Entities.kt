@@ -57,6 +57,7 @@ object LocalState {
     const val QUEUED = "QUEUED"
     const val RUNNING = "RUNNING"
     const val FAILED = "FAILED"
+    const val PAUSED_MOTION = "PAUSED_MOTION"
     const val PUBLISHED = "PUBLISHED"
     const val CREATE = "CREATE"
     const val UPLOAD = "UPLOAD"
