@@ -47,8 +47,12 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - `POST /drives`
 - `PATCH /drives/{id}`
 - `DELETE /drives/{id}`
+- `POST /drives/{id}/uploads`
 - `POST /drives/{id}/publish`
-- private S3 presigned PUT contract
+- create manifest의 `COVER`·`ROUTE`, upload refresh, private S3 presigned PUT contract
+- local `clientRequestId`와 create body `clientDraftId`·`Idempotency-Key`의 동일 값 매핑
+- PATCH/publish의 `expectedVersion`, 409 version conflict와 idempotency replay 계약
+- manifest 입력의 lowercase hex SHA-256과 server 응답의 RFC 4648 base64 `x-amz-checksum-sha256` 구분
 
 ## 3. GitHub Issue 초안 1 — 최우선
 
@@ -72,19 +76,27 @@ BACKEND_CONTRACT_PATH=infra/API.md
   - 토큰을 Room, WorkManager input/output, 로그에 저장하지 않음
   - Cognito 구체 구현은 최신 backend mobile client 설정과 맞는 공식 방식으로 선택
 - production `RemoteDriveApi` 구현
-  - `/users/me`, `/feed`, drive create/get/update/delete/publish
+  - `/users/me`, `/feed`, drive create/get/update/delete/upload-refresh/publish
   - cursor pagination
-  - 기존 `clientRequestId`를 idempotency key로 유지
+  - local `clientRequestId`를 create body `clientDraftId`와 `Idempotency-Key` header에 정확히 같은 값으로 전송하고 재시도 동안 불변으로 유지
+  - create manifest에는 `COVER`와 `ROUTE` asset을 포함하고 각 content metadata를 backend 계약과 대조
+  - PATCH와 publish에 현재 local/server state의 `expectedVersion`을 명시적으로 전송
   - 401/403/404/409/422/429/5xx를 typed error로 매핑
+  - 존재하지 않거나 다른 owner의 drive에 대한 PATCH/DELETE는 구분하지 않고 동일한 UI-safe `404 NOT_FOUND`로 매핑
+  - 409 version conflict와 idempotency replay/conflict를 구분하고, version conflict는 최신 drive 재조회·사용자 재검토 뒤 새 `expectedVersion`으로만 replay하며 자동 overwrite하지 않음
 - S3 presigned PUT 구현
   - URL과 임시 header는 메모리에서만 사용
   - API bearer token을 S3 요청에 전달하지 않음
-  - content type, byte size, checksum을 server contract와 대조
-  - redirect host 변경, 만료 URL, checksum 불일치 fail closed
+  - create manifest의 checksum 입력은 lowercase hex SHA-256이며, 이를 S3 header 값으로 재사용하지 않음
+  - server가 presign 응답으로 돌려준 RFC 4648 base64 checksum만 `x-amz-checksum-sha256` header에 사용
+  - content type, byte size, checksum과 `COVER`·`ROUTE` manifest를 server contract와 대조
+  - URL 만료 시 `POST /drives/{id}/uploads`로 같은 manifest에 대해서만 재발급 요청
+  - refresh 응답의 manifest가 원본과 다르면 fail closed하고 upload/publish를 중단
+  - redirect host 변경, 만료 URL 재사용, checksum 불일치 fail closed
 - Worker integration
   - 실행 시 fresh auth session 획득
   - Driving/Unknown motion gate를 통과한 뒤에만 network stage 시작
-  - cancellation/retry에도 동일 idempotency key와 원본 draft 유지
+  - cancellation/retry에도 동일 `clientRequestId`/`clientDraftId`/`Idempotency-Key`, `expectedVersion`, manifest와 원본 draft 유지
 - demo/fake와 production 구현을 flavor/DI에서 명확히 분리
 
 ### Acceptance criteria
@@ -92,10 +104,15 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - [ ] 최신 `issue-backend-mvp` head SHA와 `infra/API.md` version을 PR 설명에 기록한다.
 - [ ] 모든 보호 API는 `Authorization: Bearer`를 사용하고 token 부재/만료 시 remote call 없이 typed auth error를 반환한다.
 - [ ] token, presigned URL, raw response body, 정확한 좌표가 Room/WorkManager/log에 남지 않는다.
-- [ ] create 재시도는 동일 `clientRequestId`를 사용하며 중복 remote drive를 만들지 않는 요청 계약을 보존한다.
+- [ ] create 재시도는 local `clientRequestId`와 동일한 값을 body `clientDraftId` 및 `Idempotency-Key` header 양쪽에 사용하며 세 값은 재시도 동안 불변이다.
+- [ ] create manifest는 `COVER`와 `ROUTE`를 모두 포함하고 asset type/content type/byte size/checksum이 local upload 원본과 일치한다.
+- [ ] manifest checksum 입력은 lowercase hex SHA-256이고, S3 PUT의 `x-amz-checksum-sha256`은 server 응답의 RFC 4648 base64 값을 그대로 사용한다. 두 표현을 서로 대입하지 않는다.
 - [ ] presigned PUT에는 API authorization header가 없고 허용된 host·method·headers만 사용한다.
+- [ ] presigned URL 만료 시 `POST /drives/{id}/uploads`를 refresh stage로 사용하며 최초 create와 동일한 canonical manifest만 허용한다. asset 추가·삭제·교체 또는 metadata 변경은 fail closed한다.
 - [ ] feed cursor가 opaque string으로 왕복하며 client가 decode/조작하지 않는다.
-- [ ] owner가 아닌 PATCH/DELETE의 403과 validation 422가 UI-safe error로 변환된다.
+- [ ] PATCH와 publish는 `expectedVersion`을 보내며 409 version conflict에서 자동 overwrite/publish하지 않는다. 최신 drive를 다시 읽고 사용자에게 충돌을 보여 준 뒤, 명시적 재검토가 끝난 경우에만 갱신된 `expectedVersion`으로 replay한다.
+- [ ] 존재하지 않는 drive와 non-owner drive의 PATCH/DELETE는 모두 동일한 UI-safe `404 NOT_FOUND`로 처리되어 존재 여부를 노출하지 않는다.
+- [ ] validation 422와 rate-limit 429가 각각 UI-safe validation/retry 상태로 변환된다.
 - [ ] motion이 Parked에서 Driving/Unknown으로 바뀌면 다음 remote stage를 실행하지 않고 draft를 보존한다.
 - [ ] demo variant는 fake adapter와 `데모 데이터` 표시를 유지하고 production adapter로 조용히 fallback하지 않는다.
 - [ ] 실제 AWS 호출 없이 전체 테스트가 통과한다.
@@ -104,16 +121,22 @@ BACKEND_CONTRACT_PATH=infra/API.md
 
 - MockWebServer contract tests
   - JWT header 주입/누락/만료
-  - create→presign→PUT→publish happy path
-  - idempotent retry와 409 replay
+  - `clientRequestId` → body `clientDraftId` + `Idempotency-Key` exact-value mapping
+  - `COVER`+`ROUTE` create manifest→presign→PUT→publish happy path
+  - lowercase hex manifest checksum과 server-returned RFC 4648 base64 S3 header의 구분
+  - 만료 URL→`POST /drives/{id}/uploads` refresh→같은 manifest PUT 성공
+  - refresh manifest의 asset/type/size/checksum 불일치 시 PUT·publish 미호출
+  - 같은 key+payload의 idempotent create replay와 같은 key+다른 payload의 409 conflict 구분
+  - PATCH/publish `expectedVersion`, stale version 409→latest GET→명시적 재검토 전 replay 금지
   - cursor pagination
-  - 403 ownership, 422 validation, 429/5xx retry policy
-  - presigned URL 만료, host mismatch, checksum mismatch
+  - missing/non-owner PATCH·DELETE가 구분 불가능한 `404 NOT_FOUND`로 매핑됨
+  - 422 validation, 429/5xx retry policy
+  - presigned URL 만료 재사용, host mismatch, checksum mismatch
   - API token이 S3 request에 포함되지 않음
 - WorkManager tests
   - process restart recovery
   - Parked admission 후 execution 직전 Driving/Unknown 전환
-  - cancel/retry 시 original draft와 `clientRequestId` 유지
+  - cancel/retry 시 original draft, `clientRequestId`/`clientDraftId`/`Idempotency-Key`, `expectedVersion`, manifest 유지
 - secret/log scan
   - JWT, presigned query string, email, exact route가 log snapshot에 없음
 - 가능한 범위에서 unit test, lint, demo/pleos compile을 실행하되 Gradle DNS가 막히면 실행 실패를 성공으로 기록하지 않는다.
@@ -302,8 +325,14 @@ Backend contract: agent/issue-backend-mvp@ddbd61f, infra/API.md
 
 P0-1 acceptance criteria만 구현하세요. 실제 AWS 호출, deploy, credential/keychain/.env 접근은 금지합니다.
 MockWebServer와 fake auth session으로 Cognito JWT header, drive/feed API, presigned S3 PUT,
-idempotent WorkManager retry를 검증하세요. token/presigned URL/좌표를 Room, WorkManager input,
-로그에 저장하지 마세요. demo와 production adapter를 명확히 분리하고, 실행한 검사만 보고하세요.
+upload refresh와 idempotent WorkManager retry를 검증하세요. local clientRequestId는 create body
+clientDraftId와 Idempotency-Key header에 동일 값으로 매핑하세요. create manifest는 COVER+ROUTE를
+사용하고 lowercase hex SHA-256 입력과 server-returned RFC 4648 base64
+x-amz-checksum-sha256 header를 구분하세요. 만료 URL은 POST /drives/{id}/uploads에서 동일 manifest로만
+재발급하며 mismatch는 fail closed하세요. PATCH/publish에는 expectedVersion을 전송하고 409에서
+overwrite하지 마세요. missing/non-owner PATCH/DELETE는 같은 UI-safe 404 NOT_FOUND로 매핑하세요.
+token/presigned URL/좌표를 Room, WorkManager input, 로그에 저장하지 마세요. demo와 production
+adapter를 명확히 분리하고, 실행한 검사만 보고하세요.
 로컬 commit까지만 허용되며 push/PR/merge는 host orchestrator가 담당합니다.
 ```
 
@@ -314,6 +343,7 @@ Go:
 - [ ] PLEOS base가 `89078a0`
 - [ ] backend head SHA와 API contract가 고정됨
 - [ ] Android module/package와 existing `RemoteDriveApi`/Worker 경로 확인
+- [ ] create/refresh manifest schema, checksum encoding, `expectedVersion`, 404/409 오류 fixture 고정
 - [ ] test-only HTTP server dependency를 사용할 수 있음
 - [ ] real AWS endpoint/credential 없이 전 범위를 테스트할 수 있음
 
