@@ -22,6 +22,27 @@ test("Android contract targets the automotive-compatible API floor", () => {
   assert.match(build, /getByName\("androidTest"\)\.assets\.srcDir\("\$projectDir\/schemas"\)/);
 });
 
+test("WorkManager uses on-demand Configuration Provider initialization in every manifest", () => {
+  const mainManifest = read("app/src/main/AndroidManifest.xml");
+  const testManifest = read("app/src/androidTest/AndroidManifest.xml");
+  const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
+  const build = read("app/build.gradle.kts");
+  const instrumentation = read("app/src/androidTest/java/com/socialdrive/app/WorkManagerOnDemandInitializationTest.kt");
+  for (const manifest of [mainManifest, testManifest]) {
+    assert.match(manifest, /xmlns:tools="http:\/\/schemas\.android\.com\/tools"/);
+    assert.match(manifest, /android:name="androidx\.startup\.InitializationProvider"/);
+    assert.match(manifest, /android:authorities="\$\{applicationId\}\.androidx-startup"/);
+    assert.match(manifest, /tools:node="merge"/);
+    assert.match(manifest, /android:name="androidx\.work\.WorkManagerInitializer"[\s\S]*tools:node="remove"/);
+    assert.doesNotMatch(manifest, /<provider(?=[^>]*android:name="androidx\.startup\.InitializationProvider")[^>]*tools:node="remove"/);
+  }
+  assert.match(application, /class SocialDriveApplication : Application\(\), Configuration\.Provider/);
+  assert.match(application, /override val workManagerConfiguration: Configuration/);
+  assert.match(instrumentation, /SocialDriveTestApplication/);
+  assert.match(instrumentation, /workManagerConfiguration\.workerFactory is PublishWorkerFactory/);
+  assert.doesNotMatch(build, /lint\s*\{[\s\S]*(?:disable|baseline)/);
+});
+
 test("Room owns durable recordings drafts and a non-destructive migration path", () => {
   const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
   const daos = read("app/src/main/java/com/socialdrive/app/data/local/Daos.kt");
