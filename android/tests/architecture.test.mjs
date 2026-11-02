@@ -214,13 +214,41 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   const relative = "app/src/androidTest/java/com/socialdrive/app/AutomotiveSafetyUiTest.kt";
   assert.equal(fs.existsSync(path.join(root, relative)), true);
   const ui = read(relative);
+  const app = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
   const conflictUi = read("app/src/androidTest/java/com/socialdrive/app/ConflictReviewUiTest.kt");
   const host = read("app/src/androidTest/java/com/socialdrive/app/PleosComposeHost.kt");
   const hostTest = read("app/src/androidTest/java/com/socialdrive/app/PleosReadinessParserTest.kt");
   for (const marker of [
     "MotionState.Driving", "MotionState.Unknown", "assertDoesNotExist", "pressBack()",
     "기록을 종료할까요?", "parkedUserCanReachPublishThroughDetailOnly", "드라이브 게시",
+    "NavigationContractContent", "기록 중", "이 드라이브 게시하기",
   ]) assert.ok(ui.includes(marker), marker);
+  const contract = ui.slice(ui.indexOf("private fun NavigationContractContent"));
+  for (const marker of [
+    "AppDestination", "SafetyPolicy.canNavigate", "BackHandler", "HomeScreen", "RecordingScreen",
+    "RecordingStopDialog", "DetailScreen", "PublishScreen", "SocialDriveTheme",
+    "MotionState.Parked", "FakeDriveRepository()", "CapabilityState.Unavailable",
+    "IntegrationSource.Demo", 'label = "테스트 내비게이션"',
+    "NavigationState.Idle(navigationCapability)", "UploadState.Draft", "RouteSource.DemoPreset",
+  ]) assert.ok(contract.includes(marker), `navigation contract: ${marker}`);
+  assert.deepEqual(
+    [...contract.matchAll(/var (\w+) by rememberSaveable/g)].map((match) => match[1]),
+    ["destination", "selectedDrive", "stopConfirmationRequested"],
+  );
+  assert.doesNotMatch(
+    contract,
+    /SocialDriveApp\(|SocialDriveViewModel|WorkManager|SocialDriveDatabase|FlavorIntegrationFactory/,
+  );
+  assert.match(contract, /onDetail = \{ selectedDrive = it; navigate\(AppDestination\.Detail\) \}/);
+  assert.match(contract, /onRecord = \{ navigate\(AppDestination\.Recording\) \}/);
+  assert.match(contract, /onPublish = \{ navigate\(AppDestination\.Publish\) \}/);
+  assert.match(contract, /BackHandler\(destination != AppDestination\.Home\)[\s\S]*destination == AppDestination\.Recording\) stopConfirmationRequested = true/);
+  assert.match(ui, /host\.setContent \{ NavigationContractContent\(\) \}[\s\S]*compose\.waitForIdle\(\)/);
+  assert.doesNotMatch(ui, /(?:Thread|SystemClock)\.sleep|waitUntil|@Ignore/);
+  assert.match(app, /onDetail = \{ selectedDrive = it; navigate\(AppDestination\.Detail\) \}/);
+  assert.match(app, /onRecord = \{[\s\S]*?navigate\(AppDestination\.Recording\)/);
+  assert.match(app, /AppDestination\.Detail -> DetailScreen\([\s\S]*?onPublish = \{ navigate\(AppDestination\.Publish\) \}/);
+  assert.match(app, /BackHandler\(destination != AppDestination\.Home\)[\s\S]*destination == AppDestination\.Recording\) stopConfirmationRequested = true/);
   for (const source of [ui, conflictUi]) {
     assert.match(source, /createEmptyComposeRule\(\)/);
     assert.match(source, /PleosComposeHost\(\)/);
