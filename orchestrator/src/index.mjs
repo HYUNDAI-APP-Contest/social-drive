@@ -22,6 +22,13 @@ import { recordUsage } from "./usage.mjs";
 import { DashboardWriter } from "./dashboard.mjs";
 import { reconcileReadyIssues } from "./ready-queue.mjs";
 import { buildVisualReport, visualReportKey } from "./visual-report.mjs";
+import {
+  activateFollowUp,
+  bindApprovalFollowUp,
+  mergeRecoveryDecision,
+  migrateApprovalFollowUps,
+  recordMergeResult,
+} from "./follow-up.mjs";
 
 const config = loadConfig();
 const store = new Store(config.statePath);
@@ -32,6 +39,7 @@ const aws = new AwsDeployer(config);
 const active = new Map();
 const observedUsage = new Map();
 let deploymentActive = false;
+let mergeRecoveryActive = false;
 
 const log = (event, fields = {}) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), event, ...fields }));
 const approvalId = (pr) => `pr-${pr.number}`;
@@ -58,6 +66,14 @@ const outbox = new DurableOutbox({
     },
     "github-labels": ({ issue, labels }) => github.reconcileControlLabels(issue, labels, managedControlLabels()),
     "github-project": ({ snapshot }) => github.syncProjectSnapshot(snapshot),
+    "github-follow-up-activation": (payload) => activateFollowUp({
+      github,
+      store,
+      payload,
+      currentRepository: `${config.githubOwner}/${config.githubRepo}`,
+      readyLabel: config.readyLabel,
+    }),
+    "github-follow-up-audit": ({ issue, pr, readyLabel }) => github.upsertFollowUpComment(issue, { pr, readyLabel }),
   },
 });
 const dashboard = new DashboardWriter({
@@ -261,7 +277,10 @@ async function runIssue(issue) {
     const id = approvalId(pr);
     await updateJob(key, (state) => {
       state.jobs[key] = { ...state.jobs[key], status: "awaiting_merge_approval", pr: pr.number, prUrl: pr.html_url, commit, updatedAt: new Date().toISOString() };
-      state.approvals[id] = { id, type: "merge", issue: issue.number, pr: pr.number, createdAt: Date.now(), expiresAt: Date.now() + config.approvalTtlMs, status: "pending" };
+      state.approvals[id] = bindApprovalFollowUp(
+        { id, type: "merge", issue: issue.number, pr: pr.number, createdAt: Date.now(), expiresAt: Date.now() + config.approvalTtlMs, status: "pending" },
+        `${config.githubOwner}/${config.githubRepo}`,
+      );
     });
     await queueVisualOutcome(key, {
       stage: "PR_READY", role: "team", revision: commit,
@@ -297,6 +316,7 @@ async function runIssue(issue) {
 }
 
 async function poll() {
+  await recoverMergeApprovals();
   await expireApprovals();
   const issues = await github.listReadyIssues();
   const readyToStart = await reconcileReadyIssues({
@@ -391,6 +411,52 @@ async function recoverAwsApprovals() {
   }
 }
 
+async function recoverMergeApprovals() {
+  if (mergeRecoveryActive) return;
+  mergeRecoveryActive = true;
+  try {
+    const interrupted = Object.values(store.state.approvals)
+      .filter((item) => item.type === "merge" && item.status === "processing");
+    for (const approval of interrupted) {
+      try {
+        const pull = await github.getPullRequest(approval.pr);
+        const decision = mergeRecoveryDecision({ approval, pull });
+        if (decision === "merged") {
+          await updateJob(String(approval.issue), (state) => recordMergeResult(state, {
+            approvalId: approval.id,
+            approval,
+            result: { merged: true, sha: pull.merge_commit_sha },
+            userId: approval.processingBy ?? "recovered",
+            repository: `${config.githubOwner}/${config.githubRepo}`,
+          }));
+          await queueDiscordNotice(
+            `merge-recovered:${config.githubOwner}/${config.githubRepo}:pr-${approval.pr}`,
+            `✅ **재시작 후 병합 상태 복구 완료**\nPR #${approval.pr}의 완료 상태와 후속 작업 큐를 복구했습니다.`,
+          );
+        } else if (decision === "retry-approval") {
+          await updateJob(String(approval.issue), (state) => {
+            state.approvals[approval.id].status = "pending";
+            delete state.approvals[approval.id].processingBy;
+            delete state.approvals[approval.id].processingStartedAt;
+            state.approvals[approval.id].expiresAt = Date.now() + config.approvalTtlMs;
+            state.jobs[String(approval.issue)].status = "awaiting_merge_approval";
+          });
+          await discord.requestApproval({
+            id: approval.id,
+            title: `복구된 PR #${approval.pr} 병합 승인`,
+            description: "재시작 전에 병합이 실행되지 않았습니다. 변경사항을 확인한 뒤 다시 결정해 주세요.",
+            url: pull.html_url,
+          });
+        }
+      } catch (error) {
+        log("merge_recovery_failed", { pr: approval.pr, error: redact(error.message) });
+      }
+    }
+  } finally {
+    mergeRecoveryActive = false;
+  }
+}
+
 async function prepareAwsDeployment({ sourceSha = null, pr = null, issue = null, requestedBy = null } = {}) {
   if (!config.awsDeployEnabled) throw new Error("AWS deployment gateway is disabled");
   if (deploymentActive) return void discord.report("⏳ AWS 변경 세트를 이미 준비하거나 실행 중입니다.");
@@ -436,6 +502,7 @@ onAsync("approval", async ({ action, id, userId }) => {
     if (candidate?.status !== "pending") return;
     candidate.status = "processing";
     candidate.processingBy = userId;
+    candidate.processingStartedAt = Date.now();
     approval = { ...candidate };
   });
   if (!approval) return void discord.report(`⚠️ 이미 처리됐거나 유효하지 않은 승인입니다: \`${id}\``);
@@ -484,20 +551,53 @@ onAsync("approval", async ({ action, id, userId }) => {
     return;
   }
   if (action === "approve") {
+    let result;
     try {
-      const result = await github.mergePullRequest(approval.pr);
-      await updateJob(String(approval.issue), (state) => { state.approvals[id].status = "approved"; state.approvals[id].decidedBy = userId; state.jobs[String(approval.issue)].status = result.merged ? "merged" : "merge_failed"; });
-      await discord.report(result.merged ? `🚀 PR #${approval.pr} 병합 완료 — 승인자 <@${userId}>` : `❌ PR #${approval.pr} 병합 실패: ${redact(result.message)}`);
-      if (result.merged) {
-        const files = await github.listPullRequestFiles(approval.pr);
-        if (files.some((file) => file.filename === "infra" || file.filename.startsWith("infra/"))) {
-          void prepareAwsDeployment({ sourceSha: result.sha, pr: approval.pr, issue: approval.issue, requestedBy: userId })
-            .catch((error) => log("automatic_deploy_prepare_failed", { error: redact(error.message) }));
-        }
-      }
+      result = await github.mergePullRequest(approval.pr);
     } catch (error) {
-      await updateJob(String(approval.issue), (state) => { state.approvals[id].status = "failed"; state.approvals[id].error = redact(error.message); state.jobs[String(approval.issue)].status = "merge_failed"; });
-      await discord.report(`❌ PR #${approval.pr} 병합 요청 실패\n${redact(error.message)}`);
+      log("merge_result_ambiguous", { pr: approval.pr, error: redact(error.message) });
+      await queueDiscordNotice(
+        `merge-reconcile-pending:${config.githubOwner}/${config.githubRepo}:pr-${approval.pr}`,
+        `⏳ PR #${approval.pr} 병합 응답이 불명확해 원격 상태를 재확인 중입니다. 중복 병합 요청 없이 최대 2분 동안 자동 조정합니다.`,
+      );
+      return;
+    }
+
+    try {
+      await updateJob(String(approval.issue), (state) => recordMergeResult(state, {
+        approvalId: id,
+        approval,
+        result,
+        userId,
+        repository: `${config.githubOwner}/${config.githubRepo}`,
+      }));
+    } catch (error) {
+      log("merge_state_persist_failed", { pr: approval.pr, error: redact(error.message) });
+      await discord.report(`⚠️ PR #${approval.pr}의 원격 병합 결과를 로컬 상태에 저장하지 못했습니다. 재시작 복구가 원격 상태를 다시 확인합니다.`)
+        .catch((reportError) => log("merge_state_report_failed", { pr: approval.pr, error: redact(reportError.message) }));
+      return;
+    }
+
+    await queueDiscordNotice(
+      `merge-result:${config.githubOwner}/${config.githubRepo}:pr-${approval.pr}:${result.merged ? "merged" : "failed"}`,
+      result.merged ? `🚀 PR #${approval.pr} 병합 완료 — 승인자 <@${userId}>` : `❌ PR #${approval.pr} 병합 실패: ${redact(result.message)}`,
+    );
+    if (result.merged) {
+      try {
+        try {
+          const files = await github.listPullRequestFiles(approval.pr);
+          if (files.some((file) => file.filename === "infra" || file.filename.startsWith("infra/"))) {
+            void prepareAwsDeployment({ sourceSha: result.sha, pr: approval.pr, issue: approval.issue, requestedBy: userId })
+              .catch((error) => log("automatic_deploy_prepare_failed", { error: redact(error.message) }));
+          }
+        } catch (error) {
+          log("post_merge_file_inspection_failed", { pr: approval.pr, error: redact(error.message) });
+          await discord.report(`⚠️ PR #${approval.pr} 병합은 완료됐지만 후속 배포 대상 파일 확인에 실패했습니다. 병합 상태는 유지하며 AWS 배포는 시작하지 않습니다.`)
+            .catch((reportError) => log("post_merge_file_report_failed", { pr: approval.pr, error: redact(reportError.message) }));
+        }
+      } catch (error) {
+        log("post_merge_processing_failed", { pr: approval.pr, error: redact(error.message) });
+      }
     }
   } else {
     await updateJob(String(approval.issue), (state) => { state.approvals[id].status = "rejected"; state.approvals[id].decidedBy = userId; state.jobs[String(approval.issue)].status = "rejected"; });
@@ -545,6 +645,7 @@ onAsync("testApproval", async ({ userId }) => {
 
 await store.load();
 await store.update((state) => {
+  migrateApprovalFollowUps(state, `${config.githubOwner}/${config.githubRepo}`);
   for (const key of Object.keys(state.jobs)) enqueueJobDestinations(state, key);
 });
 void outbox.drain();
@@ -563,6 +664,7 @@ try {
 discord.connect();
 discord.once("ready", () => {
   log("discord_ready", { repository: `${config.githubOwner}/${config.githubRepo}`, maxParallel: config.maxParallel });
+  void recoverMergeApprovals().catch((error) => log("merge_recovery_scan_failed", { error: redact(error.message) }));
   if (config.awsDeployEnabled) void recoverAwsApprovals().catch((error) => log("aws_recovery_failed", { error: redact(error.message) }));
 });
 await poll().catch((error) => log("poll_failed", { error: error.message }));

@@ -75,6 +75,47 @@ test("reconciles only managed stage and persona labels", async () => {
   assert.equal(deletes.some((url) => url.endsWith("bug")), false);
 });
 
+test("adds the configured ready label to an approved follow-up issue", async () => {
+  const calls = [];
+  const github = new GitHub({ ...config, readyLabel: "agent:ready" }, { fetchImpl: async (url, options) => {
+    calls.push({ url, options });
+    return response([]);
+  } });
+
+  await github.addReadyLabel(9);
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /issues\/9\/labels$/);
+  assert.equal(calls[0].options.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].options.body), { labels: ["agent:ready"] });
+});
+
+test("follow-up validation fails closed for closed issues and pull requests", async () => {
+  for (const body of [
+    { number: 9, state: "closed" },
+    { number: 9, state: "open", pull_request: { url: "https://example.invalid" } },
+  ]) {
+    const github = new GitHub(config, { fetchImpl: async () => response(body) });
+    await assert.rejects(() => github.requireOpenIssue(9), /not open|pull request/);
+  }
+  const github = new GitHub(config, { fetchImpl: async () => response({ number: 9, state: "open" }) });
+  assert.equal((await github.requireOpenIssue(9)).number, 9);
+  await assert.rejects(() => github.requireOpenIssue(0), /positive integer/);
+});
+
+test("follow-up audit comment uses one stable marker instead of appending", async () => {
+  const calls = [];
+  const github = new GitHub(config, { fetchImpl: async (url, options) => {
+    calls.push({ url, options });
+    if (options.method === "GET") return response([{ id: 91, body: "<!-- social-drive-follow-up:pr-2:issue-9 -->\nold" }]);
+    return response({ id: 91 });
+  } });
+  const id = await github.upsertFollowUpComment(9, { pr: 2, readyLabel: "agent:ready" });
+  assert.equal(id, 91);
+  assert.equal(calls.some((call) => call.options.method === "POST"), false);
+  assert.match(JSON.parse(calls.at(-1).options.body).body, /social-drive-follow-up:pr-2:issue-9/);
+});
+
 test("writes mapped values through fixed GitHub Project GraphQL operations", async () => {
   const graphqlBodies = [];
   const projectConfig = { ...config, githubProjectId: "PVT_demo" };

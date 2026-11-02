@@ -49,6 +49,17 @@ export class GitHub {
       .then((items) => items.filter((item) => !item.pull_request));
   }
 
+  getIssue(number) { return this.request("GET", `/issues/${number}`); }
+  getPullRequest(number) { return this.request("GET", `/pulls/${number}`); }
+
+  async requireOpenIssue(number) {
+    if (!Number.isInteger(number) || number <= 0) throw new Error("Follow-up issue number must be a positive integer");
+    const issue = await this.getIssue(number);
+    if (issue.pull_request) throw new Error(`Follow-up target #${number} is a pull request`);
+    if (issue.state !== "open") throw new Error(`Follow-up target #${number} is not open`);
+    return issue;
+  }
+
   comment(number, body) { return this.request("POST", `/issues/${number}/comments`, { body }); }
   async listAllIssueComments(number) {
     const comments = [];
@@ -70,6 +81,17 @@ export class GitHub {
       }
     }
     const marker = `<!-- social-drive-control-center:issue-${number} -->`;
+    const comments = await this.listAllIssueComments(number);
+    const existing = comments.find((comment) => String(comment.body ?? "").includes(marker));
+    const result = existing
+      ? await this.request("PATCH", `/issues/comments/${existing.id}`, { body })
+      : await this.comment(number, body);
+    return result.id;
+  }
+
+  async upsertFollowUpComment(number, { pr, readyLabel }) {
+    const marker = `<!-- social-drive-follow-up:pr-${pr}:issue-${number} -->`;
+    const body = `${marker}\nDependency PR #${pr} merged after Discord approval. Added \`${readyLabel}\` so autonomous work can continue.`;
     const comments = await this.listAllIssueComments(number);
     const existing = comments.find((comment) => String(comment.body ?? "").includes(marker));
     const result = existing
@@ -150,6 +172,7 @@ export class GitHub {
     }
     return { skipped: false, itemId };
   }
+  addReadyLabel(number) { return this.request("POST", `/issues/${number}/labels`, { labels: [this.config.readyLabel] }); }
   removeReadyLabel(number) { return this.request("DELETE", `/issues/${number}/labels/${encodeURIComponent(this.config.readyLabel)}`); }
   createPullRequest(head, title, body) { return this.request("POST", "/pulls", { head, base: this.config.baseBranch, title, body, draft: false }); }
   mergePullRequest(number) { return this.request("PUT", `/pulls/${number}/merge`, { merge_method: "squash" }); }

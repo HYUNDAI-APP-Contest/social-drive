@@ -1,4 +1,12 @@
-const DESTINATIONS = new Set(["discord-report", "discord-visual", "github-progress", "github-labels", "github-project"]);
+const DESTINATIONS = new Set([
+  "discord-report",
+  "discord-visual",
+  "github-progress",
+  "github-labels",
+  "github-project",
+  "github-follow-up-activation",
+  "github-follow-up-audit",
+]);
 
 export function enqueueOutbox(state, { key, destination, payload }, now = Date.now()) {
   if (!DESTINATIONS.has(destination)) throw new Error(`Unsupported outbox destination: ${destination}`);

@@ -16,6 +16,8 @@ test("activation uses an explicit file allowlist and an open PR handoff", () => 
   const source = read("../../scripts/apply-and-test.sh");
   assert.match(source, /control_center_files=\(/);
   assert.match(source, /git add -- "\$\{control_center_files\[@\]\}"/);
+  assert.match(source, /"orchestrator\/src\/follow-up\.mjs"/);
+  assert.match(source, /"orchestrator\/test\/follow-up\.test\.mjs"/);
   assert.match(source, /--name-only -z/);
   assert.match(source, /read -r -d '' staged/);
   assert.match(source, /git diff --name-only -z/);
