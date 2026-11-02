@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import readline from "node:readline";
 import { isolatedWorkerEnvironment } from "./process.mjs";
+import { selectSevenDayRateLimit } from "./account-usage.mjs";
 
 export class CodexAppServer {
   constructor(config, { workspace, onEvent = () => {}, onApproval = async () => ({ decision: "decline" }), onAdmission = () => true }) {
@@ -10,9 +11,19 @@ export class CodexAppServer {
 
   send(message) { this.child.stdin.write(`${JSON.stringify(message)}\n`); }
   notify(method, params = {}) { this.send({ jsonrpc: "2.0", method, params }); }
-  request(method, params = {}) {
+  request(method, params = {}, timeoutMs = this.config.appServerRequestTimeoutMs) {
     const id = this.nextId++;
-    return new Promise((resolve, reject) => { this.pending.set(id, { resolve, reject }); this.send({ jsonrpc: "2.0", id, method, params }); });
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (!this.pending.delete(id)) return;
+        reject(new Error(`codex app-server ${method} timed out`));
+      }, timeoutMs);
+      this.pending.set(id, {
+        resolve: (value) => { clearTimeout(timer); resolve(value); },
+        reject: (error) => { clearTimeout(timer); reject(error); },
+      });
+      this.send({ jsonrpc: "2.0", id, method, params });
+    });
   }
 
   async connect() {
@@ -27,14 +38,19 @@ export class CodexAppServer {
 
   async readAccountState() {
     const accountUsage = await this.request("account/usage/read").catch(() => null);
-    const accountRateLimits = await this.request("account/rateLimits/read").catch(() => null);
+    const accountRateLimits = await this.request("account/rateLimits/read");
+    if (accountRateLimits?.ordinaryUsageAllowed !== false && !selectSevenDayRateLimit(accountRateLimits)) {
+      throw new Error("Codex account response did not contain a valid seven-day limit");
+    }
     return { accountUsage, accountRateLimits };
   }
 
   async probeAccountState() {
-    await this.connect();
-    try { return await this.readAccountState(); }
-    finally { this.child.kill("SIGTERM"); }
+    try {
+      await this.connect();
+      return await this.readAccountState();
+    }
+    finally { this.child?.kill("SIGTERM"); }
   }
 
   async start(prompt, options = {}) {
@@ -44,35 +60,40 @@ export class CodexAppServer {
     const sandboxPolicy = sandboxMode === "read-only"
       ? { type: "readOnly", networkAccess }
       : { type: "workspaceWrite", writableRoots: [this.workspace], networkAccess, excludeTmpdirEnvVar: false, excludeSlashTmp: false };
-    await this.connect();
-    const { accountUsage, accountRateLimits } = await this.readAccountState();
-    if (accountUsage) await this.onEvent({ event: "account/usage/read", params: accountUsage });
-    if (accountRateLimits) await this.onEvent({ event: "account/rateLimits/read", params: accountRateLimits });
-    if (!await this.onAdmission()) {
-      const error = new Error("Codex account usage safety threshold reached");
-      error.codexErrorInfo = "usageLimitExceeded";
-      this.child.kill("SIGTERM");
-      throw error;
+    let timeout;
+    try {
+      await this.connect();
+      const { accountUsage, accountRateLimits } = await this.readAccountState();
+      if (accountUsage) await this.onEvent({ event: "account/usage/read", params: accountUsage });
+      await this.onEvent({ event: "account/rateLimits/read", params: accountRateLimits });
+      if (!await this.onAdmission({ accountUsage, accountRateLimits })) {
+        const error = new Error("Codex account usage safety threshold reached");
+        error.codexErrorInfo = "usageLimitExceeded";
+        throw error;
+      }
+      const thread = await this.request("thread/start", {
+        cwd: this.workspace,
+        model: this.config.codexModel,
+        approvalPolicy: "never",
+        sandbox: sandboxMode,
+        serviceName: "social-drive-orchestrator",
+        developerInstructions,
+      });
+      const threadId = thread.thread.id;
+      const completion = new Promise((resolve, reject) => { this.completed = { resolve, reject, threadId }; });
+      await this.request("turn/start", {
+        threadId,
+        cwd: this.workspace,
+        approvalPolicy: "never",
+        sandboxPolicy,
+        input: [{ type: "text", text: prompt, text_elements: [] }],
+      });
+      timeout = setTimeout(() => this.completed?.reject(new Error("Codex turn timed out")), this.config.turnTimeoutMs);
+      return await completion;
+    } finally {
+      clearTimeout(timeout);
+      this.child?.kill("SIGTERM");
     }
-    const thread = await this.request("thread/start", {
-      cwd: this.workspace,
-      model: this.config.codexModel,
-      approvalPolicy: "never",
-      sandbox: sandboxMode,
-      serviceName: "social-drive-orchestrator",
-      developerInstructions,
-    });
-    const threadId = thread.thread.id;
-    const completion = new Promise((resolve, reject) => { this.completed = { resolve, reject, threadId }; });
-    await this.request("turn/start", {
-      threadId,
-      cwd: this.workspace,
-      approvalPolicy: "never",
-      sandboxPolicy,
-      input: [{ type: "text", text: prompt, text_elements: [] }],
-    });
-    const timeout = setTimeout(() => this.completed?.reject(new Error("Codex turn timed out")), this.config.turnTimeoutMs);
-    try { return await completion; } finally { clearTimeout(timeout); this.child.kill("SIGTERM"); }
   }
 
   async handleLine(line) {

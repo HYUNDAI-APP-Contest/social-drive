@@ -32,3 +32,9 @@ test("defaults the signed-in account safety threshold to 95 percent", () => {
   finally { if (old === undefined) delete process.env.ACCOUNT_USAGE_PAUSE_PERCENT; else process.env.ACCOUNT_USAGE_PAUSE_PERCENT = old; }
 });
 
+test("bounds app-server admission requests", () => {
+  const old = process.env.APP_SERVER_REQUEST_TIMEOUT_SECONDS; delete process.env.APP_SERVER_REQUEST_TIMEOUT_SECONDS;
+  try { assert.equal(loadConfig({ requireSecrets: false }).appServerRequestTimeoutMs, 20_000); }
+  finally { if (old === undefined) delete process.env.APP_SERVER_REQUEST_TIMEOUT_SECONDS; else process.env.APP_SERVER_REQUEST_TIMEOUT_SECONDS = old; }
+});
+

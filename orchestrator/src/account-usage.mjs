@@ -31,10 +31,14 @@ export function recordAccountTokenSnapshot(state, response, { day } = {}) {
 }
 
 export function recordAccountRateLimit(state, response, { now = Date.now() } = {}) {
+  state.accountUsage ??= { milestones: [] };
+  if (typeof response?.ordinaryUsageAllowed === "boolean") {
+    state.accountUsage.ordinaryUsageAllowed = response.ordinaryUsageAllowed;
+    state.accountUsage.updatedAt = new Date(now).toISOString();
+  }
   const selected = selectSevenDayRateLimit(response);
   const usedPercent = finite(selected?.window?.usedPercent);
   if (usedPercent === null) return { claimed: [], current: state.accountUsage ?? null };
-  state.accountUsage ??= { milestones: [] };
   const current = state.accountUsage;
   const currentUpdatedAt = Date.parse(current.updatedAt ?? "");
   if (Number.isFinite(currentUpdatedAt) && now < currentUpdatedAt) return { claimed: [], current };
@@ -45,7 +49,6 @@ export function recordAccountRateLimit(state, response, { now = Date.now() } = {
   current.remainingPercent = Math.max(0, 100 - current.usedPercent);
   current.windowDurationMins = finite(selected.window?.windowDurationMins);
   if (resetsAt !== null) current.resetsAt = resetsAt;
-  if (typeof response?.ordinaryUsageAllowed === "boolean") current.ordinaryUsageAllowed = response.ordinaryUsageAllowed;
   current.updatedAt = new Date(now).toISOString();
   const emitted = new Set(current.milestones ?? []);
   const claimed = MILESTONES.filter((milestone) => current.usedPercent >= milestone && !emitted.has(milestone));

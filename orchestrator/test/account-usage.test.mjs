@@ -56,3 +56,10 @@ test("selects the explicit seven-day window and ignores delayed older snapshots"
 test("does not label a non-seven-day window as the account budget", () => {
   assert.equal(selectSevenDayRateLimit({ rateLimits: { primary: { usedPercent: 20, windowDurationMins: 300 } } }), null);
 });
+
+test("persists an authoritative denial even without a seven-day window", () => {
+  const state = { accountUsage: { usedPercent: 20, updatedAt: "2026-11-02T00:00:00.000Z" }, outbox: {} };
+  recordAccountRateLimit(state, { ordinaryUsageAllowed: false, rateLimits: { primary: { usedPercent: 1, windowDurationMins: 300 } } }, { now: Date.parse("2026-11-02T00:01:00.000Z") });
+  assert.equal(state.accountUsage.ordinaryUsageAllowed, false);
+  assert.equal(state.accountUsage.usedPercent, 20);
+});
