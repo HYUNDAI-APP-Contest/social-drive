@@ -5,9 +5,12 @@ import android.os.SystemClock
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.test.core.app.ActivityScenario
 import androidx.test.platform.app.InstrumentationRegistry
 import java.util.Locale
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /** Manually owns the app Activity after the PLEOS task organizer reaches a stable generation. */
 internal class PleosComposeHost {
@@ -22,7 +25,6 @@ internal class PleosComposeHost {
         var launched: ActivityScenario<MainActivity>? = null
         try {
             launched = ActivityScenario.launch(MainActivity::class.java)
-            requireNotNull(launched).moveToState(Lifecycle.State.RESUMED)
             check(requireNotNull(launched).state == Lifecycle.State.RESUMED) { "Compose host did not reach RESUMED" }
             requireNotNull(launched).onActivity { check(it.lifecycle.currentState == Lifecycle.State.RESUMED) }
             stableReadiness.assertChildLogHealthy()
@@ -30,10 +32,7 @@ internal class PleosComposeHost {
             scenario = requireNotNull(launched)
         } catch (failure: Throwable) {
             val closeFailure = runCatching {
-                launched?.let { active ->
-                    active.close()
-                    check(active.state == Lifecycle.State.DESTROYED) { "Compose host did not reach DESTROYED" }
-                }
+                launched?.let(::finishAndUnregister)
             }.exceptionOrNull()
             val postFailure = runCatching(stableReadiness::assertChildLogHealthy).exceptionOrNull()
             PleosFailureAudit.throwIfAny(failure, closeFailure, postFailure)
@@ -56,16 +55,53 @@ internal class PleosComposeHost {
         try {
             PleosCloseAudit.run(
                 pre = stableReadiness::assertChildLogHealthy,
-                close = {
-                    active.close()
-                    check(active.state == Lifecycle.State.DESTROYED) { "Compose host did not reach DESTROYED" }
-                },
+                close = { finishAndUnregister(active) },
                 post = stableReadiness::assertChildLogHealthy,
             )
         } finally {
             scenario = null
             readiness = null
         }
+    }
+
+    private fun finishAndUnregister(active: ActivityScenario<MainActivity>) {
+        val finishFailure = if (active.state == Lifecycle.State.DESTROYED) {
+            null
+        } else {
+            runCatching {
+                val destroyed = CountDownLatch(1)
+                active.onActivity { activity ->
+                    lateinit var observer: LifecycleEventObserver
+                    observer = LifecycleEventObserver { owner, event ->
+                        if (event == Lifecycle.Event.ON_DESTROY) {
+                            owner.lifecycle.removeObserver(observer)
+                            destroyed.countDown()
+                        }
+                    }
+                    activity.lifecycle.addObserver(observer)
+                    activity.finish()
+                }
+                check(destroyed.await(HOST_LIFECYCLE_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+                    "Compose host did not receive ON_DESTROY"
+                }
+            }.exceptionOrNull()
+        }
+        val idleFailure = runCatching {
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+        }.exceptionOrNull()
+        val stateFailure = runCatching {
+            check(active.state == Lifecycle.State.DESTROYED) { "Compose host did not reach DESTROYED" }
+        }.exceptionOrNull()
+        val unregisterFailure = if (active.state == Lifecycle.State.DESTROYED) {
+            runCatching { active.close() }.exceptionOrNull()
+        } else {
+            IllegalStateException("ActivityScenario unsuitable: refusing close before DESTROYED")
+        }
+        PleosFailureAudit.throwIfAny(finishFailure, idleFailure, stateFailure, unregisterFailure)
+    }
+
+    private companion object {
+        const val HOST_LIFECYCLE_TIMEOUT_SECONDS = 5L
     }
 }
 
@@ -118,13 +154,15 @@ internal object PleosCloseAudit {
 internal object PleosFailureAudit {
     fun throwIfAny(vararg failures: Throwable?) {
         val present = failures.filterNotNull()
-        val primary = present.firstOrNull { it.isFatalOrDuplicate() } ?: present.firstOrNull() ?: return
+        val primary = present.firstOrNull { it.isCriticalHarnessEvidence() } ?: present.firstOrNull() ?: return
         present.filterNot { it === primary }.forEach(primary::addSuppressed)
         throw primary
     }
 
-    private fun Throwable.isFatalOrDuplicate(): Boolean = message.orEmpty().let { message ->
-        message.contains("PLEOS readiness fatal") || message.contains("PLEOS readiness duplicate_listener")
+    private fun Throwable.isCriticalHarnessEvidence(): Boolean = message.orEmpty().let { message ->
+        message.contains("PLEOS readiness fatal") ||
+            message.contains("PLEOS readiness duplicate_listener") ||
+            message.contains("PLEOS readiness empty_activity")
     }
 }
 
@@ -338,14 +376,23 @@ internal class PleosFatalLogGuard(
             val hash = window.hashCode()
             if (!seen.add(hash)) return@forEachIndexed
             val pid = EPOCH_LINE.find(line)?.groupValues?.get(1).orEmpty()
-            val relevant = pid in relevantPids || relevantPackages.any(window::contains)
+            val emptyActivity = EMPTY_ACTIVITY.containsMatchIn(window)
+            val relevant = emptyActivity || pid in relevantPids || relevantPackages.any(window::contains)
             if (!relevant) return@forEachIndexed
             val fatal = line.contains("AndroidRuntime") && line.contains("FATAL EXCEPTION")
             val duplicate = DUPLICATE_LISTENER.containsMatchIn(window)
-            if (fatal || duplicate) {
+            if (fatal || duplicate || emptyActivity) {
                 return FatalEvidence(
-                    kind = if (duplicate) "duplicate_listener" else "fatal",
-                    tag = if (line.contains("AndroidRuntime")) "AndroidRuntime" else "task_organizer",
+                    kind = when {
+                        emptyActivity -> "empty_activity"
+                        duplicate -> "duplicate_listener"
+                        else -> "fatal"
+                    },
+                    tag = when {
+                        emptyActivity -> "activity_scenario"
+                        line.contains("AndroidRuntime") -> "AndroidRuntime"
+                        else -> "task_organizer"
+                    },
                     pid = pid.ifBlank { "unknown" },
                     hash = hash.toUInt().toString(16),
                 )
@@ -359,6 +406,7 @@ internal class PleosFatalLogGuard(
         "(?i)(duplicate|already (?:registered|exists)).{0,80}(listener|task.?organizer)|" +
             "(listener|task.?organizer).{0,80}(duplicate|already (?:registered|exists))",
     )
+    private val EMPTY_ACTIVITY = Regex("InstrumentationActivityInvoker\\\$EmptyActivity")
 }
 
 private object PleosTaskReadiness {

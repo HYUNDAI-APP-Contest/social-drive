@@ -263,7 +263,9 @@ test("instrumented safety suite covers lock back confirmation and parked publish
     assert.match(source, /\.assertDoesNotExist\(\)/);
   }
   assert.match(host, /awaitStableGeneration\(\)[\s\S]*assertPrelaunchStable\(\)[\s\S]*enterChildActive\(\)[\s\S]*ActivityScenario\.launch\(MainActivity::class\.java\)/);
-  assert.match(host, /moveToState\(Lifecycle\.State\.RESUMED\)/);
+  assert.equal((host.match(/ActivityScenario\.launch\(MainActivity::class\.java\)/g) ?? []).length, 1);
+  assert.doesNotMatch(host, /moveToState\(/);
+  assert.match(host, /ActivityScenario\.launch\(MainActivity::class\.java\)[\s\S]*state == Lifecycle\.State\.RESUMED[\s\S]*onActivity[\s\S]*lifecycle\.currentState == Lifecycle\.State\.RESUMED[\s\S]*assertChildLogHealthy/);
   assert.match(host, /fun observe\([\s\S]*homePidBefore: String,[\s\S]*dump: String,[\s\S]*homePidAfter: String,[\s\S]*currentUserId: Int\?/);
   assert.match(host, /PleosOrganizerSnapshot\(after, ids\.map \{ it\.single\(\) \}\)/);
   assert.match(host, /TASK_HEADER[\s\S]*ACTIVITY_RECORD/);
@@ -288,18 +290,21 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.doesNotMatch(host, /logcat -c|force-stop|\bsu\s+-c\b|adoptShellPermissionIdentity/);
   assert.match(host, /duplicate_listener/);
   assert.match(host, /fun setContent[\s\S]*withChildLogCheck[\s\S]*Lifecycle\.State\.RESUMED[\s\S]*activity\.setContent[\s\S]*Lifecycle\.State\.RESUMED/);
-  assert.match(host, /fun close\(\)[\s\S]*PleosCloseAudit\.run[\s\S]*assertChildLogHealthy[\s\S]*active\.close\(\)[\s\S]*Lifecycle\.State\.DESTROYED[\s\S]*assertChildLogHealthy/);
+  assert.match(host, /fun close\(\)[\s\S]*PleosCloseAudit\.run[\s\S]*assertChildLogHealthy[\s\S]*finishAndUnregister\(active\)[\s\S]*assertChildLogHealthy/);
+  assert.match(host, /fun finishAndUnregister[\s\S]*LifecycleEventObserver[\s\S]*Lifecycle\.Event\.ON_DESTROY[\s\S]*activity\.finish\(\)[\s\S]*destroyed\.await\([\s\S]*waitForIdleSync\(\)[\s\S]*state == Lifecycle\.State\.DESTROYED[\s\S]*active\.close\(\)/);
+  assert.doesNotMatch(host, /finishAndRemoveTask/);
   const childHealth = host.match(/fun assertChildLogHealthy\(\)[\s\S]*?\n    }/)?.[0] ?? "";
   assert.match(childHealth, /currentHomePid\(\)[\s\S]*logCheck/);
   assert.doesNotMatch(childHealth, /assertStableGenerationHealthy|observe\(|parseTasks|ACTIVITY_COMMAND/);
   assert.match(host, /fun assertPrelaunchStable\(\)[\s\S]*assertStableGenerationHealthy/);
   assert.match(host, /enum class PleosReadinessPhase \{ PrelaunchOrganizer, ChildActive \}/);
   assert.match(host, /mutableSetOf\(prelaunchHomePid, android\.os\.Process\.myPid\(\)\.toString\(\)\)/);
-  assert.match(host, /present\.firstOrNull \{ it\.isFatalOrDuplicate\(\) \}/);
+  assert.match(host, /present\.firstOrNull \{ it\.isCriticalHarnessEvidence\(\) \}/);
+  assert.match(host, /InstrumentationActivityInvoker[\\\\]+\\\$EmptyActivity/);
   assert.match(host, /home_package_missing/);
   assert.match(host, /finally \{[\s\S]*scenario = null[\s\S]*readiness = null/);
   assert.match(host, /\^\(\?:logcat:\|\/system\/bin\/sh:/);
-  assert.match(host, /active\.close\(\)[\s\S]*Lifecycle\.State\.DESTROYED/);
+  assert.match(host, /if \(active\.state == Lifecycle\.State\.DESTROYED\)[\s\S]*active\.close\(\)/);
   assert.doesNotMatch(host, /(?:Thread|SystemClock)\.sleep|createAndroidComposeRule/);
   for (const marker of [
     "shortAndFullComponentsMapToOneVisibleGeneration",

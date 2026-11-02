@@ -108,6 +108,10 @@ class PleosReadinessParserTest {
         assertFalse(PleosShellDiagnostics.logcatCommandFailed(benign))
         assertNull(PleosFatalLogGuard(100.0, setOf("ai.umos.homescreen")).inspect(benign, setOf("42")))
         assertTrue(PleosShellDiagnostics.logcatCommandFailed("logcat: unknown option -Z"))
+
+        val scenarioGuard = PleosFatalLogGuard(100.0, emptySet())
+        val emptyActivity = "101.000 77 77 I ActivityTaskManager: androidx.test.core.app.InstrumentationActivityInvoker\$EmptyActivity created\n"
+        assertEquals("empty_activity", scenarioGuard.inspect(emptyActivity, emptySet())?.kind)
     }
 
     @Test fun closeAuditAlwaysCleansAndPrioritizesPostFatalEvidence() {
@@ -171,6 +175,13 @@ class PleosReadinessParserTest {
         assertSame(duplicate, duplicatePrimary)
         assertTrue(duplicatePrimary.suppressed.contains(notDestroyed))
         assertTrue(duplicatePrimary.suppressed.contains(preLogFailure))
+
+        val emptyActivity = IllegalStateException("PLEOS readiness empty_activity activity_scenario pid=77 hash=123")
+        val emptyActivityPrimary = captureFailure {
+            PleosCloseAudit.run(pre = {}, close = { throw notDestroyed }, post = { throw emptyActivity })
+        }
+        assertSame(emptyActivity, emptyActivityPrimary)
+        assertTrue(emptyActivityPrimary.suppressed.contains(notDestroyed))
 
         val logcatFailure = IllegalStateException("PLEOS readiness logcat_unavailable")
         assertSame(
