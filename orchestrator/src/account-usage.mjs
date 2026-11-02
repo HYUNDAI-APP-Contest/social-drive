@@ -40,6 +40,8 @@ export function recordAccountRateLimit(state, response, { now = Date.now() } = {
   if (usedPercent === null) {
     if (response?.ordinaryUsageAllowed === false) {
       current.ordinaryUsageAllowed = false;
+      current.denyLatched = true;
+      current.deniedAt = new Date(now).toISOString();
       current.updatedAt = new Date(now).toISOString();
     }
     return { claimed: [], current };
@@ -55,8 +57,23 @@ export function recordAccountRateLimit(state, response, { now = Date.now() } = {
   current.remainingPercent = Math.max(0, 100 - current.usedPercent);
   current.windowDurationMins = finite(selected.window?.windowDurationMins);
   if (resetsAt !== null) current.resetsAt = resetsAt;
-  if (response?.ordinaryUsageAllowed === false) current.ordinaryUsageAllowed = false;
-  else if (response?.ordinaryUsageAllowed === true && (newWindow || current.ordinaryUsageAllowed !== false)) current.ordinaryUsageAllowed = true;
+  if (response?.ordinaryUsageAllowed === false) {
+    current.ordinaryUsageAllowed = false;
+    current.denyLatched = true;
+    current.deniedAt = new Date(now).toISOString();
+    if (resetsAt !== null) current.denyWindowResetsAt = resetsAt;
+  } else if (response?.ordinaryUsageAllowed === true && current.denyLatched) {
+    if (current.denyWindowResetsAt === undefined && resetsAt !== null) current.denyWindowResetsAt = resetsAt;
+    const denyReset = finite(current.denyWindowResetsAt);
+    if (denyReset !== null && resetsAt !== null && resetsAt > denyReset && now >= denyReset * 1000) {
+      current.ordinaryUsageAllowed = true;
+      delete current.denyLatched;
+      delete current.deniedAt;
+      delete current.denyWindowResetsAt;
+    }
+  } else if (response?.ordinaryUsageAllowed === true && (newWindow || current.ordinaryUsageAllowed !== false)) {
+    current.ordinaryUsageAllowed = true;
+  }
   current.updatedAt = new Date(now).toISOString();
   const emitted = new Set(current.milestones ?? []);
   const claimed = MILESTONES.filter((milestone) => current.usedPercent >= milestone && !emitted.has(milestone));

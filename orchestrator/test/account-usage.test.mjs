@@ -88,3 +88,27 @@ test("never lets delayed or lower same-window snapshots reopen admission", () =>
   assert.equal(state.accountUsage.usedPercent, 5);
   assert.equal(state.accountUsage.ordinaryUsageAllowed, true);
 });
+
+test("latches a no-window denial until a later seven-day window is proven", () => {
+  const state = { outbox: {} };
+  recordAccountRateLimit(state, {
+    ordinaryUsageAllowed: false,
+    rateLimits: { primary: { usedPercent: 1, windowDurationMins: 300, resetsAt: 100 } },
+  }, { now: 1000 });
+  assert.equal(state.accountUsage.ordinaryUsageAllowed, false);
+  assert.equal(state.accountUsage.denyLatched, true);
+
+  recordAccountRateLimit(state, {
+    ordinaryUsageAllowed: true,
+    rateLimits: { primary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: 3000 } },
+  }, { now: 1001 });
+  assert.equal(state.accountUsage.ordinaryUsageAllowed, false);
+  assert.equal(state.accountUsage.denyWindowResetsAt, 3000);
+
+  recordAccountRateLimit(state, {
+    ordinaryUsageAllowed: true,
+    rateLimits: { primary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: 4000 } },
+  }, { now: 3_001_000 });
+  assert.equal(state.accountUsage.ordinaryUsageAllowed, true);
+  assert.equal(state.accountUsage.denyLatched, undefined);
+});
