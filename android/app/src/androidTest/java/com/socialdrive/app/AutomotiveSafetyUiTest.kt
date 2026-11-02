@@ -11,7 +11,6 @@ import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.test.espresso.Espresso.pressBack
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.socialdrive.app.data.fake.FakeDriveRepository
 import com.socialdrive.app.domain.AppDestination
@@ -97,10 +96,11 @@ class NavigationSafetyUiTest {
     @After fun closeHost() = host.close()
 
     @Test
-    fun systemBackDuringRecordingShowsTheSameStopConfirmation() {
+    fun activityBackDispatcherDuringRecordingShowsStopConfirmation() {
         compose.onNodeWithText("기록 시작", substring = true).performClick()
         compose.onNodeWithText("기록 중", substring = true).assertIsDisplayed()
-        pressBack()
+        host.dispatchBackToActivity()
+        compose.waitForIdle()
         compose.onNodeWithText("기록을 종료할까요?").assertIsDisplayed()
         compose.onNodeWithText("초안으로 저장").assertIsDisplayed()
         compose.onNodeWithText("계속 기록").assertIsDisplayed()

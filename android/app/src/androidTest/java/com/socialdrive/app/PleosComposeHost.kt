@@ -49,6 +49,15 @@ internal class PleosComposeHost {
         }
     }
 
+    fun dispatchBackToActivity() {
+        requireNotNull(readiness).withChildLogCheck {
+            requireNotNull(scenario).onActivity { activity ->
+                check(activity.lifecycle.currentState == Lifecycle.State.RESUMED) { "Compose host is not RESUMED" }
+                activity.onBackPressedDispatcher.onBackPressed()
+            }
+        }
+    }
+
     fun close() {
         val active = scenario ?: return
         val stableReadiness = requireNotNull(readiness)

@@ -218,11 +218,14 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   const conflictUi = read("app/src/androidTest/java/com/socialdrive/app/ConflictReviewUiTest.kt");
   const host = read("app/src/androidTest/java/com/socialdrive/app/PleosComposeHost.kt");
   const hostTest = read("app/src/androidTest/java/com/socialdrive/app/PleosReadinessParserTest.kt");
+  const readme = read("README.md");
   for (const marker of [
-    "MotionState.Driving", "MotionState.Unknown", "assertDoesNotExist", "pressBack()",
+    "MotionState.Driving", "MotionState.Unknown", "assertDoesNotExist",
     "기록을 종료할까요?", "parkedUserCanReachPublishThroughDetailOnly", "드라이브 게시",
     "NavigationContractContent", "기록 중", "이 드라이브 게시하기",
+    "activityBackDispatcherDuringRecordingShowsStopConfirmation", "host.dispatchBackToActivity()",
   ]) assert.ok(ui.includes(marker), marker);
+  assert.doesNotMatch(ui, /pressBack|UiDevice|input keyevent|systemBack/);
   const contract = ui.slice(ui.indexOf("private fun NavigationContractContent"));
   for (const marker of [
     "AppDestination", "SafetyPolicy.canNavigate", "BackHandler", "HomeScreen", "RecordingScreen",
@@ -290,6 +293,10 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.doesNotMatch(host, /logcat -c|force-stop|\bsu\s+-c\b|adoptShellPermissionIdentity/);
   assert.match(host, /duplicate_listener/);
   assert.match(host, /fun setContent[\s\S]*withChildLogCheck[\s\S]*Lifecycle\.State\.RESUMED[\s\S]*activity\.setContent[\s\S]*Lifecycle\.State\.RESUMED/);
+  assert.match(host, /fun dispatchBackToActivity\(\)[\s\S]*withChildLogCheck[\s\S]*onActivity[\s\S]*Lifecycle\.State\.RESUMED[\s\S]*onBackPressedDispatcher\.onBackPressed\(\)/);
+  assert.match(readme, /System Back delivery to the embedded SocialDrive task \| \*\*UNRESOLVED\*\*/);
+  assert.match(readme, /synthetic Back was observed routing to the Home organizer/);
+  assert.match(readme, /TaskView focused[\s\S]*real control once[\s\S]*dialog must appear/);
   assert.match(host, /fun close\(\)[\s\S]*PleosCloseAudit\.run[\s\S]*assertChildLogHealthy[\s\S]*finishAndUnregister\(active\)[\s\S]*assertChildLogHealthy/);
   assert.match(host, /fun finishAndUnregister[\s\S]*LifecycleEventObserver[\s\S]*Lifecycle\.Event\.ON_DESTROY[\s\S]*activity\.finish\(\)[\s\S]*destroyed\.await\([\s\S]*waitForIdleSync\(\)[\s\S]*state == Lifecycle\.State\.DESTROYED[\s\S]*active\.close\(\)/);
   assert.doesNotMatch(host, /finishAndRemoveTask/);
