@@ -9,16 +9,17 @@ export function classifyCommand(command, workspace) {
   return { decision: "accept", reason: "workspace-local development command" };
 }
 
-export function budgetStatus(config, usage = { tokens: 0, estimatedUsd: 0 }, accountUsage = null) {
+export function budgetStatus(config, usage = { tokens: 0, estimatedUsd: 0 }, accountUsage = null, now = Date.now()) {
   if (accountUsage && Number.isFinite(Number(accountUsage.usedPercent))) {
+    const updatedAt = Date.parse(accountUsage.updatedAt ?? "");
+    const resetsAtMs = Number(accountUsage.resetsAt ?? 0) * 1000;
+    if (!Number.isFinite(updatedAt) || now - updatedAt > config.accountUsageMaxAgeMs) return { allowed: false, reason: "Codex account usage snapshot is stale" };
+    if (!resetsAtMs || resetsAtMs <= now) return { allowed: false, reason: "Codex account usage window expired" };
     if (accountUsage.ordinaryUsageAllowed === false) return { allowed: false, reason: "Codex account usage is not allowed" };
     if (Number(accountUsage.usedPercent) >= config.accountUsagePausePercent) return { allowed: false, reason: "Codex account usage safety threshold reached" };
     return { allowed: true, usedPercent: Number(accountUsage.usedPercent) };
   }
-  const estimatedUsd = usage.estimatedUsd ?? usage.tokens / 1_000_000 * config.estimatedUsdPerMillionTokens;
-  if (usage.tokens >= config.dailyTokenLimit) return { allowed: false, reason: "daily token limit reached" };
-  if (estimatedUsd >= config.dailyCostLimitUsd) return { allowed: false, reason: "daily estimated cost limit reached" };
-  return { allowed: true, estimatedUsd };
+  return { allowed: false, reason: "Codex account usage snapshot is unavailable" };
 }
 
 export function isUsageLimitError(error) {

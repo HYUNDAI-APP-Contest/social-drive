@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { recordAccountRateLimit, recordAccountTokenSnapshot, threadTotalTokens } from "../src/account-usage.mjs";
+import { recordAccountRateLimit, recordAccountTokenSnapshot, selectSevenDayRateLimit, threadTotalTokens } from "../src/account-usage.mjs";
 
 test("extracts the actual cumulative thread total from app-server v2 events", () => {
   assert.equal(threadTotalTokens({
@@ -34,4 +34,25 @@ test("emits 30/60/90 once per real rate-limit window", () => {
   const reset = recordAccountRateLimit(state, { rateLimits: { primary: { usedPercent: 31, windowDurationMins: 10080, resetsAt: 3000 } } }, { now: 1003 });
   assert.deepEqual(reset.claimed, [30]);
   assert.equal(Object.values(state.outbox).length, 3);
+});
+
+test("selects the explicit seven-day window and ignores delayed older snapshots", () => {
+  const response = {
+    rateLimitsByLimitId: {
+      codex: {
+        primary: { usedPercent: 90, windowDurationMins: 300, resetsAt: 1500 },
+        secondary: { usedPercent: 52, windowDurationMins: 10080, resetsAt: 3000 },
+      },
+    },
+  };
+  assert.equal(selectSevenDayRateLimit(response).window.usedPercent, 52);
+  const state = { outbox: {} };
+  recordAccountRateLimit(state, response, { now: 2000 });
+  recordAccountRateLimit(state, { rateLimits: { primary: { usedPercent: 80, windowDurationMins: 10080, resetsAt: 2000 } } }, { now: 1000 });
+  assert.equal(state.accountUsage.usedPercent, 52);
+  assert.equal(state.accountUsage.resetsAt, 3000);
+});
+
+test("does not label a non-seven-day window as the account budget", () => {
+  assert.equal(selectSevenDayRateLimit({ rateLimits: { primary: { usedPercent: 20, windowDurationMins: 300 } } }), null);
 });

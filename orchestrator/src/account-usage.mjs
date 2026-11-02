@@ -1,7 +1,16 @@
 import { enqueueOutbox } from "./outbox.mjs";
 
 const MILESTONES = [30, 60, 90];
+const SEVEN_DAYS_MINUTES = 7 * 24 * 60;
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+
+export function selectSevenDayRateLimit(response) {
+  const byId = response?.rateLimitsByLimitId;
+  const snapshot = byId?.codex ?? response?.rateLimits ?? response;
+  const windows = [snapshot?.primary, snapshot?.secondary].filter(Boolean);
+  const window = windows.find((candidate) => finite(candidate?.windowDurationMins) === SEVEN_DAYS_MINUTES);
+  return window ? { snapshot, window } : null;
+}
 
 export function threadTotalTokens(event) {
   if (event?.event !== "thread/tokenUsage/updated") return null;
@@ -22,17 +31,19 @@ export function recordAccountTokenSnapshot(state, response, { day } = {}) {
 }
 
 export function recordAccountRateLimit(state, response, { now = Date.now() } = {}) {
-  const snapshot = response?.rateLimits ?? response;
-  const primary = snapshot?.primary;
-  const usedPercent = finite(primary?.usedPercent);
+  const selected = selectSevenDayRateLimit(response);
+  const usedPercent = finite(selected?.window?.usedPercent);
   if (usedPercent === null) return { claimed: [], current: state.accountUsage ?? null };
   state.accountUsage ??= { milestones: [] };
   const current = state.accountUsage;
-  const resetsAt = finite(primary?.resetsAt);
+  const currentUpdatedAt = Date.parse(current.updatedAt ?? "");
+  if (Number.isFinite(currentUpdatedAt) && now < currentUpdatedAt) return { claimed: [], current };
+  const resetsAt = finite(selected.window?.resetsAt);
+  if (resetsAt !== null && current.resetsAt !== undefined && resetsAt < current.resetsAt) return { claimed: [], current };
   if (resetsAt !== null && current.resetsAt !== resetsAt) current.milestones = [];
   current.usedPercent = Math.max(0, Math.min(100, usedPercent));
   current.remainingPercent = Math.max(0, 100 - current.usedPercent);
-  current.windowDurationMins = finite(primary?.windowDurationMins);
+  current.windowDurationMins = finite(selected.window?.windowDurationMins);
   if (resetsAt !== null) current.resetsAt = resetsAt;
   if (typeof response?.ordinaryUsageAllowed === "boolean") current.ordinaryUsageAllowed = response.ordinaryUsageAllowed;
   current.updatedAt = new Date(now).toISOString();

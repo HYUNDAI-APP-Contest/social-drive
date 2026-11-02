@@ -6,7 +6,7 @@ import { budgetStatus, isUsageLimitError } from "./policy.mjs";
 import { GitHub } from "./github.mjs";
 import { Discord } from "./discord.mjs";
 import { WorkspaceManager } from "./workspace.mjs";
-import { CodexAppServer, agentText } from "./codex.mjs";
+import { CodexAppServer, agentText, readCodexAccountState } from "./codex.mjs";
 import { AwsDeployer, formatChangeSummary } from "./aws.mjs";
 import {
   buildProgressSnapshot,
@@ -42,6 +42,7 @@ const active = new Map();
 const observedUsage = new Map();
 let deploymentActive = false;
 let mergeRecoveryActive = false;
+let lastAccountUsageSyncAt = 0;
 
 const log = (event, fields = {}) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), event, ...fields }));
 const approvalId = (pr) => `pr-${pr.number}`;
@@ -172,16 +173,17 @@ async function accountUsage(issueNumber, event) {
     return;
   }
   if (event?.event === "account/rateLimits/read" || event?.event === "account/rateLimits/updated") {
-    await store.update((state) => recordAccountRateLimit(state, event.params));
+    await store.update((state) => recordAccountRateLimit(state, event.params, { now: event.emittedAtMs ?? Date.now() }));
     void outbox.drain();
     void refreshDashboard();
     return;
   }
   const total = threadTotalTokens(event) ?? 0;
   if (!total) return;
-  const previous = observedUsage.get(issueNumber) ?? 0;
+  const observationKey = `${issueNumber}:${event?.params?.threadId ?? "unknown"}`;
+  const previous = observedUsage.get(observationKey) ?? 0;
   const tokens = Math.max(0, total - previous);
-  observedUsage.set(issueNumber, Math.max(previous, total));
+  observedUsage.set(observationKey, Math.max(previous, total));
   if (!tokens) return;
   await store.update((state) => {
     const jobKey = String(issueNumber).split(":", 1)[0];
@@ -203,7 +205,8 @@ async function runIssue(issue) {
     const runRole = async ({ role, meter, prompt, sandboxMode, instructions }) => {
       const codex = new CodexAppServer(config, {
         workspace,
-        onEvent: (event) => { log("codex_event", { issue: issue.number, role, type: event.event }); void accountUsage(`${issue.number}:${meter}`, event); },
+        onEvent: (event) => { log("codex_event", { issue: issue.number, role, type: event.event }); return accountUsage(`${issue.number}:${meter}`, event); },
+        onAdmission: () => budgetStatus(config, store.state.usage[utcDay()] ?? {}, store.state.accountUsage).allowed,
         onApproval: async (method) => {
           await queueDiscordNotice(
             `permission-blocked:${issue.number}:${store.state.jobs[key]?.attempts ?? 0}:${meter}:${String(method).slice(0, 80)}`,
@@ -341,6 +344,18 @@ async function runIssue(issue) {
 async function poll() {
   await recoverMergeApprovals();
   await expireApprovals();
+  if (Date.now() - lastAccountUsageSyncAt >= config.accountUsageSyncMs) {
+    try {
+      const snapshot = await readCodexAccountState(config);
+      await store.update((state) => {
+        if (snapshot.accountUsage) recordAccountTokenSnapshot(state, snapshot.accountUsage, { day: utcDay() });
+        if (snapshot.accountRateLimits) recordAccountRateLimit(state, snapshot.accountRateLimits);
+      });
+      lastAccountUsageSyncAt = Date.now();
+    } catch (error) {
+      log("account_usage_sync_failed", { error: redact(error.message) });
+    }
+  }
   const issues = await github.listReadyIssues();
   const readyToStart = await reconcileReadyIssues({
     issues,

@@ -57,6 +57,8 @@ export function loadConfig({ requireSecrets = true } = {}) {
     dailyCostLimitUsd: number("DAILY_COST_LIMIT_USD", 25, 0),
     estimatedUsdPerMillionTokens: number("ESTIMATED_USD_PER_1M_TOKENS", 10, 0),
     accountUsagePausePercent: percentage("ACCOUNT_USAGE_PAUSE_PERCENT", 95),
+    accountUsageMaxAgeMs: integer("ACCOUNT_USAGE_MAX_AGE_SECONDS", 300, 30) * 1000,
+    accountUsageSyncMs: integer("ACCOUNT_USAGE_SYNC_SECONDS", 60, 30) * 1000,
     approvalTtlMs: integer("APPROVAL_TTL_MINUTES", 720, 1) * 60_000,
     sourceRepository: path.resolve(process.env.SOURCE_REPOSITORY ?? "."),
     workspaceRoot: path.resolve(process.env.WORKSPACE_ROOT ?? "./orchestrator/workspaces"),

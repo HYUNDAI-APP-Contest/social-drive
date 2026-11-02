@@ -137,3 +137,14 @@ test("renders approval and blocked jobs first in a bounded status response", () 
   assert.match(response, /오늘 토큰 620,000 \/ 2,000,000 \(31%\)/);
   assert.ok(response.length <= 1900);
 });
+
+test("renders actual account usage without a temporal-dead-zone failure", () => {
+  const rendered = renderAgentStatus({
+    jobs: [], approvals: [], usage: {},
+    accountUsage: { usedPercent: 52, remainingPercent: 48, todayTokens: 138499664, lifetimeTokens: 1624957643, resetsAt: 1793774166 },
+    config: { maxParallel: 3, dailyTokenLimit: 2000000, dailyCostLimitUsd: 25, githubProjectUrl: "" },
+    activeCount: 1,
+  });
+  assert.match(rendered, /실제 7일 한도 52%/);
+  assert.match(rendered, /138,499,664/);
+});

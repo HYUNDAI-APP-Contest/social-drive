@@ -186,6 +186,8 @@ export function renderAgentStatus({ jobs, approvals = [], usage = {}, accountUsa
   if (!lines.length) lines.push("대기 중 · `agent:ready` Issue가 없습니다.");
   if (snapshots.length > 5) lines.push(`외 ${snapshots.length - 5}개 · 전체 보기`);
   const tokens = Math.max(0, Number(usage.tokens ?? 0));
+  const project = config.githubProjectUrl ? `\n전체 보기: ${config.githubProjectUrl}` : "";
+  const overflow = snapshots.length > 5 && !config.githubProjectUrl ? " (GitHub Project URL 미설정)" : "";
   if (accountUsage && Number.isFinite(Number(accountUsage.usedPercent))) {
     const reset = accountUsage.resetsAt ? new Date(Number(accountUsage.resetsAt) * 1000).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) : "확인 불가";
     return `${health} · Agent ${activeCount}/${config.maxParallel} 실행 중\n결정 필요 ${decision} · 차단 ${blocked} · 대기 ${snapshots.filter((item) => item.status === "Ready").length}\n\n${lines.join("\n")}${overflow}\n\nCodex 실제 7일 한도 ${Number(accountUsage.usedPercent)}% 사용 · ${Number(accountUsage.remainingPercent)}% 남음\n오늘 ${Number(accountUsage.todayTokens ?? 0).toLocaleString("en-US")} tokens · 누적 ${Number(accountUsage.lifetimeTokens ?? 0).toLocaleString("en-US")} tokens\n초기화 ${reset}\nAWS: ${deploymentActive ? "작업 중" : "대기"} · 배포 승인 ${pending.filter((item) => item.type === "aws-deploy").length}${project}`.slice(0, 1900);
@@ -193,8 +195,6 @@ export function renderAgentStatus({ jobs, approvals = [], usage = {}, accountUsa
   const percent = tokenPercent(tokens, config.dailyTokenLimit);
   const next = TOKEN_MILESTONES.find((value) => value > (percent ?? 0));
   const nextTokens = next ? Math.max(0, Math.ceil((config.dailyTokenLimit * next) / 100 - tokens)) : Math.max(0, config.dailyTokenLimit - tokens);
-  const project = config.githubProjectUrl ? `\n전체 보기: ${config.githubProjectUrl}` : "";
-  const overflow = snapshots.length > 5 && !config.githubProjectUrl ? " (GitHub Project URL 미설정)" : "";
   return `${health} · Agent ${activeCount}/${config.maxParallel} 실행 중\n결정 필요 ${decision} · 차단 ${blocked} · 대기 ${snapshots.filter((item) => item.status === "Ready").length}\n\n${lines.join("\n")}${overflow}\n\n오늘 토큰 ${tokens.toLocaleString("en-US")} / ${config.dailyTokenLimit.toLocaleString("en-US")} (${percent ?? "확인 불가"}%)\n다음 한도: ${next ? `${next}%까지 ` : "일일 한도까지 "}${nextTokens.toLocaleString("en-US")} · 예상 비용 $${Number(usage.estimatedUsd ?? 0).toFixed(2)} / $${Number(config.dailyCostLimitUsd).toFixed(2)}\nAWS: ${deploymentActive ? "작업 중" : "대기"} · 배포 승인 ${pending.filter((item) => item.type === "aws-deploy").length}${project}`.slice(0, 1900);
 }
 

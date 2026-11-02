@@ -79,6 +79,7 @@ test("derives refresh and stale thresholds from the configured dashboard interva
   const html = renderDashboard(slow);
   assert.match(html, /<meta http-equiv="refresh" content="60">/);
   assert.match(html, /const staleAfterMs=180000/);
+  assert.match(html, /accountUsedPercent!==null/);
 });
 
 test("atomically replaces the local dashboard file without a server", async () => {

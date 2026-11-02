@@ -87,7 +87,7 @@ if(heartbeatStale){heartbeat.classList.add('stale');heartbeat.textContent='오�
 document.getElementById('runtime').textContent=(heartbeatStale?'Heartbeat 지연 · ':'정상 · ')+'Agent '+model.activeCount+'/'+model.maxParallel+' · AWS '+(model.deploymentActive?'작업 중':'대기');
 const metrics=[['결정 필요',model.summary.approval],['진행 중',model.summary.active],['차단',model.summary.blocked],['완료',model.summary.done]];
 for(const [label,value] of metrics){const card=text('article','metric','');card.append(text('span','meta',label),text('strong','',value));document.getElementById('summary').append(card)}
-const hasAccountUsage=Number.isFinite(Number(model.usage.accountUsedPercent));
+const hasAccountUsage=model.usage.accountUsedPercent!==null&&model.usage.accountUsedPercent!==undefined&&Number.isFinite(Number(model.usage.accountUsedPercent));
 const percent=hasAccountUsage?Number(model.usage.accountUsedPercent):(model.usage.tokenLimit?Math.min(100,Math.floor(model.usage.tokens/model.usage.tokenLimit*100)):0);
 document.getElementById('budgetText').textContent=hasAccountUsage?('7일 한도 '+percent+'% 사용 · '+Number(model.usage.accountRemainingPercent)+'% 남음 · 오늘 '+Number(model.usage.accountTodayTokens||0).toLocaleString()+' tokens · 초기화 '+(model.usage.accountResetsAt?new Date(model.usage.accountResetsAt*1000).toLocaleString('ko-KR'):'확인 불가')):(model.usage.tokens.toLocaleString()+' / '+model.usage.tokenLimit.toLocaleString()+' · '+percent+'%');
 document.getElementById('budgetFill').style.width=percent+'%';
