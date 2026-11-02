@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import readline from "node:readline";
-import { isolatedWorkerEnvironment } from "./process.mjs";
+import { codexLaunch, isolatedWorkerEnvironment } from "./process.mjs";
 
 export class CodexAppServer {
   constructor(config, { workspace, onEvent, onApproval }) {
@@ -22,7 +22,9 @@ export class CodexAppServer {
     const sandboxPolicy = sandboxMode === "read-only"
       ? { type: "readOnly", networkAccess }
       : { type: "workspaceWrite", writableRoots: [this.workspace], networkAccess, excludeTmpdirEnvVar: false, excludeSlashTmp: false };
-    this.child = spawn("bash", ["-lc", this.config.codexCommand], { cwd: this.workspace, env: isolatedWorkerEnvironment(), stdio: ["pipe", "pipe", "pipe"] });
+    const launch = codexLaunch(this.config.codexExecutable);
+    this.child = spawn(launch.executable, launch.args, { cwd: this.workspace, env: isolatedWorkerEnvironment(), stdio: ["pipe", "pipe", "pipe"] });
+    this.child.once("error", (error) => this.failAll(error));
     this.child.stderr.on("data", (chunk) => this.onEvent({ event: "stderr", text: String(chunk) }));
     readline.createInterface({ input: this.child.stdout }).on("line", (line) => this.handleLine(line));
     this.child.once("exit", (code) => this.failAll(new Error(`codex app-server exited ${code}`)));

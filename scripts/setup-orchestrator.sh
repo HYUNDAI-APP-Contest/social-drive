@@ -7,6 +7,15 @@ logs_dir="$repo_root/orchestrator/logs"
 launch_agents_dir="$HOME/Library/LaunchAgents"
 plist="$launch_agents_dir/com.socialdrive.codex-orchestrator.plist"
 node_bin="$(command -v node)"
+if ! codex_bin="$(command -v codex)"; then
+  printf 'Codex CLI 실행 파일을 찾을 수 없습니다. Codex를 설치한 뒤 다시 실행하세요.\n' >&2
+  exit 1
+fi
+if [[ "$codex_bin" != /* || ! -x "$codex_bin" ]]; then
+  printf 'Codex CLI 경로가 안전한 절대 실행 파일이 아닙니다: %s\n' "$codex_bin" >&2
+  exit 1
+fi
+codex_env_value="$("$node_bin" -e 'process.stdout.write(JSON.stringify(process.argv[1]))' "$codex_bin")"
 
 cd "$repo_root"
 gh auth status >/dev/null
@@ -76,7 +85,7 @@ umask 077
   printf 'DISCORD_ARCHITECT_AVATAR_PATH=%s/orchestrator/assets/personas/aki-architect.png\n' "$repo_root"
   printf 'DISCORD_DESIGNER_AVATAR_PATH=%s/orchestrator/assets/personas/pixie-designer.png\n' "$repo_root"
   printf 'DISCORD_REVIEWER_AVATAR_PATH=%s/orchestrator/assets/personas/sentinel-reviewer.png\n' "$repo_root"
-  printf 'CODEX_COMMAND=codex app-server --listen stdio://\n'
+  printf 'CODEX_EXECUTABLE=%s\n' "$codex_env_value"
   printf 'CODEX_MODEL=\n'
   printf 'MAX_PARALLEL_AGENTS=3\n'
   printf 'MAX_REVIEW_ROUNDS=2\n'

@@ -39,7 +39,7 @@ export function loadConfig({ requireSecrets = true } = {}) {
     discordArchitectAvatarPath: path.resolve(process.env.DISCORD_ARCHITECT_AVATAR_PATH ?? "./orchestrator/assets/personas/aki-architect.png"),
     discordDesignerAvatarPath: path.resolve(process.env.DISCORD_DESIGNER_AVATAR_PATH ?? "./orchestrator/assets/personas/pixie-designer.png"),
     discordReviewerAvatarPath: path.resolve(process.env.DISCORD_REVIEWER_AVATAR_PATH ?? "./orchestrator/assets/personas/sentinel-reviewer.png"),
-    codexCommand: process.env.CODEX_COMMAND ?? "codex app-server --listen stdio://",
+    codexExecutable: process.env.CODEX_EXECUTABLE ?? (process.platform === "darwin" ? "/opt/homebrew/bin/codex" : "/usr/local/bin/codex"),
     codexModel: process.env.CODEX_MODEL || null,
     maxParallel: integer("MAX_PARALLEL_AGENTS", 3, 1),
     maxReviewRounds: integer("MAX_REVIEW_ROUNDS", 2, 1),
