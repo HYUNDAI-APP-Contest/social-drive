@@ -116,11 +116,6 @@ internal object PleosReadinessParser {
         if (!homeTask.visible.contains(HOME) || !homeTask.resumed.contains(HOME)) {
             return PleosObservation(null, "home_not_visible_resumed")
         }
-        val unsettled = required.drop(1).any { component ->
-            val componentTask = tasks.single { component in it.components }
-            component !in componentTask.visible || component !in componentTask.active
-        }
-        if (unsettled) return PleosObservation(null, "default_task_not_visible_active")
         return PleosObservation(PleosOrganizerSnapshot(after, ids.map { it.single() }), "ready")
     }
 

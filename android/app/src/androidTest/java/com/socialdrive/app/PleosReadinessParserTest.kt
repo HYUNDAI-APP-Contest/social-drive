@@ -26,19 +26,14 @@ class PleosReadinessParserTest {
         assertEquals(listOf("1000299", "1000318", "1000304"), requireNotNull(capturedStyle.snapshot).taskIds)
     }
 
-    @Test fun duplicateInvisibleMissingAndPidFlipFailClosed() {
+    @Test fun duplicateMissingWrongUserHomeStateAndPidFlipFailClosed() {
         val duplicate = fixture() + task("21", "ai.umos.drivingview/.DrivingViewActivity")
         assertTrue(PleosReadinessParser.observe("42", duplicate, "42").reason.startsWith("task_cardinality="))
         assertEquals("home_not_visible_resumed", PleosReadinessParser.observe("42", fixture(homeVisible = false), "42").reason)
-        assertEquals(
-            "default_task_not_visible_active",
-            PleosReadinessParser.observe("42", fixture(drivingVisible = false), "42").reason,
-        )
-        assertEquals(
-            "default_task_not_visible_active",
-            PleosReadinessParser.observe("42", fixture(naviState = "STOPPED"), "42").reason,
-        )
+        val homeNotResumed = fixture().replaceFirst("state=RESUMED", "state=STARTED")
+        assertEquals("home_not_visible_resumed", PleosReadinessParser.observe("42", homeNotResumed, "42").reason)
         assertTrue(PleosReadinessParser.observe("42", fixture(includeNavi = false), "42").reason.startsWith("task_cardinality="))
+        assertTrue(PleosReadinessParser.observe("42", fixture(drivingUserId = 0), "42", 10).reason.startsWith("task_cardinality="))
         assertEquals("home_generation_changed", PleosReadinessParser.observe("42", fixture(), "43").reason)
         assertEquals("home_pid_missing_or_multiple", PleosReadinessParser.observe("42 43", fixture(), "43").reason)
         val inconsistent = fixture() + task("20", "ai.umos.drivingview/.DrivingViewActivity", state = "STOPPED")
@@ -50,6 +45,34 @@ class PleosReadinessParserTest {
         assertEquals("task_record_context_mismatch", PleosReadinessParser.observe("42", contextBleed, "42", 10).reason)
         val otherUserDuplicate = fixture() + task("21", "ai.umos.drivingview/.DrivingViewActivity", userId = 0)
         assertNotNull(PleosReadinessParser.observe("42", otherUserDuplicate, "42", 10).snapshot)
+    }
+
+    @Test fun initializingDefaultTasksAreAcceptedOnlyAfterStableTaskIds() {
+        val initializing = PleosReadinessParser.observe(
+            "42",
+            fixture(drivingVisible = false, drivingState = "INITIALIZING", naviState = "STOPPED"),
+            "42",
+            10,
+        )
+        assertNotNull(initializing.snapshot)
+        val lifecycleMissing = PleosReadinessParser.observe(
+            "42",
+            fixture(drivingVisible = false).replace("state=STOPPED stopped=true", "initializationPending=true"),
+            "42",
+            10,
+        )
+        assertNotNull(lifecycleMissing.snapshot)
+
+        val tracker = StableOrganizerGeneration()
+        assertFalse(tracker.record(initializing))
+        assertTrue(tracker.record(initializing))
+        val changedDrivingId = PleosReadinessParser.observe(
+            "42",
+            fixture(drivingVisible = false, drivingState = "INITIALIZING", drivingId = "21"),
+            "42",
+            10,
+        )
+        assertFalse(tracker.record(changedDrivingId))
     }
 
     @Test fun stableTrackerRequiresTwoCoherentObservationsAndResetsOnNullOrChange() {
@@ -90,11 +113,22 @@ class PleosReadinessParserTest {
         fullComponents: Boolean = false,
         homeVisible: Boolean = true,
         drivingVisible: Boolean = true,
+        drivingState: String? = null,
+        drivingId: String = "20",
+        drivingUserId: Int = 10,
         naviState: String = "RESUMED",
         includeNavi: Boolean = true,
     ): String = buildString {
         append(task("10", if (fullComponents) "ai.umos.homescreen/ai.umos.homescreen.HomeActivity" else "ai.umos.homescreen/.HomeActivity", homeVisible))
-        append(task("20", if (fullComponents) "ai.umos.drivingview/ai.umos.drivingview.DrivingViewActivity" else "ai.umos.drivingview/.DrivingViewActivity", drivingVisible))
+        append(
+            task(
+                drivingId,
+                if (fullComponents) "ai.umos.drivingview/ai.umos.drivingview.DrivingViewActivity" else "ai.umos.drivingview/.DrivingViewActivity",
+                drivingVisible,
+                state = drivingState ?: if (drivingVisible) "RESUMED" else "STOPPED",
+                userId = drivingUserId,
+            ),
+        )
         if (includeNavi) append(task("30", if (fullComponents) "ai.umos.maps.android.navigation.app/ai.umos.maps.android.navigation.app.MainActivity" else "ai.umos.maps.android.navigation.app/.MainActivity", state = naviState))
     }
 

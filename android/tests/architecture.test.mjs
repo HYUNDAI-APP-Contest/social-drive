@@ -279,7 +279,7 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.match(host, /HIST_RECORD[\s\S]*HIST_ZERO/);
   assert.ok(host.includes('Hist\\\\s+#[0-9]+:'));
   assert.match(host, /Global Resumed\/mFocusedApp\/application-token summaries use their own tNNN/);
-  assert.match(host, /default_task_not_visible_active/);
+  assert.doesNotMatch(host, /default_task_not_visible_active|required\.drop\(1\)/);
   assert.match(host, /if \(current == previous\) return true/);
   assert.match(host, /pidof ai\.umos\.homescreen/);
   assert.doesNotMatch(host, /pidof ai\.umos\.(?:drivingview|maps)/);
@@ -294,7 +294,8 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.doesNotMatch(host, /(?:Thread|SystemClock)\.sleep|createAndroidComposeRule/);
   for (const marker of [
     "shortAndFullComponentsMapToOneVisibleGeneration",
-    "duplicateInvisibleMissingAndPidFlipFailClosed",
+    "duplicateMissingWrongUserHomeStateAndPidFlipFailClosed",
+    "initializingDefaultTasksAreAcceptedOnlyAfterStableTaskIds",
     "stableTrackerRequiresTwoCoherentObservationsAndResetsOnNullOrChange",
     "fatalGuardIgnoresOldBaselineAndRejectsNewRelevantFatalOrDuplicate",
     "currentUserDerivesFromPublicProcessUidRange",
@@ -310,7 +311,9 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.match(hostTest, /replace\("Hist  #", "Hist #"\)/);
   assert.match(hostTest, /1000299[\s\S]*1000318[\s\S]*1000304/);
   assert.match(hostTest, /drivingVisible = false/);
-  assert.match(hostTest, /naviState = "STOPPED"/);
+  assert.match(hostTest, /drivingState = "INITIALIZING"[\s\S]*naviState = "STOPPED"/);
+  assert.match(hostTest, /fixture\(drivingUserId = 0\)/);
+  assert.match(hostTest, /changedDrivingId[\s\S]*drivingId = "21"[\s\S]*assertFalse\(tracker\.record\(changedDrivingId\)\)/);
 });
 
 test("content and upload states are observable in the demo", () => {
