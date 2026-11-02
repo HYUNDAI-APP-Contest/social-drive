@@ -104,3 +104,39 @@ test("stale reconciliation never rewrites active or terminal jobs", async () => 
   assert.equal(Object.keys(store.state.outbox).length, 0);
   await fs.rm(directory, { recursive: true, force: true });
 });
+
+test("a review-blocked issue resumes only after the ready label is removed and re-added", async () => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "social-drive-review-blocked-"));
+  const store = new Store(path.join(directory, "state.json"));
+  await store.load();
+  store.state.jobs = { 7: { issue: 7, title: "reviewed", status: "review_blocked", attempts: 4 } };
+  await store.save();
+
+  const started = await reconcileReadyIssues({
+    issues: [{ number: 7, node_id: "I_7", title: "reviewed" }],
+    store,
+    activeKeys: new Set(),
+    maxParallel: 3,
+    now: new Date("2026-11-01T10:00:00.000Z"),
+    enqueueSnapshot: enqueueControlSnapshot,
+  });
+
+  assert.deepEqual(started, []);
+  assert.equal(store.state.jobs["7"].status, "review_blocked");
+
+  await reconcileReadyIssues({
+    issues: [], store, activeKeys: new Set(), maxParallel: 3,
+    now: new Date("2026-11-01T10:01:00.000Z"), enqueueSnapshot: enqueueControlSnapshot,
+  });
+  assert.equal(store.state.jobs["7"].status, "removed_from_queue");
+
+  const resumed = await reconcileReadyIssues({
+    issues: [{ number: 7, node_id: "I_7", title: "reviewed" }],
+    store, activeKeys: new Set(), maxParallel: 3,
+    now: new Date("2026-11-01T10:02:00.000Z"), enqueueSnapshot: enqueueControlSnapshot,
+  });
+  assert.equal(resumed.length, 1);
+  assert.equal(store.state.jobs["7"].status, "ready");
+  assert.equal(store.state.jobs["7"].attempts, 0);
+  await fs.rm(directory, { recursive: true, force: true });
+});

@@ -26,3 +26,15 @@ test("rejects zero parallel agents", () => {
   finally { if (old === undefined) delete process.env.MAX_PARALLEL_AGENTS; else process.env.MAX_PARALLEL_AGENTS = old; }
 });
 
+test("defaults the signed-in account safety threshold to 95 percent", () => {
+  const old = process.env.ACCOUNT_USAGE_PAUSE_PERCENT; delete process.env.ACCOUNT_USAGE_PAUSE_PERCENT;
+  try { assert.equal(loadConfig({ requireSecrets: false }).accountUsagePausePercent, 95); }
+  finally { if (old === undefined) delete process.env.ACCOUNT_USAGE_PAUSE_PERCENT; else process.env.ACCOUNT_USAGE_PAUSE_PERCENT = old; }
+});
+
+test("bounds app-server admission requests", () => {
+  const old = process.env.APP_SERVER_REQUEST_TIMEOUT_SECONDS; delete process.env.APP_SERVER_REQUEST_TIMEOUT_SECONDS;
+  try { assert.equal(loadConfig({ requireSecrets: false }).appServerRequestTimeoutMs, 20_000); }
+  finally { if (old === undefined) delete process.env.APP_SERVER_REQUEST_TIMEOUT_SECONDS; else process.env.APP_SERVER_REQUEST_TIMEOUT_SECONDS = old; }
+});
+

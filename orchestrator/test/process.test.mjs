@@ -1,6 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isolatedWorkerEnvironment, safeWorkerEnvironment } from "../src/process.mjs";
+import { codexLaunch, isolatedWorkerEnvironment, safeWorkerEnvironment } from "../src/process.mjs";
+
+test("launches Codex directly with fixed argv without shell interpretation", () => {
+  const executable = "/Applications/Codex Tools/$(touch injected);codex";
+  assert.deepEqual(codexLaunch(executable), {
+    executable,
+    args: ["app-server", "--listen", "stdio://"],
+  });
+  assert.throws(() => codexLaunch("codex"), /absolute executable path/);
+  assert.throws(() => codexLaunch("/tmp/codex\0bad"), /absolute executable path/);
+});
 
 test("worker environment strips host and cloud credentials", () => {
   const keys = ["GITHUB_TOKEN", "DISCORD_WEBHOOK_URL", "AWS_ACCESS_KEY_ID", "AZURE_CLIENT_SECRET", "DATABASE_PASSWORD"];

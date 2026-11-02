@@ -18,6 +18,12 @@ const boolean = (name, fallback) => {
   return value === "true";
 };
 
+const percentage = (name, fallback) => {
+  const value = number(name, fallback, 1);
+  if (value > 100) throw new Error(`${name} must be <= 100`);
+  return value;
+};
+
 export function loadConfig({ requireSecrets = true } = {}) {
   const config = {
     githubOwner: process.env.GITHUB_OWNER ?? "HYUNDAI-APP-Contest",
@@ -39,17 +45,21 @@ export function loadConfig({ requireSecrets = true } = {}) {
     discordArchitectAvatarPath: path.resolve(process.env.DISCORD_ARCHITECT_AVATAR_PATH ?? "./orchestrator/assets/personas/aki-architect.png"),
     discordDesignerAvatarPath: path.resolve(process.env.DISCORD_DESIGNER_AVATAR_PATH ?? "./orchestrator/assets/personas/pixie-designer.png"),
     discordReviewerAvatarPath: path.resolve(process.env.DISCORD_REVIEWER_AVATAR_PATH ?? "./orchestrator/assets/personas/sentinel-reviewer.png"),
-    codexCommand: process.env.CODEX_COMMAND ?? "codex app-server --listen stdio://",
+    codexExecutable: process.env.CODEX_EXECUTABLE ?? (process.platform === "darwin" ? "/opt/homebrew/bin/codex" : "/usr/local/bin/codex"),
     codexModel: process.env.CODEX_MODEL || null,
     maxParallel: integer("MAX_PARALLEL_AGENTS", 3, 1),
     maxReviewRounds: integer("MAX_REVIEW_ROUNDS", 2, 1),
     pollIntervalMs: integer("POLL_INTERVAL_SECONDS", 30, 5) * 1000,
     turnTimeoutMs: integer("TURN_TIMEOUT_MINUTES", 90, 1) * 60_000,
+    appServerRequestTimeoutMs: integer("APP_SERVER_REQUEST_TIMEOUT_SECONDS", 20, 5) * 1000,
     maxRetries: integer("MAX_RETRIES", 3, 0),
     usageLimitCooldownMs: integer("USAGE_LIMIT_COOLDOWN_MINUTES", 60, 5) * 60_000,
     dailyTokenLimit: integer("DAILY_TOKEN_LIMIT", 2_000_000, 1),
     dailyCostLimitUsd: number("DAILY_COST_LIMIT_USD", 25, 0),
     estimatedUsdPerMillionTokens: number("ESTIMATED_USD_PER_1M_TOKENS", 10, 0),
+    accountUsagePausePercent: percentage("ACCOUNT_USAGE_PAUSE_PERCENT", 95),
+    accountUsageMaxAgeMs: integer("ACCOUNT_USAGE_MAX_AGE_SECONDS", 300, 30) * 1000,
+    accountUsageSyncMs: integer("ACCOUNT_USAGE_SYNC_SECONDS", 60, 30) * 1000,
     approvalTtlMs: integer("APPROVAL_TTL_MINUTES", 720, 1) * 60_000,
     sourceRepository: path.resolve(process.env.SOURCE_REPOSITORY ?? "."),
     workspaceRoot: path.resolve(process.env.WORKSPACE_ROOT ?? "./orchestrator/workspaces"),

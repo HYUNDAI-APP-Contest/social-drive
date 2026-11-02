@@ -14,7 +14,7 @@ const evidenceLabels = Object.freeze({
   NONE: "🚫 첨부 없음",
 });
 
-const testStates = new Set(["PASS", "FAIL", "NOT_RUN", "BLOCKED"]);
+const testStates = new Set(["PASS", "FAIL", "REVIEW", "NOT_RUN", "BLOCKED"]);
 const forbidden = [
   /https:\/\/discord\.com\/api\/webhooks\/[^\s]+/gi,
   /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/g,
@@ -74,7 +74,7 @@ export function visualReportKey(report, { repository, runId }) {
 }
 
 export function renderVisualReport(report, { eventId = "" } = {}) {
-  const statusIcon = { PASS: "✅", FAIL: "❌", NOT_RUN: "⚪", BLOCKED: "⛔" };
+  const statusIcon = { PASS: "✅", FAIL: "❌", REVIEW: "🟡", NOT_RUN: "⚪", BLOCKED: "⛔" };
   const fields = [];
   if (report.changes.length) fields.push({ name: "달라진 점", value: report.changes.map((item) => `• ${item}`).join("\n").slice(0, 950), inline: false });
   fields.push({ name: "자료", value: report.evidenceKind === "NONE" ? report.evidenceLabel : `${report.evidenceLabel}\n자동 이미지 첨부는 픽셀 안전 검증 전까지 비활성`, inline: false });
