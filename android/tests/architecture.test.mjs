@@ -607,6 +607,16 @@ test("all required product boundaries and screens exist", () => {
     "app/src/main/java/com/socialdrive/app/ui/screens/PublishScreen.kt",
     "app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt",
   ]) assert.equal(fs.existsSync(path.join(root, relative)), true, relative);
+
+  const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");
+  assert.equal((viewModel.match(/@OptIn\(ExperimentalCoroutinesApi::class\)/g) ?? []).length, 3);
+  assert.equal((viewModel.match(/\.flatMapLatest \{/g) ?? []).length, 3);
+  for (const screen of ["DetailScreen", "PublishScreen", "ConflictReviewScreen", "SettingsScreen"]) {
+    const source = read(`app/src/main/java/com/socialdrive/app/ui/screens/${screen}.kt`);
+    assert.match(source, /androidx\.compose\.material\.icons\.automirrored\.rounded\.ArrowBack/);
+    assert.match(source, /Icons\.AutoMirrored\.Rounded\.ArrowBack, contentDescription = "뒤로가기"/);
+    assert.doesNotMatch(source, /icons\.rounded\.ArrowBack|Icons\.Rounded\.ArrowBack/);
+  }
 });
 
 test("unknown vehicle motion fails closed for parked-only actions", () => {

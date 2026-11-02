@@ -24,6 +24,7 @@ import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.WithdrawalReceipt
 import com.socialdrive.app.domain.DeleteRequestState
 import com.socialdrive.app.domain.VehicleMotionStatus
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flatMapLatest
@@ -41,10 +42,12 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
         .map { it.firstOrNull() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     val uploadState: StateFlow<UploadState> = latestDraft
         .flatMapLatest { draft -> draft?.let { app.publishQueueRepository.observeState(it.id) } ?: flowOf(UploadState.Draft) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UploadState.Draft)
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     val conflictReview: StateFlow<ConflictReviewUiState> = latestDraft
         .flatMapLatest { draft ->
             draft?.let { app.conflictReviewRepository.observe(it.id) }
@@ -71,6 +74,7 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
             ),
         )
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     val deleteRequestState: StateFlow<DeleteRequestState?> = latestDraft
         .flatMapLatest { draft ->
             draft?.let {

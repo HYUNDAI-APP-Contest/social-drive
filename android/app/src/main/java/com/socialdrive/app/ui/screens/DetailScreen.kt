@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Navigation
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Button
@@ -80,7 +80,7 @@ fun DetailScreen(
     }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Rounded.ArrowBack, contentDescription = "뒤로가기") }
+            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "뒤로가기") }
             Column(Modifier.weight(1f)) {
                 Text(drive.title, style = MaterialTheme.typography.headlineMedium)
                 Text("${drive.date} · ${drive.duration} · ${drive.distance}", color = MaterialTheme.colorScheme.onSurfaceVariant)
