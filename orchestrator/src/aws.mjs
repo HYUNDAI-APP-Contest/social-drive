@@ -89,6 +89,9 @@ export class AwsDeployer {
     const generated = path.join(workspace, ".orchestrator");
     const packaged = path.join(generated, "packaged.yaml");
     await fs.mkdir(generated, { recursive: true });
+    const functionRoot = path.join(workspace, "infra", "functions", "api");
+    await fs.access(path.join(functionRoot, "package-lock.json"));
+    await this.runner("npm", ["ci", "--omit=dev", "--ignore-scripts"], { cwd: functionRoot, timeoutMs: 10 * 60_000 });
     await this.aws([
       "cloudformation", "package", "--template-file", template, "--s3-bucket", bucket,
       "--s3-prefix", `deployments/${sourceSha}`, "--output-template-file", packaged,

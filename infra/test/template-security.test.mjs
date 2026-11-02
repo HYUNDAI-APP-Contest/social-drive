@@ -5,7 +5,17 @@ import fs from "node:fs";
 const template = fs.readFileSync(new URL("../template.yaml", import.meta.url), "utf8");
 
 test("keeps storage private, encrypted, on-demand, and retained", () => {
-  for (const expected of ["BlockPublicAcls: true", "RestrictPublicBuckets: true", "SSEEnabled: true", "BillingMode: PAY_PER_REQUEST", "PointInTimeRecoveryEnabled: true", "DeletionPolicy: Retain"]) assert.match(template, new RegExp(expected));
+  for (const expected of ["BlockPublicAcls: true", "RestrictPublicBuckets: true", "SSEEnabled: true", "BillingMode: PAY_PER_REQUEST", "PointInTimeRecoveryEnabled: true", "TimeToLiveSpecification:", "AttributeName: expiresAtEpoch", "DeletionPolicy: Retain"]) assert.match(template, new RegExp(expected));
+});
+
+test("exposes the complete protected MVP API with least privilege operations", () => {
+  for (const route of ["POST /drives", "/drives/{driveId}/uploads", "/drives/{driveId}/publish", "GET /drives/{driveId}", "PATCH", "DELETE"]) {
+    const [method, path] = route.includes(" ") ? route.split(" ") : [null, route];
+    if (method) { assert.ok(template.includes(`Method: ${method}`)); assert.ok(template.includes(`Path: ${path}`)); }
+    else assert.ok(template.includes(route));
+  }
+  for (const action of ["dynamodb:TransactWriteItems", "s3:DeleteObject"]) assert.ok(template.includes(action));
+  assert.match(template, /UPLOAD_URL_TTL_SECONDS: '600'/);
 });
 
 test("protects API routes with Cognito JWT", () => {

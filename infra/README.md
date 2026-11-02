@@ -11,6 +11,7 @@ Low-cost serverless infrastructure for `dev` and `staging` in `ap-northeast-2`. 
 - Private, encrypted, versioned S3 media bucket with public access blocked
 - CloudWatch logs with 14-day retention and error/throttle alarms
 - Optional monthly AWS Budget email alert
+- Idempotent draft/upload/publish API, owner-only mutations, and opaque TTL feed cursors
 
 ## Approval boundary
 
@@ -20,6 +21,7 @@ Agents may run tests, `sam validate`, `sam build`, and create a CloudFormation c
 
 ```bash
 npm --prefix infra test
+node --check infra/functions/api/production-adapters.mjs
 sam validate --lint --template-file infra/template.yaml
 sam build --template-file infra/template.yaml
 ```
