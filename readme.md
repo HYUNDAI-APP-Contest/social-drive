@@ -4,26 +4,27 @@
 
 ## 먼저 확인해 주세요
 
-2026-11-01 현재 이 저장소의 `main`에는 Android 앱과 Pleos 연동 브랜치가 병합되지 않았습니다. 이 작업공간에도 실행할 `android/` 디렉터리와 release APK가 없습니다.
+2026-11-02 현재 Android 앱은 검토 완료 브랜치 `agent/issue-conflict-review`와 PR #2에 있으며, 아직 `main`에는 병합되지 않았습니다. 이 제출 문서 작업공간 자체에는 `android/` 디렉터리와 제출용 서명 release APK가 없습니다.
 
 - Vehicle SDK 2.3.2와 NaviHelper 3.0.5 adapter의 최초 구현 커밋은 `6475287`이며 1차 독립 검토에서 `CHANGES_REQUIRED`였습니다.
-- PLEOS·cloud·route-consent 기반 위에 충돌 검토를 추가한 최신 Android 작업 브랜치 HEAD는 `f091e995f3cbfd3edf87bbe6d5f705458f1b0d50`입니다. core Kotlin 63/63과 npm static 27/27이 통과했지만 `main`에는 병합되지 않았습니다.
-- `f091e995`에는 Room v5의 durable 409 conflict 상태, 사용자의 명시적 최신 버전 확인·adopt, adopt 후 publish-only replay가 코드로 존재합니다. 일반 worker는 `FAILED/VERSION_CONFLICT`를 claim하지 못하며 자동 GET·자동 overwrite·자동 재게시를 하지 않습니다.
+- 최신 Android 검토 HEAD는 `dd3d61dabda9d69526227a84a40fce20c7bc3833`입니다. PLEOS Connect Emulator 2.1.0(Android 14, user 10)에서 instrumentation 51/51, SDK-independent Kotlin 74/74, 정적 계약 29/29이 통과했습니다.
+- Gradle clean, Demo/Pleos 단위 테스트, Demo release lint, Demo Debug/Release, Pleos Debug와 Pleos AndroidTest 조립이 179개 task로 성공했습니다. Demo release 산출물은 unsigned이므로 공모전 제출용 서명·설치 검증은 아직 남아 있습니다.
+- Room v6에는 durable 409 conflict review와 parked-only published-delete tombstone, bounded retry가 구현돼 있습니다. Pleos/production cloud factory는 승인된 Cognito/API 설정과 concrete transport가 없으면 fail closed합니다.
 - `88b4938`은 최신 앱 HEAD가 아니라 P0-3A의 재현 가능한 local bootstrap/doctor와 offline zero-network fail-fast를 남긴 **역사적 증거**입니다.
-- 위 검사는 SDK-independent core·정적 계약 범위입니다. `main` 미병합이며 concrete Cognito/API host 및 no-redirect HTTP adapter 설정이 없어 actual cloud는 사용할 수 없습니다. Gradle build·Room/Android instrumentation·Compose test·vendor adapter·APK·Pleos AVD·AWS E2E는 아직 실행되지 않았습니다.
+- `main` 미병합이며 concrete Cognito/API host 및 no-redirect HTTP adapter 설정이 없어 actual cloud와 AWS E2E는 아직 사용할 수 없습니다. 실제 PLEOS system Back이 embedded child task에 전달되는지는 `UNRESOLVED`이며, 자동 UI 테스트는 resumed `MainActivity` dispatcher에 Back이 전달된 이후의 Compose 계약만 증명합니다.
 - 최신 코드에는 recording session, `highlightCount`, draft, pending queue, preset reference와 route source·consent/withdraw·로컬 `DELETE_PENDING` 상태가 포함됩니다.
-- 실제 위치·경로점 수집은 여전히 구현되지 않았습니다. 게시물 삭제도 주차 상태의 로컬 `DELETE_PENDING`까지만 구현됐고 network `DELETE`·retry는 아직 없습니다.
-- P0-3A는 doctor/fail-fast 범위에서 부분 완료됐습니다. 프로젝트가 요구하는 Gradle wrapper 8.9 cache와 Android platform 35가 없고 `services.gradle.org` DNS가 차단되어 tasks·variants·assemble에는 도달하지 못했습니다.
+- 실제 위치·경로점 수집은 여전히 구현되지 않았습니다. 게시물 삭제는 Room v6 tombstone과 network `DELETE`·bounded retry 계약까지 구현·계측됐지만, actual cloud 설정이 없어 demo/fake transport 증거입니다.
+- Gradle 8.9과 Android platform 35가 준비되어 실제 조립과 PLEOS AVD 계측까지 완료됐습니다. 역사적 `88b4938`의 bootstrap 차단 기록은 현재 상태가 아니라 과거 복구 증거로만 유지합니다.
 - preset route와 fake motion은 실제 차량 데이터가 아닌 데모 데이터입니다.
 
-따라서 현재 저장소만 clone해서는 앱을 실행할 수 없습니다. 아래 명령은 Android/Pleos 브랜치가 `main`에 병합되고 실제로 빌드·실행 검증된 뒤 사용할 **예정 실행 절차**입니다.
+따라서 `main`만 clone하면 아직 앱을 실행할 수 없습니다. 아래 명령은 검토 브랜치에서 성공했으며 PR #2 병합 뒤 `main`에서도 동일하게 재검증해야 합니다.
 
 ## 3분 확인 순서
 
 1. [현재 기능 상태](#현재-기능-상태)에서 actual/demo/future 구분을 확인합니다.
 2. [실행 방법](#실행-방법)에서 현재 실행 가능 여부와 예정 명령을 확인합니다.
 3. [테스트 환경과 설정](#테스트-환경과-필요한-설정)에서 Pleos AVD 요구사항을 확인합니다.
-4. [APK 상태](#apk-위치와-release-상태)에서 APK가 아직 생성되지 않았음을 확인합니다.
+4. [APK 상태](#apk-위치와-release-상태)에서 build APK와 제출용 signed APK의 차이를 확인합니다.
 
 ## 앱 소개
 
@@ -47,14 +48,14 @@ Social Drive의 목표 흐름은 다음과 같습니다.
 
 ## 현재 기능 상태
 
-| 등급 | 기능 | 2026-11-01 증거 |
+| 등급 | 기능 | 2026-11-02 증거 |
 |---|---|---|
-| `실제 SDK` | 없음 | Pleos AVD callback과 release 증거가 아직 없음 |
-| `코드 존재(미통합)` | Vehicle/NaviHelper + cloud + route-consent + conflict review | 최신 `f091e995`; core Kotlin 63/63, npm static 27/27. 409 durable stop, explicit adopt, publish-only replay 코드 포함. `main` 미병합, Gradle·Room instrumentation·Compose·APK·AVD·cloud 미실행 |
+| `코드 존재(미통합)` | Driving/Unknown 잠금, recording/draft/queue, consent/withdraw, 409 review, published delete | `dd3d61d`; 검토 브랜치에서 PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29, Gradle build/lint 성공. `main` 병합·actual cloud는 미완료 |
+| `코드 존재(미통합)` | Pleos flavor 초기화·수명주기, Compose 안전 UI, Room/WorkManager | Pleos Connect Android 14 user 10에서 브랜치 실행 검증. 실제 Vehicle 상태 read/callback과 physical system Back 전달은 증명하지 않음 |
 | `역사적 도구 증거` | P0-3A runtime bootstrap/doctor | `88b4938`; offline zero-network fail-fast 확인. tasks/variants/assemble 또는 앱 실행 성공 증거가 아님 |
-| `코드 존재(미통합)` | session/draft/queue, route source, consent/withdraw, local delete state | 실제 위치 수집 없이 demo/unavailable을 분리하고 게시물 삭제는 parked-only local `DELETE_PENDING`까지만 구현 |
+| `코드 존재(미통합)` | Vehicle/NaviHelper와 cloud production 경계 | vendor 초기화/수명주기와 fail-closed production port는 존재. 실제 Vehicle callback·Navi route callback·actual cloud는 별도 증거 필요 |
 | `데모 데이터` | preset route / fake motion | 실제 위치나 실제 Vehicle callback이 아님 |
-| `미구현` | 실제 위치·경로점 수집, network `DELETE`·retry, release APK | 구현 또는 검증 증거 없음 |
+| `미구현` | 실제 위치·경로점 수집, signed submission release APK, actual cloud E2E | 구현 또는 제출 검증 증거 없음 |
 | `향후 기능` | FusedLocation, SpeechToText, TextToSpeech, Vehicle Control | 공식 Coming Soon이며 이번 MVP의 실제 기능으로 사용하지 않음 |
 
 SDK 제공 상태는 [Pleos 프로젝트 및 SDK 상태 가이드](https://document.pleos.ai/en/docs/pleos-only/create-my-project)를 기준으로 하며, Vehicle과 NaviHelper의 구현 가능 여부와 앱에서 실제 검증됐는지는 별개입니다.
@@ -67,27 +68,27 @@ SDK 제공 상태는 [Pleos 프로젝트 및 SDK 상태 가이드](https://docum
 
 ```bash
 test -d android && echo "Android source present" || echo "Android source not merged"
-test -f apk/팀명_SocialDrive_release.apk && echo "Release APK present" || echo "Release APK not created"
+test -f apk/팀명_SocialDrive_release.apk && echo "Submission release APK present" || echo "Submission release APK not created"
 ```
 
 예상 결과:
 
 ```text
 Android source not merged
-Release APK not created
+Submission release APK not created
 ```
 
 ### Android 브랜치 병합 후 예정 절차
 
-다음 명령은 아직 이 작업공간에서 성공 검증되지 않았습니다. Android 소스가 `main`에 병합된 뒤 실제 모듈·variant 이름과 산출물 경로를 다시 확인해야 합니다.
+다음 명령은 Android 검토 브랜치 `dd3d61d`에서 성공했습니다. `main` 병합 뒤 다시 실행해야 합니다.
 
 ```bash
 cd android
 
-# 데모 데이터 기반 variant 빌드 예정 명령
+# 데모 데이터 기반 variant
 ./gradlew :app:assembleDemoDebug
 
-# Pleos SDK 연동 variant 빌드 예정 명령
+# Pleos SDK 연동 variant
 ./gradlew :app:assemblePleosDebug
 ```
 
@@ -98,22 +99,22 @@ adb devices
 adb install -r app/build/outputs/apk/demo/debug/app-demo-debug.apk
 ```
 
-위 APK 경로 역시 빌드가 통과한 뒤 실제 출력과 대조해야 합니다. 현재 성공 로그나 설치 증거는 없습니다.
+Demo/Pleos debug APK와 Demo unsigned release APK 생성은 확인했습니다. 제출용 release APK는 서명 후 깨끗한 PLEOS AVD에서 다시 설치·실행해야 합니다.
 
 ## 테스트 환경과 필요한 설정
 
 | 항목 | 제출 목표 | 현재 검증 상태 |
 |---|---|---|
 | OS | macOS 개발 환경 | 로컬 호스트 사용 중 |
-| JDK | JDK 17 | 17.0.13 설치 확인; Android Gradle build는 미실행 |
-| Android | minSdk 28 이상, API 34 Pleos AVD | Pleos API34/arm64 AVD 정의는 있으나 project bootstrap이 요구하는 exact Android platform 35는 없음; boot 미성공 |
-| Gradle | 프로젝트 wrapper 8.9 | 요구되는 8.9 distribution cache 없음. 호스트의 별도 8.14.3 cache는 프로젝트 wrapper 요구를 충족하지 않음; tasks·variants·assemble 미도달 |
-| Emulator | Pleos Connect Emulator 2.1.0, Cold Boot, RAM 4GB | AVD/system image와 RAM 4GB 확인. sandbox CPU feature 제약으로 `emulator -version` 실패; boot·앱 실행 증거 없음 |
-| Vehicle | Vehicle SDK 2.3.2 / Vehicle Service 대응 버전 | `f091e995`이 PLEOS 기반 코드를 포함; vendor adapter·Gradle·AVD callback 미실행 |
-| Navigation | NaviHelper 3.0.5 | `f091e995`이 NaviHelper 기반 코드를 포함; vendor adapter·Gradle·route callback 미실행 |
+| JDK | JDK 17 | Gradle build에서 사용·성공 |
+| Android | minSdk 28 이상, compile platform 35 | Android platform 35로 Demo/Pleos 조립 성공 |
+| Gradle | 프로젝트 wrapper 8.9 | clean/unit/lint/assemble 179 tasks 성공 |
+| Emulator | Pleos Connect Emulator 2.1.0, Android 14, user 10 | 앱 설치·UI 8/8·비UI 43/43 성공. physical system Back은 미검증 |
+| Vehicle | Vehicle SDK 2.3.2 / Vehicle Service 대응 버전 | 초기화·release 수명주기와 fail-closed Unknown 실행. 실제 permissioned state callback은 미검증 |
+| Navigation | NaviHelper 3.0.5 | 초기화·request coordinator 계약은 빌드/코어 검증. 실제 route callback 실기 증거는 미완료 |
 | AWS | Cognito JWT, DynamoDB, private S3 기반 목표 | backend `ddbd61f` 계약 포함. concrete Cognito/API host·no-redirect HTTP adapter 설정 부재로 actual cloud unavailable; AWS E2E 미실행 |
 
-P0-3A bootstrap/doctor는 missing wrapper 8.9와 platform 35를 진단하고 offline 실행에서 네트워크 요청 없이 즉시 실패하도록 검증됐다. 현재 `services.gradle.org` DNS가 차단되어 wrapper를 받을 수 없고 AGP·Kotlin Gradle plugin·Pleos vendor artifact도 준비되지 않았다. build·emulator·APK 성공을 주장할 수 없으며 signing secret과 keystore는 조회하지 않았다.
+P0-3A bootstrap/doctor의 과거 차단은 해소되어 build·emulator·debug APK 증거가 생겼습니다. signing secret과 keystore는 조회하지 않았고, 제출용 signed release와 actual cloud는 여전히 별도 승인·검증 경계입니다.
 
 ### Pleos variant에 필요한 설정
 
@@ -137,8 +138,8 @@ Android 소스가 병합되면 다음을 확인해야 합니다.
 
 아래 증거가 모두 생기기 전에는 `실제 SDK` 또는 실행 완료로 표시하지 않습니다.
 
-- [ ] Android Gradle build 성공 로그와 commit SHA
-- [ ] Pleos AVD 설치·실행 화면
+- [x] Android Gradle build 성공 로그와 commit SHA (`dd3d61d`)
+- [x] Pleos AVD 설치·실행 및 instrumentation 51/51
 - [ ] Vehicle capability와 P/D/R/N 상태 전환
 - [ ] NaviHelper 목적지·경유지 요청과 callback
 - [ ] 앱 재시작 후 session/draft/queue 복구
@@ -153,13 +154,13 @@ Android 소스가 병합되면 다음을 확인해야 합니다.
 apk/팀명_SocialDrive_release.apk
 ```
 
-현재 상태: **생성 전**
+현재 상태: **Debug와 unsigned release 생성 완료 · 제출용 signed release 미완료**
 
-- `apk/` 폴더와 release APK는 아직 없습니다.
+- Android 작업 브랜치에는 Demo/Pleos debug와 Demo unsigned release 산출물이 있으나, 제출용 `apk/` 폴더에는 아직 복사하지 않았습니다.
 - GitHub Release 링크도 아직 없습니다.
 - `팀명`은 최종 참가 팀명으로 교체해야 합니다.
 - APK가 생성되면 깨끗한 Pleos AVD에서 설치·재실행한 뒤 SHA-256을 기록해야 합니다.
-- APK가 없는데 다운로드 링크나 실행 가능 상태를 표시하지 않습니다.
+- 서명·깨끗한 AVD 설치·재실행·SHA-256 확인 전에는 제출 가능 release로 표시하지 않습니다.
 
 공식 파일명과 제출 방식은 [공모전 지원·제출 방법](https://appdevchallenge.auto-hmg.io/guide/submission)을 따릅니다.
 
