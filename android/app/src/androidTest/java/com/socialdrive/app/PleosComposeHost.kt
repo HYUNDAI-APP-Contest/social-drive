@@ -17,60 +17,119 @@ internal class PleosComposeHost {
     fun launch() {
         check(scenario == null)
         val stableReadiness = PleosTaskReadiness.awaitStableGeneration()
-        val launched = ActivityScenario.launch(MainActivity::class.java)
+        stableReadiness.assertPrelaunchStable()
+        stableReadiness.enterChildActive()
+        var launched: ActivityScenario<MainActivity>? = null
         try {
-            launched.moveToState(Lifecycle.State.RESUMED)
-            check(launched.state == Lifecycle.State.RESUMED) { "Compose host did not reach RESUMED" }
-            launched.onActivity { check(it.lifecycle.currentState == Lifecycle.State.RESUMED) }
-            stableReadiness.assertHealthy()
+            launched = ActivityScenario.launch(MainActivity::class.java)
+            requireNotNull(launched).moveToState(Lifecycle.State.RESUMED)
+            check(requireNotNull(launched).state == Lifecycle.State.RESUMED) { "Compose host did not reach RESUMED" }
+            requireNotNull(launched).onActivity { check(it.lifecycle.currentState == Lifecycle.State.RESUMED) }
+            stableReadiness.assertChildLogHealthy()
             readiness = stableReadiness
-            scenario = launched
+            scenario = requireNotNull(launched)
         } catch (failure: Throwable) {
-            runCatching { launched.close() }.exceptionOrNull()?.let(failure::addSuppressed)
-            stableReadiness.rethrowClassified(failure)
+            val closeFailure = runCatching {
+                launched?.let { active ->
+                    active.close()
+                    check(active.state == Lifecycle.State.DESTROYED) { "Compose host did not reach DESTROYED" }
+                }
+            }.exceptionOrNull()
+            val postFailure = runCatching(stableReadiness::assertChildLogHealthy).exceptionOrNull()
+            PleosFailureAudit.throwIfAny(failure, closeFailure, postFailure)
         }
     }
 
     fun setContent(content: @Composable () -> Unit) {
-        requireNotNull(readiness).withHealthCheck {
-            requireNotNull(scenario).onActivity { activity -> activity.setContent(content = content) }
+        requireNotNull(readiness).withChildLogCheck {
+            requireNotNull(scenario).onActivity { activity ->
+                check(activity.lifecycle.currentState == Lifecycle.State.RESUMED) { "Compose host is not RESUMED" }
+                activity.setContent(content = content)
+                check(activity.lifecycle.currentState == Lifecycle.State.RESUMED) { "Compose host left RESUMED" }
+            }
         }
     }
 
     fun close() {
         val active = scenario ?: return
         val stableReadiness = requireNotNull(readiness)
-        scenario = null
-        readiness = null
-        stableReadiness.withHealthCheck {
-            active.close()
-            check(active.state == Lifecycle.State.DESTROYED) { "Compose host did not reach DESTROYED" }
+        try {
+            PleosCloseAudit.run(
+                pre = stableReadiness::assertChildLogHealthy,
+                close = {
+                    active.close()
+                    check(active.state == Lifecycle.State.DESTROYED) { "Compose host did not reach DESTROYED" }
+                },
+                post = stableReadiness::assertChildLogHealthy,
+            )
+        } finally {
+            scenario = null
+            readiness = null
         }
     }
 }
 
 internal class PleosReadinessSession(
-    private val guard: PleosFatalLogGuard?,
-    private val homePid: String?,
+    private val guard: PleosFatalLogGuard,
+    private val prelaunchHomePid: String,
+    private val prelaunchCheck: (PleosFatalLogGuard, String) -> Unit = PleosTaskReadiness::assertStableGenerationHealthy,
+    private val currentHomePid: () -> String? = PleosTaskReadiness::currentHomePidIfNumeric,
+    private val logCheck: (PleosFatalLogGuard, Set<String>) -> Unit = PleosTaskReadiness::assertLogHealthy,
 ) {
-    fun assertHealthy() {
-        if (guard != null && homePid != null) PleosTaskReadiness.assertHealthy(guard, homePid)
+    private var phase = PleosReadinessPhase.PrelaunchOrganizer
+    private val relevantPids = mutableSetOf(prelaunchHomePid, android.os.Process.myPid().toString())
+
+    fun assertPrelaunchStable() {
+        check(phase == PleosReadinessPhase.PrelaunchOrganizer)
+        prelaunchCheck(guard, prelaunchHomePid)
     }
 
-    fun <T> withHealthCheck(block: () -> T): T = try {
-        block().also { assertHealthy() }
-    } catch (failure: Throwable) {
-        rethrowClassified(failure)
+    fun enterChildActive() {
+        check(phase == PleosReadinessPhase.PrelaunchOrganizer)
+        phase = PleosReadinessPhase.ChildActive
     }
 
-    fun rethrowClassified(failure: Throwable): Nothing {
-        val readinessFailure = runCatching(::assertHealthy).exceptionOrNull()
-        if (readinessFailure != null) {
-            readinessFailure.addSuppressed(failure)
-            throw readinessFailure
-        }
-        throw failure
+    fun assertChildLogHealthy() {
+        check(phase == PleosReadinessPhase.ChildActive)
+        currentHomePid()?.let(relevantPids::add)
+        logCheck(guard, relevantPids)
     }
+
+    fun <T> withChildLogCheck(block: () -> T): T {
+        val preFailure = runCatching(::assertChildLogHealthy).exceptionOrNull()
+        val result = runCatching(block)
+        val postFailure = runCatching(::assertChildLogHealthy).exceptionOrNull()
+        PleosFailureAudit.throwIfAny(result.exceptionOrNull(), postFailure, preFailure)
+        return result.getOrThrow()
+    }
+}
+
+internal enum class PleosReadinessPhase { PrelaunchOrganizer, ChildActive }
+
+internal object PleosCloseAudit {
+    fun run(pre: () -> Unit, close: () -> Unit, post: () -> Unit) {
+        val preFailure = runCatching(pre).exceptionOrNull()
+        val closeFailure = runCatching(close).exceptionOrNull()
+        val postFailure = runCatching(post).exceptionOrNull()
+        PleosFailureAudit.throwIfAny(closeFailure, postFailure, preFailure)
+    }
+}
+
+internal object PleosFailureAudit {
+    fun throwIfAny(vararg failures: Throwable?) {
+        val present = failures.filterNotNull()
+        val primary = present.firstOrNull(Throwable::isFatalOrDuplicate) ?: present.firstOrNull() ?: return
+        present.filterNot { it === primary }.forEach(primary::addSuppressed)
+        throw primary
+    }
+
+    private fun Throwable.isFatalOrDuplicate(): Boolean = message.orEmpty().let { message ->
+        message.contains("PLEOS readiness fatal") || message.contains("PLEOS readiness duplicate_listener")
+    }
+}
+
+internal object PleosHomePid {
+    fun singleOrNull(raw: String): String? = raw.trim().takeIf { it.matches(Regex("[0-9]+")) }
 }
 
 internal data class PleosOrganizerSnapshot(val homePid: String, val taskIds: List<String>)
@@ -98,8 +157,8 @@ internal object PleosReadinessParser {
         homePidAfter: String,
         currentUserId: Int? = null,
     ): PleosObservation {
-        val before = numericPid(homePidBefore)
-        val after = numericPid(homePidAfter)
+        val before = PleosHomePid.singleOrNull(homePidBefore)
+        val after = PleosHomePid.singleOrNull(homePidAfter)
         if (before == null || after == null) return PleosObservation(null, "home_pid_missing_or_multiple")
         if (before != after) return PleosObservation(null, "home_generation_changed")
         if (dump.isBlank() || dump.contains("Permission Denial", ignoreCase = true)) {
@@ -118,8 +177,6 @@ internal object PleosReadinessParser {
         }
         return PleosObservation(PleosOrganizerSnapshot(after, ids.map { it.single() }), "ready")
     }
-
-    private fun numericPid(raw: String): String? = raw.trim().takeIf { it.matches(Regex("[0-9]+")) }
 
     private fun parseTasks(dump: String): ParsedTasks {
         val tasks = mutableListOf<TaskBlock>()
@@ -316,7 +373,7 @@ private object PleosTaskReadiness {
     fun awaitStableGeneration(): PleosReadinessSession {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         if (runCatching { instrumentation.targetContext.packageManager.getApplicationInfo(HOME_PACKAGE, 0) }.isFailure) {
-            return PleosReadinessSession(null, null)
+            error("PLEOS readiness home_package_missing")
         }
         val logGuard = PleosFatalLogGuard(System.currentTimeMillis() / 1_000.0, relevantPackages)
         val generation = StableOrganizerGeneration()
@@ -325,33 +382,37 @@ private object PleosTaskReadiness {
         var lastReason = "not_observed"
         while (SystemClock.elapsedRealtime() < deadline) {
             val pidBefore = shell(PID_COMMAND)
-            inspectLogs(logGuard, pidBefore)
+            assertLogHealthy(logGuard, listOfNotNull(PleosHomePid.singleOrNull(pidBefore)).toSet())
             val dump = shell(ACTIVITY_COMMAND)
             val pidAfter = shell(PID_COMMAND)
             val observation = PleosReadinessParser.observe(pidBefore, dump, pidAfter, currentUserId)
             lastReason = observation.reason
-            inspectLogs(logGuard, pidAfter)
+            assertLogHealthy(logGuard, listOfNotNull(PleosHomePid.singleOrNull(pidAfter)).toSet())
             if (generation.record(observation)) {
-                inspectLogs(logGuard, pidAfter)
+                assertLogHealthy(logGuard, listOfNotNull(PleosHomePid.singleOrNull(pidAfter)).toSet())
                 return PleosReadinessSession(logGuard, requireNotNull(observation.snapshot).homePid)
             }
         }
         error("PLEOS readiness deadline: $lastReason")
     }
 
-    fun assertHealthy(guard: PleosFatalLogGuard, expectedHomePid: String) {
-        val currentHomePid = shell(PID_COMMAND).trim()
-        inspectLogs(guard, currentHomePid)
+    fun assertStableGenerationHealthy(guard: PleosFatalLogGuard, expectedHomePid: String) {
+        val currentHomePid = currentHomePidIfNumeric()
+        assertLogHealthy(guard, listOfNotNull(expectedHomePid, currentHomePid).toSet())
         if (currentHomePid != expectedHomePid) error("PLEOS readiness home_generation_changed")
     }
 
-    private fun inspectLogs(guard: PleosFatalLogGuard, homePid: String) {
+    fun assertLogHealthy(guard: PleosFatalLogGuard, relevantPids: Set<String>) {
         val cursor = String.format(Locale.US, "%.3f", guard.baselineEpochSeconds)
         val log = shell("logcat -d -v epoch -T $cursor")
         if (PleosShellDiagnostics.logcatCommandFailed(log)) error("PLEOS readiness logcat_unavailable")
-        guard.inspect(log, setOf(homePid.trim()))
+        guard.inspect(log, relevantPids)
             ?.let { evidence -> error("PLEOS readiness ${evidence.kind} ${evidence.tag} pid=${evidence.pid} hash=${evidence.hash}") }
     }
+
+    fun currentHomePidIfNumeric(): String? = runCatching { shell(PID_COMMAND) }
+        .getOrNull()
+        ?.let(PleosHomePid::singleOrNull)
 
     private fun shell(command: String): String {
         val descriptor = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand(command)

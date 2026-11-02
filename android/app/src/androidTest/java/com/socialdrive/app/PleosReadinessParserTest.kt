@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -109,6 +110,141 @@ class PleosReadinessParserTest {
         assertTrue(PleosShellDiagnostics.logcatCommandFailed("logcat: unknown option -Z"))
     }
 
+    @Test fun closeAuditAlwaysCleansAndPrioritizesPostFatalEvidence() {
+        var cleanCloseCalled = false
+        var cleanPostCalled = false
+        PleosCloseAudit.run(
+            pre = {},
+            close = { cleanCloseCalled = true },
+            post = { cleanPostCalled = true },
+        )
+        assertTrue(cleanCloseCalled)
+        assertTrue(cleanPostCalled)
+        assertEquals("99", PleosHomePid.singleOrNull("99\n"))
+        assertNull(PleosHomePid.singleOrNull(""))
+
+        val preLogFailure = IllegalStateException("PLEOS readiness logcat_unavailable")
+        var closeAfterPreFailure = false
+        var postAfterPreFailure = false
+        val preFailure = captureFailure {
+            PleosCloseAudit.run(
+                pre = { throw preLogFailure },
+                close = { closeAfterPreFailure = true },
+                post = { postAfterPreFailure = true },
+            )
+        }
+        assertSame(preLogFailure, preFailure)
+        assertTrue(closeAfterPreFailure)
+        assertTrue(postAfterPreFailure)
+
+        val notDestroyed = IllegalStateException("Compose host did not reach DESTROYED")
+        var postAfterCloseFailure = false
+        val closeFailure = captureFailure {
+            PleosCloseAudit.run(
+                pre = {},
+                close = { throw notDestroyed },
+                post = { postAfterCloseFailure = true },
+            )
+        }
+        assertSame(notDestroyed, closeFailure)
+        assertTrue(postAfterCloseFailure)
+
+        val fatal = IllegalStateException("PLEOS readiness fatal AndroidRuntime pid=99 hash=abc")
+        val fatalPrimary = captureFailure {
+            PleosCloseAudit.run(
+                pre = {},
+                close = { throw notDestroyed },
+                post = { throw fatal },
+            )
+        }
+        assertSame(fatal, fatalPrimary)
+        assertTrue(fatalPrimary.suppressed.contains(notDestroyed))
+
+        val duplicate = IllegalStateException("PLEOS readiness duplicate_listener task_organizer pid=99 hash=def")
+        val duplicatePrimary = captureFailure {
+            PleosCloseAudit.run(
+                pre = { throw preLogFailure },
+                close = { throw notDestroyed },
+                post = { throw duplicate },
+            )
+        }
+        assertSame(duplicate, duplicatePrimary)
+        assertTrue(duplicatePrimary.suppressed.contains(notDestroyed))
+        assertTrue(duplicatePrimary.suppressed.contains(preLogFailure))
+
+        val logcatFailure = IllegalStateException("PLEOS readiness logcat_unavailable")
+        assertSame(
+            logcatFailure,
+            captureFailure { PleosCloseAudit.run(pre = {}, close = {}, post = { throw logcatFailure }) },
+        )
+
+        // A temporarily empty post-close pid is not itself a failure; package-scoped logs remain audited.
+        PleosCloseAudit.run(pre = {}, close = {}, post = {})
+        val postGuard = PleosFatalLogGuard(100.0, setOf("ai.umos.homescreen"))
+        assertNotNull(postGuard.inspect(fatalLog("101.000", pid = "99"), setOf("42", "99")))
+    }
+
+    @Test fun readinessSessionUsesOrganizerChecksOnlyBeforeChildLaunch() {
+        val guard = PleosFatalLogGuard(100.0, setOf("ai.umos.homescreen", "com.socialdrive.app"))
+        val generationChanged = IllegalStateException("PLEOS readiness home_generation_changed")
+        val changedBeforeLaunch = PleosReadinessSession(
+            guard = guard,
+            prelaunchHomePid = "42",
+            prelaunchCheck = { _, _ -> throw generationChanged },
+            currentHomePid = { "99" },
+            logCheck = { _, _ -> },
+        )
+        assertSame(generationChanged, captureFailure(changedBeforeLaunch::assertPrelaunchStable))
+
+        var currentPid: String? = "99"
+        var prelaunchCalls = 0
+        val auditedPidSets = mutableListOf<Set<String>>()
+        val session = PleosReadinessSession(
+            guard = guard,
+            prelaunchHomePid = "42",
+            prelaunchCheck = { _, expected ->
+                prelaunchCalls += 1
+                assertEquals("42", expected)
+            },
+            currentHomePid = { currentPid },
+            logCheck = { _, pids -> auditedPidSets += pids.toSet() },
+        )
+        session.assertPrelaunchStable()
+        assertEquals(1, prelaunchCalls)
+        session.enterChildActive()
+        session.assertChildLogHealthy()
+        assertTrue(auditedPidSets.single().containsAll(setOf("42", "99")))
+
+        // Rehome/task removal is not an organizer failure after launch; an empty pid still audits logs.
+        currentPid = null
+        session.assertChildLogHealthy()
+        assertEquals(2, auditedPidSets.size)
+        assertEquals(1, prelaunchCalls)
+        assertTrue(runCatching(session::assertPrelaunchStable).isFailure)
+
+        val bodyFailure = AssertionError("UI assertion")
+        val cleanBodyFailure = captureFailure { session.withChildLogCheck { throw bodyFailure } }
+        assertSame(bodyFailure, cleanBodyFailure)
+
+        var logCalls = 0
+        val fatal = IllegalStateException("PLEOS readiness fatal AndroidRuntime pid=99 hash=abc")
+        val fatalSession = PleosReadinessSession(
+            guard = guard,
+            prelaunchHomePid = "42",
+            prelaunchCheck = { _, _ -> },
+            currentHomePid = { "99" },
+            logCheck = { _, _ ->
+                logCalls += 1
+                if (logCalls == 2) throw fatal
+            },
+        )
+        fatalSession.assertPrelaunchStable()
+        fatalSession.enterChildActive()
+        val fatalPrimary = captureFailure { fatalSession.withChildLogCheck { throw bodyFailure } }
+        assertSame(fatal, fatalPrimary)
+        assertTrue(fatalPrimary.suppressed.contains(bodyFailure))
+    }
+
     private fun fixture(
         fullComponents: Boolean = false,
         homeVisible: Boolean = true,
@@ -147,11 +283,14 @@ class PleosReadinessParserTest {
             state=$state stopped=${state == "STOPPED"}
     """.trimIndent() + "\n"
 
-    private fun fatalLog(epoch: String): String = """
-        $epoch 42 42 E AndroidRuntime: FATAL EXCEPTION: main
-        $epoch 42 42 E AndroidRuntime: Process: ai.umos.homescreen, PID: 42
-        $epoch 42 42 E AndroidRuntime: java.lang.IllegalArgumentException: boom
+    private fun fatalLog(epoch: String, pid: String = "42"): String = """
+        $epoch $pid $pid E AndroidRuntime: FATAL EXCEPTION: main
+        $epoch $pid $pid E AndroidRuntime: Process: ai.umos.homescreen, PID: $pid
+        $epoch $pid $pid E AndroidRuntime: java.lang.IllegalArgumentException: boom
     """.trimIndent()
+
+    private fun captureFailure(block: () -> Unit): Throwable =
+        runCatching(block).exceptionOrNull() ?: error("Expected failure")
 
     private fun capturedStyleDump(): String = buildString {
         append(task("1000299", "ai.umos.homescreen/.HomeActivity"))

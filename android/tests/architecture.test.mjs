@@ -262,7 +262,7 @@ test("instrumented safety suite covers lock back confirmation and parked publish
     );
     assert.match(source, /\.assertDoesNotExist\(\)/);
   }
-  assert.match(host, /awaitStableGeneration\(\)[\s\S]*ActivityScenario\.launch\(MainActivity::class\.java\)/);
+  assert.match(host, /awaitStableGeneration\(\)[\s\S]*assertPrelaunchStable\(\)[\s\S]*enterChildActive\(\)[\s\S]*ActivityScenario\.launch\(MainActivity::class\.java\)/);
   assert.match(host, /moveToState\(Lifecycle\.State\.RESUMED\)/);
   assert.match(host, /fun observe\([\s\S]*homePidBefore: String,[\s\S]*dump: String,[\s\S]*homePidAfter: String,[\s\S]*currentUserId: Int\?/);
   assert.match(host, /PleosOrganizerSnapshot\(after, ids\.map \{ it\.single\(\) \}\)/);
@@ -287,8 +287,17 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.match(host, /logcat -d -v epoch -T/);
   assert.doesNotMatch(host, /logcat -c|force-stop|\bsu\s+-c\b|adoptShellPermissionIdentity/);
   assert.match(host, /duplicate_listener/);
-  assert.match(host, /setContent[\s\S]*withHealthCheck/);
-  assert.match(host, /fun close\(\)[\s\S]*withHealthCheck[\s\S]*Lifecycle\.State\.DESTROYED/);
+  assert.match(host, /fun setContent[\s\S]*withChildLogCheck[\s\S]*Lifecycle\.State\.RESUMED[\s\S]*activity\.setContent[\s\S]*Lifecycle\.State\.RESUMED/);
+  assert.match(host, /fun close\(\)[\s\S]*PleosCloseAudit\.run[\s\S]*assertChildLogHealthy[\s\S]*active\.close\(\)[\s\S]*Lifecycle\.State\.DESTROYED[\s\S]*assertChildLogHealthy/);
+  const childHealth = host.match(/fun assertChildLogHealthy\(\)[\s\S]*?\n    }/)?.[0] ?? "";
+  assert.match(childHealth, /currentHomePid\(\)[\s\S]*logCheck/);
+  assert.doesNotMatch(childHealth, /assertStableGenerationHealthy|observe\(|parseTasks|ACTIVITY_COMMAND/);
+  assert.match(host, /fun assertPrelaunchStable\(\)[\s\S]*assertStableGenerationHealthy/);
+  assert.match(host, /enum class PleosReadinessPhase \{ PrelaunchOrganizer, ChildActive \}/);
+  assert.match(host, /mutableSetOf\(prelaunchHomePid, android\.os\.Process\.myPid\(\)\.toString\(\)\)/);
+  assert.match(host, /present\.firstOrNull\(Throwable::isFatalOrDuplicate\)/);
+  assert.match(host, /home_package_missing/);
+  assert.match(host, /finally \{[\s\S]*scenario = null[\s\S]*readiness = null/);
   assert.match(host, /\^\(\?:logcat:\|\/system\/bin\/sh:/);
   assert.match(host, /active\.close\(\)[\s\S]*Lifecycle\.State\.DESTROYED/);
   assert.doesNotMatch(host, /(?:Thread|SystemClock)\.sleep|createAndroidComposeRule/);
@@ -298,6 +307,8 @@ test("instrumented safety suite covers lock back confirmation and parked publish
     "initializingDefaultTasksAreAcceptedOnlyAfterStableTaskIds",
     "stableTrackerRequiresTwoCoherentObservationsAndResetsOnNullOrChange",
     "fatalGuardIgnoresOldBaselineAndRejectsNewRelevantFatalOrDuplicate",
+    "closeAuditAlwaysCleansAndPrioritizesPostFatalEvidence",
+    "readinessSessionUsesOrganizerChecksOnlyBeforeChildLaunch",
     "currentUserDerivesFromPublicProcessUidRange",
   ]) assert.ok(hostTest.includes(marker), marker);
   assert.match(hostTest, /Task with ID 20 not found/);
