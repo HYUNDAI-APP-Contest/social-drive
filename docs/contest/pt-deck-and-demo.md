@@ -12,7 +12,7 @@
 
 1. 실제 앱 화면과 실제 실행 증거를 먼저 보여 준다.
 2. `실제 SDK`, `앱 구현`, `코드 존재(미통합)`, `데모 데이터`, `미구현`, `향후 기능`을 같은 색상 체계로 끝까지 구분한다.
-3. 최신 Android 검토 브랜치 HEAD `dd3d61d`은 PLEOS·cloud·route-consent, Room v6 conflict review와 published-delete lifecycle을 포함한다. PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29, Gradle build/lint·APK 생성은 성공했지만 `main` 미병합이므로 `코드 존재(미통합)` 상태다. actual cloud·실제 Vehicle/Navi callback·signed release는 미완료이고 PLEOS system Back은 `UNRESOLVED`다.
+3. 최신 Android 검토 브랜치 HEAD `4f2b559`은 PLEOS·cloud·route-consent, Room v6 conflict review와 published-delete lifecycle을 포함한다. PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29, Gradle build/lint·APK 생성은 성공했지만 `main` 미병합이므로 `코드 존재(미통합)` 상태다. actual cloud·실제 Vehicle/Navi callback·signed release는 미완료이고 PLEOS system Back은 `UNRESOLVED`다.
 4. FusedLocation, STT, TTS, Vehicle Control은 실제 기능으로 말하지 않는다.
 5. MAU와 retention은 산식·검증 방법을 제시하고 근거 없는 숫자를 만들지 않는다.
 
@@ -59,7 +59,7 @@
 
 - Compose/Room/Worker: 현재 `코드 존재(미통합)`
 - preset 경로: `데모 데이터`
-- Vehicle/NaviHelper: HEAD `dd3d61d`의 Pleos build·AVD 안전 UI 증거는 있으나 실제 P/D/R/N·route callback은 미검증. callback 실기 성공 후에만 `실제 SDK`
+- Vehicle/NaviHelper: HEAD `4f2b559`의 Pleos build·AVD 안전 UI 증거는 있으나 실제 P/D/R/N·route callback은 미검증. callback 실기 성공 후에만 `실제 SDK`
 
 ### 4장 — 모바일이 아니라 차량이어야 완성된다
 
@@ -72,7 +72,7 @@
 
 발표 문장:
 
-> 구현 목표는 Vehicle 상태로 사용자가 입력할 수 있는 순간을 결정하고 NaviHelper로 콘텐츠를 실제 주행에 연결하는 것입니다. HEAD `dd3d61d`은 PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29과 Gradle build/lint를 통과했지만 실제 Vehicle/Navi callback은 미검증이며, Coming Soon SDK도 실제 기능으로 주장하지 않습니다.
+> 구현 목표는 Vehicle 상태로 사용자가 입력할 수 있는 순간을 결정하고 NaviHelper로 콘텐츠를 실제 주행에 연결하는 것입니다. HEAD `4f2b559`은 PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29과 Gradle build/lint를 통과했지만 실제 Vehicle/Navi callback은 미검증이며, Coming Soon SDK도 실제 기능으로 주장하지 않습니다.
 
 평가 연결: 기술 활용성. [공식 개발 환경](https://appdevchallenge.auto-hmg.io/guide/development), [공식 SDK 상태](https://document.pleos.ai/en/docs/pleos-only/create-my-project)
 
@@ -104,9 +104,9 @@ Parked
 왼쪽, 현재 코드 증거:
 
 - Android 별도 작업 브랜치: recording session, `highlightCount`, draft, pending queue, preset reference와 안전 gate 코드
-- Android HEAD `dd3d61d`: PLEOS·cloud·route-consent + Room v6 conflict/delete lifecycle
+- Android HEAD `4f2b559`: PLEOS·cloud·route-consent + Room v6 conflict/delete lifecycle
 - 테스트 소스: 안전 정책, Room migration, 오프라인 복구, API security
-- 작업 브랜치 실행 증거: `dd3d61d`, PLEOS 51/51, Kotlin 74/74, static 29/29, Gradle 179 tasks. 409 durable stop·explicit adopt·publish-only replay 포함
+- 작업 브랜치 실행 증거: `4f2b559`, PLEOS 51/51, Kotlin 74/74, static 29/29, Gradle 179 tasks. 409 durable stop·explicit adopt·publish-only replay 포함
 - consent/withdraw와 demo/unavailable 구분, Room v6 published-delete lifecycle은 코드·계측에 있으나 실제 위치 수집과 actual cloud delete는 없음
 - 아직 없는 증거: 실제 경로점·위치 수집, main 병합, concrete cloud 설정, 실제 Vehicle/Navi callback, 앱-AWS E2E, signed submission release, physical PLEOS Back 수용 시험
 - 역사적 `88b4938` P0-3A doctor는 missing wrapper 8.9·platform 35를 보고하고 offline zero-network fail-fast. 최신 앱 HEAD나 tasks/variants/assemble 성공 증거가 아님
@@ -153,7 +153,7 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 | 0–7초 | 로고, 앱명, 차량 화면 | 없음 | “한 번의 터치가 다음 사람의 드라이브가 됩니다.” |
 | 7–17초 | SNS→지도→내비 재입력 Before | 문제 정의 | “좋은 코스를 발견해도 장소를 다시 찾아야 합니다.” |
 | 17–29초 | 피드와 드라이브 상세 | 현재 `코드 존재(미통합)` 또는 `데모 데이터` | 코스, 하이라이트, preset 목적지 확인 |
-| 29–43초 | `이 코스 따라가기` 데모 화면 | 현재 `코드 존재(미통합)`; 실제 callback 성공 시에만 `실제 SDK` | `dd3d61d`의 coordinator/build 증거. NaviHelper route callback은 미실행이므로 현재는 데모로 명시 |
+| 29–43초 | `이 코스 따라가기` 데모 화면 | 현재 `코드 존재(미통합)`; 실제 callback 성공 시에만 `실제 SDK` | `4f2b559`의 coordinator/build 증거. NaviHelper route callback은 미실행이므로 현재는 데모로 명시 |
 | 43–57초 | Driving/Unknown 안전 잠금과 앱 내 기록 종료 CTA | 검토 브랜치의 PLEOS 실행 증거 | UI instrumentation으로 안전 잠금·dispatcher dialog 계약 검증. system Back 성공 장면으로 편집 금지 |
 | 57–70초 | 기록 화면에서 `방금 좋았어` 한 번 터치 | 현재 `코드 존재(미통합)` 또는 `데모 데이터` | 주행 중 긴 입력이 없음을 보여 줌 |
 | 70–80초 | 앱 종료·재실행 후 세션/초안 복원 | 검증 후 `앱 구현` | session·draft·queue persistence 증거. 실제 경로점 저장으로 표현 금지 |
@@ -283,7 +283,7 @@ No-Go 대응:
 
 ### 모바일 앱과 무엇이 다른가?
 
-완성 목표에서는 Vehicle 상태가 입력 가능 범위를 결정하고 NaviHelper가 콘텐츠를 차량의 실제 경로 안내로 전환한다. HEAD `dd3d61d`은 PLEOS instrumentation 51/51과 Gradle build/lint를 통과했지만 `main` 미병합이며 실제 Vehicle/Navi callback은 미검증이다. callback 실기까지 완료되면 모바일과 달리 차량 상태 기반 안전 전환부터 차량 Navigation 앱까지 흐름을 완결할 수 있다.
+완성 목표에서는 Vehicle 상태가 입력 가능 범위를 결정하고 NaviHelper가 콘텐츠를 차량의 실제 경로 안내로 전환한다. HEAD `4f2b559`은 PLEOS instrumentation 51/51과 Gradle build/lint를 통과했지만 `main` 미병합이며 실제 Vehicle/Navi callback은 미검증이다. callback 실기까지 완료되면 모바일과 달리 차량 상태 기반 안전 전환부터 차량 Navigation 앱까지 흐름을 완결할 수 있다.
 
 ### 주행 중 안전을 어떻게 강제하는가?
 
@@ -291,7 +291,7 @@ No-Go 대응:
 
 ### 위치정보는 언제 서버로 가는가?
 
-현재 HEAD `dd3d61d`은 consent/withdraw·route source 안전 경계와 published-delete network lifecycle을 포함하지만 실제 위치·경로점 수집은 미구현이고 preset reference만 사용한다. delete는 demo transport에서 계측됐으며 actual cloud와 실제 위치 source는 후속 Go 조건이다.
+현재 HEAD `4f2b559`은 consent/withdraw·route source 안전 경계와 published-delete network lifecycle을 포함하지만 실제 위치·경로점 수집은 미구현이고 preset reference만 사용한다. delete는 demo transport에서 계측됐으며 actual cloud와 실제 위치 source는 후속 Go 조건이다.
 
 ### 실제 SDK와 데모 기능은 무엇인가?
 

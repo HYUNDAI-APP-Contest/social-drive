@@ -91,8 +91,8 @@ Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-o
 
 | 기능 | 공식 상태 | 2026-11-02 저장소 등급 | 승격 조건/금지 사항 |
 |---|---|---|---|
-| Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | `코드 존재(미통합)` | Android HEAD `dd3d61d`의 Pleos flavor가 AVD에서 초기화·release와 fail-closed Unknown 경계를 통과했다. 실제 permissioned P/D/R/N callback 증거 후에만 `실제 SDK` |
-| NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | `코드 존재(미통합)` | Android HEAD `dd3d61d`의 coordinator·lifecycle·route request 계약이 빌드·core에서 검증됐다. 실제 route/event callback 실기 증거 후에만 `실제 SDK` |
+| Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | `코드 존재(미통합)` | Android HEAD `4f2b559`의 Pleos flavor가 AVD에서 초기화·release와 fail-closed Unknown 경계를 통과했다. 실제 permissioned P/D/R/N callback 증거 후에만 `실제 SDK` |
+| NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | `코드 존재(미통합)` | Android HEAD `4f2b559`의 coordinator·lifecycle·route request 계약이 빌드·core에서 검증됐다. 실제 route/event callback 실기 증거 후에만 `실제 SDK` |
 | FusedLocation | Coming Soon | `향후 기능` | 실제 위치·경로점 수집 기능으로 주장하거나 MVP 필수 의존성으로 사용 금지 |
 | SpeechToText | Coming Soon | `향후 기능` | 실제 음성 인식 기능으로 주장 금지 |
 | TextToSpeech | Coming Soon | `향후 기능` | 실제 음성 합성 기능으로 주장 금지 |
@@ -119,12 +119,12 @@ Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-o
 | 영역 | 현재 위치/상태 | 현재 주장 가능한 수준 |
 |---|---|---|
 | 기본 `main` | 공모전 앱 기능 브랜치가 아직 병합되지 않은 기준점 | 오케스트레이터 기반만 존재하며 완성 앱으로 주장 불가 |
-| Android local/consent 기반 | Android HEAD `dd3d61d` | `코드 존재(미통합)`. 검토 브랜치에서 PLEOS UI 8/8, 비UI 43/43, Room v6 migration/persistence, WorkManager 계약 실행 성공 |
+| Android local/consent 기반 | Android HEAD `4f2b559` | `코드 존재(미통합)`. 검토 브랜치에서 PLEOS UI 8/8, 비UI 43/43, Room v6 migration/persistence, WorkManager 계약 실행 성공 |
 | 실제 경로점·위치 수집 | 확인된 구현 증거 없음 | `미구현`. consent 안전 경계가 있어도 실제 위치 샘플·route point를 수집한다고 주장 금지 |
-| Android cloud·409 conflict contract | Android HEAD `dd3d61d` + backend 계약 `ddbd61f` | `코드 존재(미통합)`. Kotlin 74/74, static 29/29, Room instrumentation 포함. concrete Cognito/API 설정이 없어 actual cloud는 fail closed |
-| 409 crash-window 안전 경계 | Android HEAD `dd3d61d` | `FAILED/VERSION_CONFLICT`는 일반 worker/recovery가 claim하지 않으며 명시적 adopt만 publish queue로 전환. 자동 GET·overwrite·재게시 금지. core·정적·Room instrumentation 증거 |
-| Vehicle/NaviHelper adapter | Android HEAD `dd3d61d`이 PLEOS 기반 코드 포함 | `코드 존재(미통합)`. Pleos Debug와 AndroidTest 조립·AVD 실행 성공. 실제 Vehicle/Navi callback은 미검증이므로 `실제 SDK` 증거 아님 |
-| PLEOS system Back | Android HEAD `dd3d61d` | `UNRESOLVED`. MainActivity dispatcher 이후 Compose stop dialog만 자동 검증. synthetic Back은 Home organizer로 라우팅됐고 physical/vendor 수용 시험이 필요 |
+| Android cloud·409 conflict contract | Android HEAD `4f2b559` + backend 계약 `ddbd61f` | `코드 존재(미통합)`. Kotlin 74/74, static 29/29, Room instrumentation 포함. concrete Cognito/API 설정이 없어 actual cloud는 fail closed |
+| 409 crash-window 안전 경계 | Android HEAD `4f2b559` | `FAILED/VERSION_CONFLICT`는 일반 worker/recovery가 claim하지 않으며 명시적 adopt만 publish queue로 전환. 자동 GET·overwrite·재게시 금지. core·정적·Room instrumentation 증거 |
+| Vehicle/NaviHelper adapter | Android HEAD `4f2b559`이 PLEOS 기반 코드 포함 | `코드 존재(미통합)`. Pleos Debug와 AndroidTest 조립·AVD 실행 성공. 실제 Vehicle/Navi callback은 미검증이므로 `실제 SDK` 증거 아님 |
+| PLEOS system Back | Android HEAD `4f2b559` | `UNRESOLVED`. MainActivity dispatcher 이후 Compose stop dialog만 자동 검증. synthetic Back은 Home organizer로 라우팅됐고 physical/vendor 수용 시험이 필요 |
 | P0-3A bootstrap/doctor | 역사적 commit `88b4938` | 재현 가능한 bootstrap/doctor와 offline zero-network fail-fast의 역사적 증거. 최신 앱 HEAD 또는 build/runtime 성공 증거가 아님 |
 | root `readme.md` | 앱 소개·실행 방법·테스트 환경/설정·APK 목표 경로를 문서화 | 문서 준비 완료. Android/main 미병합과 제출용 signed release 미완료를 명시 |
 | 빌드 산출물 | Demo Debug/unsigned Release, Pleos Debug, Pleos AndroidTest 생성 | 브랜치 build 증거. 제출용 signed release·clean install/relaunch·SHA-256은 미완료 |

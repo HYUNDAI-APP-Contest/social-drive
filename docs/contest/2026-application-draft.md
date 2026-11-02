@@ -32,7 +32,7 @@
 
 좋은 드라이브 코스를 발견하는 곳과 실제로 주행하는 곳이 분리되어 있다. SNS에서 사진이나 후기를 발견해도 지도에서 장소를 다시 찾고, 차량 내비게이션에 목적지와 경유지를 다시 입력해야 한다. 반대로 운전 중 좋았던 순간을 메모하거나 자세히 기록하려는 행동은 주의 분산과 충돌한다.
 
-Social Drive는 다음 경험을 제출 목표로 한다. 최신 Android 검토 브랜치 HEAD `dd3d61d`에는 PLEOS·cloud·route-consent, Room v6 conflict review와 published-delete lifecycle이 있다. PLEOS Connect Android 14(user 10)에서 UI 8/8과 비UI 43/43, Kotlin core 74/74, static 29/29이 통과했고 Gradle clean/unit/lint와 Demo Debug·Release, Pleos Debug·AndroidTest 조립 179 tasks가 성공했다. 다만 `main` 미병합이고 actual cloud·AWS E2E·제출용 signed release·실제 Vehicle/Navi callback은 미검증이다. PLEOS system Back 전달도 `UNRESOLVED`다.
+Social Drive는 다음 경험을 제출 목표로 한다. 최신 Android 검토 브랜치 HEAD `4f2b559`에는 PLEOS·cloud·route-consent, Room v6 conflict review와 published-delete lifecycle이 있다. PLEOS Connect Android 14(user 10)에서 UI 8/8과 비UI 43/43, Kotlin core 74/74, static 29/29이 통과했고 Gradle clean/unit/lint와 Demo Debug·Release, Pleos Debug·AndroidTest 조립 179 tasks가 성공했다. 다만 `main` 미병합이고 actual cloud·AWS E2E·제출용 signed release·실제 Vehicle/Navi callback은 미검증이다. PLEOS system Back 전달도 `UNRESOLVED`다.
 
 1. 주행 중에는 기록 시작·종료와 `방금 좋았어` 한 번의 터치만 제공한다.
 2. recording session, `highlightCount`, draft, pending queue와 preset reference를 로컬 DB에 보존한다.
@@ -69,11 +69,11 @@ Social Drive는 모바일 SNS를 차량 화면으로 옮긴 앱이 아니다.
 
 ### 차량 상태가 UX를 결정하는 구조를 구현한다
 
-Vehicle adapter의 목표는 Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unknown`을 판정하는 것이다. 서비스 오류, 권한 부족, 오래된 값처럼 안전을 증명할 수 없는 경우는 `Unknown`으로 처리해 편집과 게시를 차단한다. HEAD `dd3d61d`은 Pleos AVD에서 fail-closed Unknown과 Driving/Unknown 잠금 UI를 실행 검증했지만 실제 permissioned P/D/R/N callback은 확인하지 않았으므로 `실제 SDK`로 표현하지 않는다.
+Vehicle adapter의 목표는 Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unknown`을 판정하는 것이다. 서비스 오류, 권한 부족, 오래된 값처럼 안전을 증명할 수 없는 경우는 `Unknown`으로 처리해 편집과 게시를 차단한다. HEAD `4f2b559`은 Pleos AVD에서 fail-closed Unknown과 Driving/Unknown 잠금 UI를 실행 검증했지만 실제 permissioned P/D/R/N callback은 확인하지 않았으므로 `실제 SDK`로 표현하지 않는다.
 
 ### 콘텐츠가 실제 주행으로 완결된다
 
-완성 목표에서는 사용자가 주차 상태에서 `이 코스 따라가기`를 누르면 NaviHelper에 목적지와 경유지를 전달하여 차량 Navigation 앱의 경로 안내로 이어진다. HEAD `dd3d61d`의 NaviHelper coordinator와 lifecycle은 빌드·core 검증됐지만 실제 route/event callback 실기 증거는 미완료다.
+완성 목표에서는 사용자가 주차 상태에서 `이 코스 따라가기`를 누르면 NaviHelper에 목적지와 경유지를 전달하여 차량 Navigation 앱의 경로 안내로 이어진다. HEAD `4f2b559`의 NaviHelper coordinator와 lifecycle은 빌드·core 검증됐지만 실제 route/event callback 실기 증거는 미완료다.
 
 ### 주행과 정차의 역할을 분리한다
 
@@ -101,7 +101,7 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 4. recording session과 `highlightCount`, draft, pending queue, preset reference를 Room에 저장한다.
 5. 네트워크가 없어도 세션과 초안을 보존한다.
 
-현재 증거: HEAD `dd3d61d`에는 session/draft/queue, route source, consent/withdraw와 Room v6 코드가 있고 persistence·migration 계측이 통과했다. 실제 경로점·위치 샘플 수집과 Vehicle callback은 없다. preset 경로는 반드시 `데모 데이터`로 표시한다.
+현재 증거: HEAD `4f2b559`에는 session/draft/queue, route source, consent/withdraw와 Room v6 코드가 있고 persistence·migration 계측이 통과했다. 실제 경로점·위치 샘플 수집과 Vehicle callback은 없다. preset 경로는 반드시 `데모 데이터`로 표시한다.
 
 ### 여정 B: 주차 후 안전하게 게시하기
 
@@ -112,7 +112,7 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 5. Driving 또는 Unknown이면 원본을 보존하고 네트워크 작업을 중단한다.
 6. Parked가 다시 확인되면 같은 idempotency key로 복구한다.
 
-현재 증거: HEAD `dd3d61d`의 별도 Android 작업 브랜치에 Room/WorkManager 게시 큐, motion gate와 409 durable conflict review 코드가 있다. 409 뒤에는 queue를 `FAILED/VERSION_CONFLICT`로 보존하고 일반 worker claim을 막으며, 사용자의 명시적 최신 버전 확인·adopt 뒤에만 publish-only replay를 큐에 넣는다. Kotlin 74/74, static 29/29과 Room/WorkManager 계측은 통과했지만 actual Android-AWS E2E는 미실행이다.
+현재 증거: HEAD `4f2b559`의 별도 Android 작업 브랜치에 Room/WorkManager 게시 큐, motion gate와 409 durable conflict review 코드가 있다. 409 뒤에는 queue를 `FAILED/VERSION_CONFLICT`로 보존하고 일반 worker claim을 막으며, 사용자의 명시적 최신 버전 확인·adopt 뒤에만 publish-only replay를 큐에 넣는다. Kotlin 74/74, static 29/29과 Room/WorkManager 계측은 통과했지만 actual Android-AWS E2E는 미실행이다.
 
 ### 여정 C: 다른 운전자의 길 따라가기
 
@@ -122,7 +122,7 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 4. 검토 브랜치의 build/AVD 결과를 `main` 통합 후 재검증하고, 실제 NaviHelper callback이 확인되면 목적지와 경유지를 전달한다.
 5. 실제 callback이 확인된 경우에만 차량 Navigation 앱 안내 시작을 시연한다.
 
-현재 증거: UI와 fake 흐름은 별도 Android 작업 브랜치에 있으므로 `데모 데이터`다. HEAD `dd3d61d`은 `코드 존재(미통합)` 상태이고 Gradle assemble·PLEOS UI 계측은 성공했지만 실제 NaviHelper route callback은 실행되지 않았다.
+현재 증거: UI와 fake 흐름은 별도 Android 작업 브랜치에 있으므로 `데모 데이터`다. HEAD `4f2b559`은 `코드 존재(미통합)` 상태이고 Gradle assemble·PLEOS UI 계측은 성공했지만 실제 NaviHelper route callback은 실행되지 않았다.
 
 ## 8. 기술 활용성과 구현 상태
 
@@ -131,13 +131,13 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 | Compose 피드·상세·기록·게시 UI | 핵심 흐름 제공 | 검토 브랜치 PLEOS UI 8/8 통과, 제출 브랜치 미통합 | `코드 존재(미통합)` |
 | Room recording/draft/queue | 오프라인/재시작 복구 | persistence·migration·WorkManager를 포함한 비UI 43/43 통과, 제출 브랜치 미통합 | `코드 존재(미통합)` |
 | motion 재검증 Worker | 주행 중 원격 게시 차단 | WorkManager 계약 계측 통과. 실제 Vehicle motion callback은 미검증 | `코드 존재(미통합)` |
-| route source·동의·철회 | 개인정보 통제와 demo/live 분리 | `dd3d61d`에 코드와 계측 증거 존재. 실제 위치 source는 unavailable | `코드 존재(미통합)` |
+| route source·동의·철회 | 개인정보 통제와 demo/live 분리 | `4f2b559`에 코드와 계측 증거 존재. 실제 위치 source는 unavailable | `코드 존재(미통합)` |
 | 실제 경로점·위치 수집 | 실제 코스 생성 | 확인된 구현 증거 없음 | `미구현` |
 | 게시물 삭제 | parked-only 삭제 요청 | Room v6 tombstone·network `DELETE`·bounded retry 계약을 demo transport에서 계측. actual cloud 미검증 | `코드 존재(미통합)` |
-| Cognito/DynamoDB/S3 API | 사용자·피드·비공개 업로드 | `dd3d61d`에 backend `ddbd61f` 계약 기반 코드 존재. concrete cloud 설정 부재로 actual cloud unavailable | `코드 존재(미통합)` |
-| 409 conflict review | stale publish의 명시적 사용자 해결 | `dd3d61d`: durable FAILED, explicit fetch/adopt, publish-only replay. 일반 worker 자동 claim·GET·overwrite 금지. Room 계측 통과 | `코드 존재(미통합)` |
-| Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | `dd3d61d`; Pleos build/AVD 안전 UI 실행, 실제 P/D/R/N callback 미검증 | `코드 존재(미통합)` |
-| NaviHelper 3.0.5 | 목적지·경유지 전달 | `dd3d61d`; lifecycle/coordinator build·core 검증, 실제 route callback 미검증 | `코드 존재(미통합)` |
+| Cognito/DynamoDB/S3 API | 사용자·피드·비공개 업로드 | `4f2b559`에 backend `ddbd61f` 계약 기반 코드 존재. concrete cloud 설정 부재로 actual cloud unavailable | `코드 존재(미통합)` |
+| 409 conflict review | stale publish의 명시적 사용자 해결 | `4f2b559`: durable FAILED, explicit fetch/adopt, publish-only replay. 일반 worker 자동 claim·GET·overwrite 금지. Room 계측 통과 | `코드 존재(미통합)` |
+| Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | `4f2b559`; Pleos build/AVD 안전 UI 실행, 실제 P/D/R/N callback 미검증 | `코드 존재(미통합)` |
+| NaviHelper 3.0.5 | 목적지·경유지 전달 | `4f2b559`; lifecycle/coordinator build·core 검증, 실제 route callback 미검증 | `코드 존재(미통합)` |
 | PLEOS system Back | 기록 중 종료 확인 | Activity dispatcher 이후 dialog 계약은 검증. TaskView의 실제 system Back 전달은 `UNRESOLVED` | `미구현` |
 | preset route/motion | 전체 흐름 시연 보조 | 데모 전용 | `데모 데이터` |
 | FusedLocation/STT/TTS/Vehicle Control | 향후 자연스러운 입력·안내 | 공식 Coming Soon | `향후 기능` |
@@ -151,7 +151,7 @@ Vehicle State와 NaviHelper는 현재 Ready to Use지만, FusedLocation·STT·TT
 ### 현재 확인된 코드 증거
 
 - 별도 Android 작업 브랜치에 recording session, `highlightCount`, draft, pending queue와 preset reference 코드가 존재한다.
-- Android HEAD `dd3d61d`에는 motion gate, cloud, consent/withdraw, Room v6 conflict review와 published-delete lifecycle이 있다. PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29, Gradle build/lint가 통과했지만 `main` 미병합이며 actual cloud·AWS E2E·signed release·실 SDK callback은 미완료다.
+- Android HEAD `4f2b559`에는 motion gate, cloud, consent/withdraw, Room v6 conflict review와 published-delete lifecycle이 있다. PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29, Gradle build/lint가 통과했지만 `main` 미병합이며 actual cloud·AWS E2E·signed release·실 SDK callback은 미완료다.
 - 실제 경로점·위치 샘플 수집은 미구현이며 published delete는 actual cloud에서 검증되지 않았다.
 
 ### 구현·검증해야 할 요구사항
@@ -159,7 +159,7 @@ Vehicle State와 NaviHelper는 현재 Ready to Use지만, FusedLocation·STT·TT
 - `Driving`뿐 아니라 상태를 확인할 수 없는 `Unknown`도 편집·게시 차단
 - Worker가 실제 원격 호출 직전에 motion을 다시 확인
 - 주행 중 장문 입력, 설정 변경, 게시, 동영상·자동 스크롤 금지
-- 실제 위치 수집 전 `dd3d61d`에 포함된 동의·철회·공개 범위 경계를 제출 브랜치에 통합하고 공식 source/permission을 별도 승인
+- 실제 위치 수집 전 `4f2b559`에 포함된 동의·철회·공개 범위 경계를 제출 브랜치에 통합하고 공식 source/permission을 별도 승인
 - 향후 수집하는 실제 위치·경로점은 게시 확정 전까지 Room에 로컬 보존
 - 향후 사용자가 게시하기로 선택한 필드만 서버 전송
 - 게시 성공 전 로컬 원본 삭제 금지

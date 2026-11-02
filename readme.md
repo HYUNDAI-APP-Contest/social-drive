@@ -7,7 +7,7 @@
 2026-11-02 현재 Android 앱은 검토 완료 브랜치 `agent/issue-conflict-review`와 PR #2에 있으며, 아직 `main`에는 병합되지 않았습니다. 이 제출 문서 작업공간 자체에는 `android/` 디렉터리와 제출용 서명 release APK가 없습니다.
 
 - Vehicle SDK 2.3.2와 NaviHelper 3.0.5 adapter의 최초 구현 커밋은 `6475287`이며 1차 독립 검토에서 `CHANGES_REQUIRED`였습니다.
-- 최신 Android 검토 HEAD는 `dd3d61dabda9d69526227a84a40fce20c7bc3833`입니다. PLEOS Connect Emulator 2.1.0(Android 14, user 10)에서 instrumentation 51/51, SDK-independent Kotlin 74/74, 정적 계약 29/29이 통과했습니다.
+- 최신 Android 검토 HEAD는 `4f2b559116fd98ee3fe05e05fc6431b59888d0d6`입니다. PLEOS Connect Emulator 2.1.0(Android 14, user 10)에서 instrumentation 51/51, SDK-independent Kotlin 74/74, 정적 계약 29/29이 통과했습니다.
 - Gradle clean, Demo/Pleos 단위 테스트, Demo release lint, Demo Debug/Release, Pleos Debug와 Pleos AndroidTest 조립이 179개 task로 성공했습니다. Demo release 산출물은 unsigned이므로 공모전 제출용 서명·설치 검증은 아직 남아 있습니다.
 - Room v6에는 durable 409 conflict review와 parked-only published-delete tombstone, bounded retry가 구현돼 있습니다. Pleos/production cloud factory는 승인된 Cognito/API 설정과 concrete transport가 없으면 fail closed합니다.
 - `88b4938`은 최신 앱 HEAD가 아니라 P0-3A의 재현 가능한 local bootstrap/doctor와 offline zero-network fail-fast를 남긴 **역사적 증거**입니다.
@@ -50,7 +50,7 @@ Social Drive의 목표 흐름은 다음과 같습니다.
 
 | 등급 | 기능 | 2026-11-02 증거 |
 |---|---|---|
-| `코드 존재(미통합)` | Driving/Unknown 잠금, recording/draft/queue, consent/withdraw, 409 review, published delete | `dd3d61d`; 검토 브랜치에서 PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29, Gradle build/lint 성공. `main` 병합·actual cloud는 미완료 |
+| `코드 존재(미통합)` | Driving/Unknown 잠금, recording/draft/queue, consent/withdraw, 409 review, published delete | `4f2b559`; 검토 브랜치에서 PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29, Gradle build/lint 성공. `main` 병합·actual cloud는 미완료 |
 | `코드 존재(미통합)` | Pleos flavor 초기화·수명주기, Compose 안전 UI, Room/WorkManager | Pleos Connect Android 14 user 10에서 브랜치 실행 검증. 실제 Vehicle 상태 read/callback과 physical system Back 전달은 증명하지 않음 |
 | `역사적 도구 증거` | P0-3A runtime bootstrap/doctor | `88b4938`; offline zero-network fail-fast 확인. tasks/variants/assemble 또는 앱 실행 성공 증거가 아님 |
 | `코드 존재(미통합)` | Vehicle/NaviHelper와 cloud production 경계 | vendor 초기화/수명주기와 fail-closed production port는 존재. 실제 Vehicle callback·Navi route callback·actual cloud는 별도 증거 필요 |
@@ -80,7 +80,7 @@ Submission release APK not created
 
 ### Android 브랜치 병합 후 예정 절차
 
-다음 명령은 Android 검토 브랜치 `dd3d61d`에서 성공했습니다. `main` 병합 뒤 다시 실행해야 합니다.
+다음 명령은 Android 검토 브랜치 `4f2b559`에서 성공했습니다. `main` 병합 뒤 다시 실행해야 합니다.
 
 ```bash
 cd android
@@ -138,7 +138,7 @@ Android 소스가 병합되면 다음을 확인해야 합니다.
 
 아래 증거가 모두 생기기 전에는 `실제 SDK` 또는 실행 완료로 표시하지 않습니다.
 
-- [x] Android Gradle build 성공 로그와 commit SHA (`dd3d61d`)
+- [x] Android Gradle build 성공 로그와 commit SHA (`4f2b559`)
 - [x] Pleos AVD 설치·실행 및 instrumentation 51/51
 - [ ] Vehicle capability와 P/D/R/N 상태 전환
 - [ ] NaviHelper 목적지·경유지 요청과 callback

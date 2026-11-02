@@ -11,7 +11,7 @@
 2. **P0-2 route source·위치 동의 안전 게이트 — 완료(정적·core 승인)**
 3. **P0-3 release APK·AVD·서명·제출 증거 — build/instrumentation 완료, 제출 release 미완료**
 
-최신 Android 검토 브랜치 HEAD `dd3d61d`에는 PLEOS·cloud·route-consent, Room v6 conflict review와 published-delete lifecycle이 있다. PLEOS UI 8/8 + 비UI 43/43, Kotlin 74/74, static 29/29, Gradle clean/unit/lint와 Demo Debug·Release, Pleos Debug·AndroidTest 179 tasks가 성공했다. `main` 통합, actual cloud, 실제 Vehicle/Navi callback, 제출용 signed release와 physical PLEOS Back은 미완료다.
+최신 Android 검토 브랜치 HEAD `4f2b559`에는 PLEOS·cloud·route-consent, Room v6 conflict review와 published-delete lifecycle이 있다. PLEOS UI 8/8 + 비UI 43/43, Kotlin 74/74, static 29/29, Gradle clean/unit/lint와 Demo Debug·Release, Pleos Debug·AndroidTest 179 tasks가 성공했다. `main` 통합, actual cloud, 실제 Vehicle/Navi callback, 제출용 signed release와 physical PLEOS Back은 미완료다.
 
 공식적으로 11월 15일에는 기획서가 필수이며 GitHub·APK·영상은 선택 가산점이다. 그러나 2차 PT 대상자는 실제 동작 앱을 완성해야 한다. [공식 제출 안내](https://appdevchallenge.auto-hmg.io/guide/submission), [공식 심사 안내](https://appdevchallenge.auto-hmg.io/guide/judging-awards)
 
@@ -19,13 +19,13 @@
 
 | 영역 | 확인된 증거 | 아직 증명되지 않은 것 |
 |---|---|---|
-| Android 작업 브랜치 HEAD | `dd3d61dabda9d69526227a84a40fce20c7bc3833`; PLEOS 51/51, Kotlin 74/74, static 29/29, Gradle 179 tasks | `main` 병합, signed release, actual SDK callback, physical Back, AWS E2E |
+| Android 작업 브랜치 HEAD | `4f2b559116fd98ee3fe05e05fc6431b59888d0d6`; PLEOS 51/51, Kotlin 74/74, static 29/29, Gradle 179 tasks | `main` 병합, signed release, actual SDK callback, physical Back, AWS E2E |
 | Android local/consent | session/draft/queue, route source, consent/withdraw, Room v6 delete tombstone와 bounded retry 계측 | 실제 위치 샘플·route point 수집, actual cloud delete |
 | Cloud contract | backend `ddbd61fde381d09bc4605c758126ebf6ba0a5ea5` 계약이 `b1c33a2`에 포함 | concrete Cognito/API host와 no-redirect HTTP adapter 설정 부재로 actual cloud unavailable; AWS E2E 미실행 |
 | 현재 제출 worktree의 `infra/` | Cognito, HTTP API, DynamoDB, private S3 scaffold와 `/users/me`, `/feed` skeleton 확인 | 최신 backend branch의 전체 drive/publish/upload 계약을 대표하지 않음 |
 | SDK 가용성 | Vehicle State와 NaviHelper는 Ready to Use; Pleos flavor build/AVD safety suite 성공 | 실제 P/D/R/N·route callback |
 | 위치 SDK | FusedLocation은 공식 Coming Soon | 실제 위치 수집을 구현·시연할 근거 |
-| 409 conflict review | `dd3d61d`: durable FAILED, explicit fetch/adopt, publish-only replay; Room/WorkManager 계측 통과 | actual cloud 미실행 |
+| 409 conflict review | `4f2b559`: durable FAILED, explicit fetch/adopt, publish-only replay; Room/WorkManager 계측 통과 | actual cloud 미실행 |
 | P0-3A bootstrap/doctor | 역사적 `88b4938`: offline zero-network fail-fast | 현재 차단은 해소됨; 과거 기록은 회귀 진단용 |
 | 제출 산출물 | truth table, 기획서/PT 초안, build APK, PLEOS 실행 증거 | Android main 통합, signed release·hash·clean install, 영상, Android-AWS E2E |
 | PLEOS system Back | MainActivity dispatcher 이후 stop dialog 계약 자동 검증 | TaskView의 physical/synthetic system Back 전달은 `UNRESOLVED` |
@@ -42,7 +42,7 @@ BACKEND_HEAD=ddbd61fde381d09bc4605c758126ebf6ba0a5ea5
 ANDROID_INTEGRATED_HEAD=0d315763353a54c65352fffab2d6cb7222ec4a83
 ROUTE_CONSENT_HEAD=b1c33a22b18c62806ee89337ef04635c53dd302a
 RUNTIME_UNBLOCK_HEAD=88b493860ddc18e2131af723463fe68e43cf515f
-CURRENT_ANDROID_HEAD=dd3d61dabda9d69526227a84a40fce20c7bc3833
+CURRENT_ANDROID_HEAD=4f2b559116fd98ee3fe05e05fc6431b59888d0d6
 BACKEND_CONTRACT_PATH=infra/API.md
 ```
 
@@ -58,7 +58,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - `POST /drives/{id}/publish`
 - create manifest의 `COVER`·`ROUTE`, upload refresh, private S3 presigned PUT contract
 - local `clientRequestId`와 create body `clientDraftId`·`Idempotency-Key`의 동일 값 매핑
-- PATCH/publish의 `expectedVersion`과 409 fail-closed 계약. 후속 `dd3d61d`에는 durable conflict, explicit GET/UI review/adopt, adopt 뒤 publish-only replay와 Room 계측 증거가 있으나 제출 브랜치 미통합
+- PATCH/publish의 `expectedVersion`과 409 fail-closed 계약. 후속 `4f2b559`에는 durable conflict, explicit GET/UI review/adopt, adopt 뒤 publish-only replay와 Room 계측 증거가 있으나 제출 브랜치 미통합
 - manifest 입력의 lowercase hex SHA-256과 server 응답의 RFC 4648 base64 `x-amz-checksum-sha256` 구분
 
 ## 3. GitHub Issue 1 — 완료(정적·core 승인)
@@ -100,7 +100,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
   - 401/403/404/409/422/429/5xx를 typed error로 매핑
   - 존재하지 않거나 다른 owner의 drive에 대한 PATCH/DELETE는 구분하지 않고 동일한 UI-safe `404 NOT_FOUND`로 매핑
   - 409 version conflict에서는 automatic overwrite와 latest-version adoption을 금지하고 queue를 `FAILED/version conflict`로 유지하며 원본 draft를 보존
-  - 후속 HEAD `dd3d61d`에는 latest GET→UI conflict 표시→사용자 명시적 review/adopt→새 `expectedVersion`의 publish-only replay 코드와 Room instrumentation 증거가 존재한다. P0-1 원 승인 범위에는 없었고 현재도 `main` 미통합이다.
+  - 후속 HEAD `4f2b559`에는 latest GET→UI conflict 표시→사용자 명시적 review/adopt→새 `expectedVersion`의 publish-only replay 코드와 Room instrumentation 증거가 존재한다. P0-1 원 승인 범위에는 없었고 현재도 `main` 미통합이다.
 - S3 presigned PUT 구현
   - URL과 임시 header는 메모리에서만 사용
   - API bearer token을 S3 요청에 전달하지 않음
@@ -128,7 +128,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - [x] presigned URL 만료 시 `POST /drives/{id}/uploads`를 refresh stage로 사용하며 최초 create와 동일한 canonical manifest만 허용한다. asset 추가·삭제·교체 또는 metadata 변경은 fail closed한다.
 - [x] feed cursor가 opaque string으로 왕복하며 client가 decode/조작하지 않는다.
 - [x] PATCH와 publish는 `expectedVersion`을 보내며 409 version conflict에서 automatic overwrite 또는 latest-version adoption을 하지 않는다. queue는 `FAILED/version conflict`를 유지하고 original draft는 향후 명시적 review를 위해 보존한다.
-- [x] 별도 작업 브랜치 `dd3d61d`에 409 뒤 explicit GET, UI conflict 표시, 사용자 명시적 adopt, 갱신된 `expectedVersion`의 publish-only replay를 포함한다. 일반 worker는 `FAILED/VERSION_CONFLICT`를 claim하지 않으며 Room/Compose 계측도 통과했다. 단 `main` 통합·actual cloud 검증은 미완료다.
+- [x] 별도 작업 브랜치 `4f2b559`에 409 뒤 explicit GET, UI conflict 표시, 사용자 명시적 adopt, 갱신된 `expectedVersion`의 publish-only replay를 포함한다. 일반 worker는 `FAILED/VERSION_CONFLICT`를 claim하지 않으며 Room/Compose 계측도 통과했다. 단 `main` 통합·actual cloud 검증은 미완료다.
 - [x] 존재하지 않는 drive와 non-owner drive의 PATCH/DELETE는 모두 동일한 UI-safe `404 NOT_FOUND`로 처리되어 존재 여부를 노출하지 않는다.
 - [x] validation 422와 rate-limit 429가 각각 UI-safe validation/retry 상태로 변환된다.
 - [x] motion이 Parked에서 Driving/Unknown으로 바뀌면 다음 remote stage를 실행하지 않고 draft를 보존한다.
@@ -181,7 +181,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
 
 ### 완료 증거와 한계
 
-- current descendant: `dd3d61dabda9d69526227a84a40fce20c7bc3833`
+- current descendant: `4f2b559116fd98ee3fe05e05fc6431b59888d0d6`
 - P0-2 approval commit: `b1c33a22b18c62806ee89337ef04635c53dd302a`
 - review: Sentinel `APPROVE`
 - current evidence: Kotlin 74/74, static 29/29, PLEOS instrumentation 51/51; Room schema v6/conflict/delete lifecycle 포함
@@ -235,7 +235,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
 
 ### Dependencies
 
-- base `0d31576`, P0-2 approved result `b1c33a2`, current descendant `dd3d61d`
+- base `0d31576`, P0-2 approved result `b1c33a2`, current descendant `4f2b559`
 - P0-1에서 승인된 API DTO와 deletion error model
 - 실제 live collector는 공식 SDK 상태 변경 또는 공식 AAOS source/permission 확인을 다루는 별도 Issue가 승인되기 전까지 scope 밖
 
@@ -260,7 +260,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
 
 정적 검토 코드를 실행 가능한 APK와 재현 가능한 증거로 전환한다. signing secret을 저장소에 넣지 않고 demo와 Pleos runtime을 분리하며, 확인된 사실만 README·영상·PT에 반영한다.
 
-역사적 HEAD `88b4938`의 wrapper/platform/DNS 차단은 해소됐다. 최신 HEAD `dd3d61d`에서 tasks·assemble·unit/lint·Android instrumentation·Pleos AVD 실행과 build APK 생성을 확인했다. 제출용 signed release·hash·clean install/relaunch·영상과 실제 SDK callback은 계속 미완료다.
+역사적 HEAD `88b4938`의 wrapper/platform/DNS 차단은 해소됐다. 최신 HEAD `4f2b559`에서 tasks·assemble·unit/lint·Android instrumentation·Pleos AVD 실행과 build APK 생성을 확인했다. 제출용 signed release·hash·clean install/relaunch·영상과 실제 SDK callback은 계속 미완료다.
 
 ### P0-3A 부분 완료 증거
 
@@ -288,7 +288,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - assemble, vendor compile, adb device, AVD boot, install, instrumentation, callback은 실행하지 않음
 - signing secret·keystore는 조회하지 않음
 
-`88b4938`의 bootstrap/doctor 실패 기록은 당시 상태일 뿐이다. 현재 성공 증거는 `dd3d61d`의 별도 실행 결과를 기준으로 한다.
+`88b4938`의 bootstrap/doctor 실패 기록은 당시 상태일 뿐이다. 현재 성공 증거는 `4f2b559`의 별도 실행 결과를 기준으로 한다.
 
 ### 범위
 
@@ -367,9 +367,9 @@ Not reached: tasks/variants/assemble
 Unrun: vendor compile/instrumentation/APK/AVD/AWS E2E
 ```
 
-P0-3A 역사 기록의 완료 판정은 bootstrap/doctor와 fail-fast 범위다. 후속 `dd3d61d`가 build APK와 PLEOS instrumentation 증거를 추가했다.
+P0-3A 역사 기록의 완료 판정은 bootstrap/doctor와 fail-fast 범위다. 후속 `4f2b559`가 build APK와 PLEOS instrumentation 증거를 추가했다.
 
-다음 실행은 `dd3d61d`의 재현 명령을 사용한다. dependency/vendor Maven 접근과 signing은 별도 승인 경계를 지키고, 제출용 release는 source SHA·서명·hash·clean install/relaunch를 함께 기록한다.
+다음 실행은 `4f2b559`의 재현 명령을 사용한다. dependency/vendor Maven 접근과 signing은 별도 승인 경계를 지키고, 제출용 release는 source SHA·서명·hash·clean install/relaunch를 함께 기록한다.
 
 ### P0-3 남은 완료 조건
 
