@@ -5,6 +5,55 @@ plugins {
     id("com.google.devtools.ksp")
 }
 
+val releaseSigningEnvironment = listOf(
+    "SOCIAL_DRIVE_RELEASE_STORE_FILE",
+    "SOCIAL_DRIVE_RELEASE_STORE_PASSWORD",
+    "SOCIAL_DRIVE_RELEASE_KEY_ALIAS",
+    "SOCIAL_DRIVE_RELEASE_KEY_PASSWORD",
+    "SOCIAL_DRIVE_RELEASE_CERT_SHA256",
+)
+
+val releaseSigningValues = releaseSigningEnvironment.associateWith { name ->
+    System.getenv(name)?.takeIf { it.isNotBlank() }
+}
+val approvedReleaseSigning = releaseSigningValues
+    .takeIf { values -> values.values.all { it != null } }
+    ?.mapValues { (_, value) -> value!! }
+
+// Inspect the resolved graph, not the user-supplied task spelling. This catches Gradle
+// abbreviations and lifecycle tasks whose dependencies create a release artifact.
+gradle.taskGraph.whenReady {
+    val releaseArtifactTasks = allTasks.filter { task ->
+        task.project == project &&
+            (task.name.matches(Regex("^(assemble|bundle|package|install).*Release$")) ||
+                task.name.matches(Regex("^(package|sign).*ReleaseBundle$")) ||
+                task.name.matches(Regex("^publish.*Release(?:$|[A-Z].*)")))
+    }
+    if (releaseArtifactTasks.isNotEmpty()) {
+        val missing = releaseSigningValues.filterValues { it == null }.keys
+        if (missing.isNotEmpty()) {
+            throw GradleException(
+                "Release signing environment is incomplete: ${missing.sorted().joinToString()} are required."
+            )
+        }
+        val values = approvedReleaseSigning
+            ?: throw GradleException("Release signing environment is incomplete.")
+        val store = file(values.getValue("SOCIAL_DRIVE_RELEASE_STORE_FILE")).canonicalFile
+        val repository = rootProject.projectDir.parentFile.canonicalFile
+        if (!store.isFile) {
+            throw GradleException("Release keystore must be an existing regular file.")
+        }
+        if (store.toPath().startsWith(repository.toPath())) {
+            throw GradleException("Release keystore must be outside the repository.")
+        }
+        val fingerprint = values.getValue("SOCIAL_DRIVE_RELEASE_CERT_SHA256")
+            .replace(Regex("[:\\s]"), "")
+        if (!fingerprint.matches(Regex("[0-9A-Fa-f]{64}"))) {
+            throw GradleException("Approved release certificate SHA-256 must contain exactly 64 hexadecimal digits.")
+        }
+    }
+}
+
 android {
     namespace = "com.socialdrive.app"
     compileSdk = 35
@@ -29,6 +78,26 @@ android {
         create("pleos") {
             dimension = "integration"
             buildConfigField("String", "INTEGRATION_MODE", "\"pleos\"")
+        }
+    }
+
+    signingConfigs {
+        if (approvedReleaseSigning != null) {
+            create("approvedRelease") {
+                storeFile = file(approvedReleaseSigning.getValue("SOCIAL_DRIVE_RELEASE_STORE_FILE"))
+                storePassword = approvedReleaseSigning.getValue("SOCIAL_DRIVE_RELEASE_STORE_PASSWORD")
+                keyAlias = approvedReleaseSigning.getValue("SOCIAL_DRIVE_RELEASE_KEY_ALIAS")
+                keyPassword = approvedReleaseSigning.getValue("SOCIAL_DRIVE_RELEASE_KEY_PASSWORD")
+                enableV1Signing = true
+                enableV2Signing = true
+                enableV3Signing = true
+            }
+        }
+    }
+
+    buildTypes {
+        getByName("release") {
+            signingConfig = approvedReleaseSigning?.let { signingConfigs.getByName("approvedRelease") }
         }
     }
 
