@@ -7,9 +7,9 @@ remote_url="https://github.com/${repository}.git"
 pulls_endpoint="repos/${repository}/pulls?state=all&per_page=100"
 
 reviewed_work=(
-  "orchestrator/workspaces/issue-conflict-review|agent/issue-conflict-review|dd3d61dabda9d69526227a84a40fce20c7bc3833|feat: add Social Drive Android privacy and conflict-safe publishing"
+  "orchestrator/workspaces/issue-conflict-review|agent/issue-conflict-review|4f2b559116fd98ee3fe05e05fc6431b59888d0d6|feat: add Social Drive Android privacy and conflict-safe publishing"
   "orchestrator/workspaces/issue-backend-mvp|agent/issue-backend-mvp|ddbd61fde381d09bc4605c758126ebf6ba0a5ea5|feat: add Social Drive serverless backend MVP"
-  "orchestrator/workspaces/issue-contest-submission|agent/issue-contest-submission|212941041e6de08ba59458b9bb6c0d16f563fdc7|docs: prepare 2026 contest submission materials"
+  "orchestrator/workspaces/issue-contest-submission|agent/issue-contest-submission|6bfc486030bbc646cd1f449fe9c7ed4d5518db7c|docs: prepare 2026 contest submission materials"
 )
 
 plan_workspaces=()

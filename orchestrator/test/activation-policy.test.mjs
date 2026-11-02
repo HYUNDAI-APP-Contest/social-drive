@@ -29,11 +29,11 @@ test("activation uses an explicit file allowlist and an open PR handoff", () => 
 
 test("reviewed work publishing is pinned and never merges or pushes main", () => {
   const source = read("../../scripts/publish-reviewed-work.sh");
-  assert.match(source, /agent\/issue-conflict-review\|dd3d61dabda9d69526227a84a40fce20c7bc3833/);
+  assert.match(source, /agent\/issue-conflict-review\|4f2b559116fd98ee3fe05e05fc6431b59888d0d6/);
   assert.doesNotMatch(source, /agent\/issue-android-cloud-integration\|0d315763353a54c65352fffab2d6cb7222ec4a83/);
   assert.doesNotMatch(source, /agent\/issue-route-consent\|b1c33a22b18c62806ee89337ef04635c53dd302a/);
   assert.match(source, /agent\/issue-backend-mvp\|ddbd61fde381d09bc4605c758126ebf6ba0a5ea5/);
-  assert.match(source, /agent\/issue-contest-submission\|212941041e6de08ba59458b9bb6c0d16f563fdc7/);
+  assert.match(source, /agent\/issue-contest-submission\|6bfc486030bbc646cd1f449fe9c7ed4d5518db7c/);
   assert.match(source, /status --porcelain/);
   assert.match(source, /rev-parse HEAD/);
   assert.match(source, /permissions\.push/);
