@@ -25,10 +25,12 @@ case "$java_version" in
   *) printf 'Expected JDK 17, found %s at %s.\n' "$java_version" "$selected_java_home" >&2; exit 2 ;;
 esac
 
-mkdir -p "$runtime_root/gradle-user-home" "$runtime_root/tmp"
+mkdir -p "$runtime_root/gradle-user-home" "$runtime_root/tmp" "$runtime_root/android-user-home"
 export JAVA_HOME="$selected_java_home"
 export GRADLE_USER_HOME="$runtime_root/gradle-user-home"
 export TMPDIR="$runtime_root/tmp"
+export ANDROID_USER_HOME="$runtime_root/android-user-home"
+export GRADLE_OPTS="${GRADLE_OPTS:+$GRADLE_OPTS }-Dorg.gradle.project.kotlin.compiler.execution.strategy=in-process"
 
 if [[ -z "${ANDROID_HOME:-}" ]] && [[ "$(uname -s)" == "Darwin" ]]; then
   system_user_home="${HOME:?}"
@@ -37,4 +39,5 @@ if [[ -z "${ANDROID_HOME:-}" ]] && [[ "$(uname -s)" == "Darwin" ]]; then
   fi
 fi
 
+cd "$android_root"
 exec "$android_root/gradlew" "$@"
