@@ -36,10 +36,12 @@ export const STATUS_CONTRACT = Object.freeze({
   merge_approval_expired: contract("Blocked", "Merge", "Blocked", "Human", 90, "blocked", "병합 승인이 만료되었습니다. 새 승인 요청이 필요합니다."),
   deploy_approval_expired: contract("Blocked", "Deploy", "Blocked", "Human", 95, "blocked", "배포 승인이 만료되어 변경 세트를 실행하지 않았습니다."),
   retry: contract("Blocked", "Queue", "Recovering", "Orchestrator", 10, "blocked", "보존된 상태에서 자동 재시도합니다."),
+  review_retry: contract("Review", "Review", "At risk", "픽시", 65, "review", "센티넬 수정 요청을 반영하는 다음 개발 주기를 시작합니다."),
   paused_usage_limit: contract("Blocked", "Queue", "Blocked", "Orchestrator", 10, "blocked", "사용량 한도가 풀리면 자동 재개합니다."),
   merge_failed: contract("Blocked", "Merge", "Blocked", "Orchestrator", 90, "blocked", "병합 실패 원인을 확인한 뒤 다시 결정합니다."),
   deploy_failed: contract("Blocked", "Deploy", "Blocked", "Orchestrator", 95, "blocked", "배포 실패 원인을 확인한 뒤 다시 결정합니다."),
   failed: contract("Blocked", "Queue", "Blocked", "Orchestrator", 0, "blocked", "자동 재시도 한도를 소진했습니다. 작업 범위를 확인해 주세요."),
+  review_blocked: contract("Blocked", "Review", "At risk", "센티넬", 70, "blocked", "코드와 검토 기록은 보존됐습니다. 반복된 품질 수정 요청을 확인해 주세요."),
   rejected: contract("Blocked", "Merge", "Blocked", "Human", 90, "blocked", "병합이 보류되었습니다. 후속 방향을 결정해 주세요."),
   deploy_rejected: contract("Blocked", "Deploy", "Blocked", "Human", 95, "blocked", "dev 배포가 취소되었습니다. 코드 병합 상태는 유지됩니다."),
   merged: contract("Done", "Merge", "On track", "Orchestrator", 100, "done", "병합이 완료되었습니다."),
@@ -120,6 +122,7 @@ const statusHeadline = (snapshot) => {
   if (snapshot.internalStatus === "reworking") return `픽시 검토 의견 반영 중${snapshot.reviewRound ? ` · ${snapshot.reviewRound}차` : ""}`;
   if (snapshot.internalStatus === "paused_usage_limit") return "사용량 한도로 일시 정지";
   if (snapshot.internalStatus === "retry") return "자동 복구 대기";
+  if (snapshot.internalStatus === "review_retry") return "품질 수정 주기 대기";
   return `${snapshot.phase} · ${snapshot.persona}`;
 };
 
