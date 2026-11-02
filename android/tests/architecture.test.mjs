@@ -295,7 +295,7 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.match(host, /fun assertPrelaunchStable\(\)[\s\S]*assertStableGenerationHealthy/);
   assert.match(host, /enum class PleosReadinessPhase \{ PrelaunchOrganizer, ChildActive \}/);
   assert.match(host, /mutableSetOf\(prelaunchHomePid, android\.os\.Process\.myPid\(\)\.toString\(\)\)/);
-  assert.match(host, /present\.firstOrNull\(Throwable::isFatalOrDuplicate\)/);
+  assert.match(host, /present\.firstOrNull \{ it\.isFatalOrDuplicate\(\) \}/);
   assert.match(host, /home_package_missing/);
   assert.match(host, /finally \{[\s\S]*scenario = null[\s\S]*readiness = null/);
   assert.match(host, /\^\(\?:logcat:\|\/system\/bin\/sh:/);

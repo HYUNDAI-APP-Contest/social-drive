@@ -118,7 +118,7 @@ internal object PleosCloseAudit {
 internal object PleosFailureAudit {
     fun throwIfAny(vararg failures: Throwable?) {
         val present = failures.filterNotNull()
-        val primary = present.firstOrNull(Throwable::isFatalOrDuplicate) ?: present.firstOrNull() ?: return
+        val primary = present.firstOrNull { it.isFatalOrDuplicate() } ?: present.firstOrNull() ?: return
         present.filterNot { it === primary }.forEach(primary::addSuppressed)
         throw primary
     }
