@@ -72,10 +72,12 @@ test("rejects reusing an idempotency key with a different payload", async () => 
 
 test("refreshes only exact expected upload manifests", async () => {
   const ctx = harness(); const created = await createDrive(ctx); const drive = created.body.drive;
-  const ok = await ctx.handler(event("POST /drives/{driveId}/uploads", { driveId: drive.id, body: { assets: [draft().assets[0]] } }));
-  assert.equal(ok.statusCode, 200); assert.equal(parse(ok).uploads.length, 1);
+  const ok = await ctx.handler(event("POST /drives/{driveId}/uploads", { driveId: drive.id, body: { assets: draft().assets } }));
+  assert.equal(ok.statusCode, 200); assert.equal(parse(ok).uploads.length, 2);
+  const partial = await ctx.handler(event("POST /drives/{driveId}/uploads", { driveId: drive.id, body: { assets: [draft().assets[0]] } }));
+  assert.equal(partial.statusCode, 409); assert.equal(parse(partial).error.code, "ASSET_MISMATCH");
   const changed = { ...draft().assets[0], sizeBytes: 999 };
-  const bad = await ctx.handler(event("POST /drives/{driveId}/uploads", { driveId: drive.id, body: { assets: [changed] } }));
+  const bad = await ctx.handler(event("POST /drives/{driveId}/uploads", { driveId: drive.id, body: { assets: [changed, draft().assets[1]] } }));
   assert.equal(bad.statusCode, 409); assert.equal(parse(bad).error.code, "ASSET_MISMATCH");
 });
 

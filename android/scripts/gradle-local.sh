@@ -37,4 +37,7 @@ if [[ -z "${ANDROID_HOME:-}" ]] && [[ "$(uname -s)" == "Darwin" ]]; then
   fi
 fi
 
-exec "$android_root/gradlew" "$@"
+exec "$android_root/gradlew" \
+  -p "$android_root" \
+  -Pkotlin.compiler.execution.strategy=in-process \
+  "$@"

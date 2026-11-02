@@ -70,6 +70,14 @@ When Android SDK/Gradle dependencies are unavailable, the deterministic reposito
 npm test
 ```
 
+The Android–backend contract harness uses a socket-free client–handler bridge to run the real Kotlin client against the real local Node handler in both unit-test flavors, without AWS credentials or deployment. Gradle itself may still require local IPC that a restricted sandbox can deny:
+
+```bash
+bash scripts/test-contract-harness.sh
+```
+
+See [the contract harness guide](../docs/android-backend-contract-harness.md) for its privacy evidence, covered failure states, prerequisites, and troubleshooting.
+
 In a restricted shell where Gradle, network access, or its local lock-listener socket is unavailable, compile and run the SDK-independent PLEOS lifecycle core with Android Studio's bundled Kotlin compiler:
 
 ```bash

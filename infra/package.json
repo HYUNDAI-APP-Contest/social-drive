@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test",
-    "validate": "node --test && (command -v sam >/dev/null && sam validate --lint --template-file template.yaml || echo 'SAM CLI not installed; deterministic security checks passed')",
+    "test": "node --test functions/api/*.test.mjs test/*.test.mjs",
+    "validate": "npm test && (command -v sam >/dev/null && sam validate --lint --template-file template.yaml || echo 'SAM CLI not installed; deterministic security checks passed')",
     "build:function": "npm ci --omit=dev --ignore-scripts --prefix functions/api"
   }
 }
