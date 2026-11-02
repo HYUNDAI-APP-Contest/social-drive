@@ -27,8 +27,12 @@ export class CodexAppServer {
     readline.createInterface({ input: this.child.stdout }).on("line", (line) => this.handleLine(line));
     this.child.once("exit", (code) => this.failAll(new Error(`codex app-server exited ${code}`)));
 
-    await this.request("initialize", { clientInfo: { name: "social_drive_orchestrator", title: "Social Drive Orchestrator", version: "0.1.0" }, capabilities: { experimentalApi: false, requestAttestation: false } });
+    await this.request("initialize", { clientInfo: { name: "social_drive_orchestrator", title: "Social Drive Orchestrator", version: "0.1.0" }, capabilities: { experimentalApi: true, requestAttestation: false } });
     this.notify("initialized");
+    const accountUsage = await this.request("account/usage/read").catch(() => null);
+    if (accountUsage) this.onEvent({ event: "account/usage/read", params: accountUsage });
+    const accountRateLimits = await this.request("account/rateLimits/read").catch(() => null);
+    if (accountRateLimits) this.onEvent({ event: "account/rateLimits/read", params: accountRateLimits });
     const thread = await this.request("thread/start", {
       cwd: this.workspace,
       model: this.config.codexModel,

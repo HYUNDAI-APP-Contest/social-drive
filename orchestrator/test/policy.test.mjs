@@ -17,6 +17,13 @@ test("budget fails closed at token limit", () => {
   assert.equal(budgetStatus(config, { tokens: 100, estimatedUsd: 0 }).allowed, false);
 });
 
+test("uses the signed-in account percentage instead of synthetic API cost when available", () => {
+  const config = { dailyTokenLimit: 100, dailyCostLimitUsd: 10, estimatedUsdPerMillionTokens: 1, accountUsagePausePercent: 95 };
+  assert.equal(budgetStatus(config, { tokens: 999999, estimatedUsd: 999 }, { usedPercent: 52, ordinaryUsageAllowed: true }).allowed, true);
+  assert.equal(budgetStatus(config, { tokens: 0, estimatedUsd: 0 }, { usedPercent: 95, ordinaryUsageAllowed: true }).allowed, false);
+  assert.equal(budgetStatus(config, { tokens: 0, estimatedUsd: 0 }, { usedPercent: 1, ordinaryUsageAllowed: false }).allowed, false);
+});
+
 test("recognizes plan usage limit errors for automatic pause", () => {
   const error = new Error("request failed");
   error.codexErrorInfo = "usageLimitExceeded";

@@ -26,3 +26,9 @@ test("rejects zero parallel agents", () => {
   finally { if (old === undefined) delete process.env.MAX_PARALLEL_AGENTS; else process.env.MAX_PARALLEL_AGENTS = old; }
 });
 
+test("defaults the signed-in account safety threshold to 95 percent", () => {
+  const old = process.env.ACCOUNT_USAGE_PAUSE_PERCENT; delete process.env.ACCOUNT_USAGE_PAUSE_PERCENT;
+  try { assert.equal(loadConfig({ requireSecrets: false }).accountUsagePausePercent, 95); }
+  finally { if (old === undefined) delete process.env.ACCOUNT_USAGE_PAUSE_PERCENT; else process.env.ACCOUNT_USAGE_PAUSE_PERCENT = old; }
+});
+

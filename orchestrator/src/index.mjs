@@ -19,6 +19,7 @@ import {
 } from "./control-center.mjs";
 import { DurableOutbox, enqueueOutbox } from "./outbox.mjs";
 import { recordUsage } from "./usage.mjs";
+import { recordAccountRateLimit, recordAccountTokenSnapshot, threadTotalTokens } from "./account-usage.mjs";
 import { classifyJobFailure, failureNotice, isReviewChangesRequiredError } from "./job-failure.mjs";
 import { DashboardWriter } from "./dashboard.mjs";
 import { reconcileReadyIssues } from "./ready-queue.mjs";
@@ -165,9 +166,18 @@ async function updateJob(key, mutator) {
 }
 
 async function accountUsage(issueNumber, event) {
-  const usage = event?.params?.usage ?? event?.params?.turn?.usage;
-  if (!usage) return;
-  const total = Number(usage.totalTokens ?? usage.total_tokens ?? 0);
+  if (event?.event === "account/usage/read") {
+    await store.update((state) => recordAccountTokenSnapshot(state, event.params, { day: utcDay() }));
+    void refreshDashboard();
+    return;
+  }
+  if (event?.event === "account/rateLimits/read" || event?.event === "account/rateLimits/updated") {
+    await store.update((state) => recordAccountRateLimit(state, event.params));
+    void outbox.drain();
+    void refreshDashboard();
+    return;
+  }
+  const total = threadTotalTokens(event) ?? 0;
   if (!total) return;
   const previous = observedUsage.get(issueNumber) ?? 0;
   const tokens = Math.max(0, total - previous);
@@ -175,7 +185,7 @@ async function accountUsage(issueNumber, event) {
   if (!tokens) return;
   await store.update((state) => {
     const jobKey = String(issueNumber).split(":", 1)[0];
-    recordUsage(state, { day: utcDay(), jobKey, tokens, dailyTokenLimit: config.dailyTokenLimit, estimatedUsdPerMillionTokens: config.estimatedUsdPerMillionTokens });
+    recordUsage(state, { day: utcDay(), jobKey, tokens, dailyTokenLimit: config.dailyTokenLimit, estimatedUsdPerMillionTokens: config.estimatedUsdPerMillionTokens, emitMilestones: false });
     if (state.jobs[jobKey]) enqueueJobDestinations(state, jobKey);
   });
   void outbox.drain();
@@ -342,7 +352,7 @@ async function poll() {
   void outbox.drain();
   void refreshDashboard();
   const usage = store.state.usage[utcDay()] ?? { tokens: 0, estimatedUsd: 0 };
-  const budget = budgetStatus(config, usage);
+  const budget = budgetStatus(config, usage, store.state.accountUsage);
   if (!budget.allowed) { log("budget_paused", { reason: budget.reason, usage }); return; }
   for (const issue of readyToStart) {
     const key = String(issue.number);
@@ -635,6 +645,7 @@ onAsync("status", async ({ interaction }) => {
     jobs: Object.values(store.state.jobs),
     approvals: Object.values(store.state.approvals),
     usage,
+    accountUsage: store.state.accountUsage,
     config,
     activeCount: active.size,
     deploymentActive,

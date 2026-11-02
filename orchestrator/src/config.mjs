@@ -18,6 +18,12 @@ const boolean = (name, fallback) => {
   return value === "true";
 };
 
+const percentage = (name, fallback) => {
+  const value = number(name, fallback, 1);
+  if (value > 100) throw new Error(`${name} must be <= 100`);
+  return value;
+};
+
 export function loadConfig({ requireSecrets = true } = {}) {
   const config = {
     githubOwner: process.env.GITHUB_OWNER ?? "HYUNDAI-APP-Contest",
@@ -50,6 +56,7 @@ export function loadConfig({ requireSecrets = true } = {}) {
     dailyTokenLimit: integer("DAILY_TOKEN_LIMIT", 2_000_000, 1),
     dailyCostLimitUsd: number("DAILY_COST_LIMIT_USD", 25, 0),
     estimatedUsdPerMillionTokens: number("ESTIMATED_USD_PER_1M_TOKENS", 10, 0),
+    accountUsagePausePercent: percentage("ACCOUNT_USAGE_PAUSE_PERCENT", 95),
     approvalTtlMs: integer("APPROVAL_TTL_MINUTES", 720, 1) * 60_000,
     sourceRepository: path.resolve(process.env.SOURCE_REPOSITORY ?? "."),
     workspaceRoot: path.resolve(process.env.WORKSPACE_ROOT ?? "./orchestrator/workspaces"),

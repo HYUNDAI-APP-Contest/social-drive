@@ -30,11 +30,15 @@ test("builds a workspace-safe dashboard model", () => {
     },
     approvals: {},
     usage: { "2026-11-01": { tokens: 1200, estimatedUsd: 0.01 } },
+    accountUsage: { usedPercent: 52, remainingPercent: 48, resetsAt: 1793774166, todayTokens: 138499664, lifetimeTokens: 1624957643 },
   };
   const model = buildDashboardModel(state, config, { now: new Date("2026-11-01T11:00:00.000Z"), activeCount: 1 });
   const serialized = JSON.stringify(model);
   assert.equal(model.jobs[0].workspaceState, "격리됨");
   assert.doesNotMatch(serialized, /\/Users\/person|secret raw failure/);
+  assert.equal(model.usage.accountUsedPercent, 52);
+  assert.equal(model.usage.accountTodayTokens, 138499664);
+  assert.match(renderDashboard(model), /Codex 실제 사용량/);
 });
 
 test("escapes inline JSON and renders data only through textContent", () => {

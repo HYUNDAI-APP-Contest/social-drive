@@ -13,6 +13,7 @@ export const safeJson = (value) => JSON.stringify(value)
 export function buildDashboardModel(state, config, { now = new Date(), activeCount = 0, deploymentActive = false } = {}) {
   const refreshIntervalMs = Math.max(1_000, Number(config.dashboardIntervalMs ?? 10_000));
   const usage = state.usage?.[utcDay(now)] ?? { tokens: 0, estimatedUsd: 0 };
+  const accountUsage = state.accountUsage ?? null;
   const pending = Object.values(state.approvals ?? {}).filter((item) => item.status === "pending");
   const jobs = Object.values(state.jobs ?? {}).map((job) => {
     const approval = pending.find((item) => Number(item.issue) === Number(job.issue)) ?? null;
@@ -33,6 +34,11 @@ export function buildDashboardModel(state, config, { now = new Date(), activeCou
       tokenLimit: config.dailyTokenLimit,
       estimatedUsd: Number(usage.estimatedUsd ?? 0),
       costLimitUsd: config.dailyCostLimitUsd,
+      accountUsedPercent: accountUsage?.usedPercent ?? null,
+      accountRemainingPercent: accountUsage?.remainingPercent ?? null,
+      accountResetsAt: accountUsage?.resetsAt ?? null,
+      accountTodayTokens: accountUsage?.todayTokens ?? null,
+      accountLifetimeTokens: accountUsage?.lifetimeTokens ?? null,
     },
     summary: {
       approval: jobs.filter((job) => job.status === "Approval needed").length,
@@ -65,7 +71,7 @@ export function renderDashboard(model) {
   <header><div><div class="eyebrow">LOCAL · READ ONLY</div><h1>Development Control Center</h1><div id="repo" class="meta"></div></div><div id="updated" class="meta"></div></header>
   <section id="heartbeat" class="heartbeat" role="alert"></section>
   <section id="summary" class="summary" aria-label="작업 요약"></section>
-  <section class="budget"><div class="top"><strong>오늘 토큰 예산</strong><span id="budgetText" class="meta"></span></div><div class="track"><div id="budgetFill" class="fill"></div></div></section>
+  <section class="budget"><div class="top"><strong>Codex 실제 사용량</strong><span id="budgetText" class="meta"></span></div><div class="track"><div id="budgetFill" class="fill"></div></div></section>
   <div class="toolbar"><strong>Agent 작업</strong><span id="runtime" class="meta"></span></div>
   <section id="jobs" class="grid" aria-live="polite"></section>
 </main><script>
@@ -81,8 +87,9 @@ if(heartbeatStale){heartbeat.classList.add('stale');heartbeat.textContent='오�
 document.getElementById('runtime').textContent=(heartbeatStale?'Heartbeat 지연 · ':'정상 · ')+'Agent '+model.activeCount+'/'+model.maxParallel+' · AWS '+(model.deploymentActive?'작업 중':'대기');
 const metrics=[['결정 필요',model.summary.approval],['진행 중',model.summary.active],['차단',model.summary.blocked],['완료',model.summary.done]];
 for(const [label,value] of metrics){const card=text('article','metric','');card.append(text('span','meta',label),text('strong','',value));document.getElementById('summary').append(card)}
-const percent=model.usage.tokenLimit?Math.min(100,Math.floor(model.usage.tokens/model.usage.tokenLimit*100)):0;
-document.getElementById('budgetText').textContent=model.usage.tokens.toLocaleString()+' / '+model.usage.tokenLimit.toLocaleString()+' · '+percent+'% · 예상 $'+model.usage.estimatedUsd.toFixed(2);
+const hasAccountUsage=Number.isFinite(Number(model.usage.accountUsedPercent));
+const percent=hasAccountUsage?Number(model.usage.accountUsedPercent):(model.usage.tokenLimit?Math.min(100,Math.floor(model.usage.tokens/model.usage.tokenLimit*100)):0);
+document.getElementById('budgetText').textContent=hasAccountUsage?('7일 한도 '+percent+'% 사용 · '+Number(model.usage.accountRemainingPercent)+'% 남음 · 오늘 '+Number(model.usage.accountTodayTokens||0).toLocaleString()+' tokens · 초기화 '+(model.usage.accountResetsAt?new Date(model.usage.accountResetsAt*1000).toLocaleString('ko-KR'):'확인 불가')):(model.usage.tokens.toLocaleString()+' / '+model.usage.tokenLimit.toLocaleString()+' · '+percent+'%');
 document.getElementById('budgetFill').style.width=percent+'%';
 const jobs=document.getElementById('jobs');
 if(!model.jobs.length)jobs.append(text('div','card empty','대기 중 · 아직 기록된 Agent 작업이 없습니다.'));

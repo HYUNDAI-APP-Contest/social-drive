@@ -170,7 +170,7 @@ const relativeExpiry = (expiresAt, now) => {
   return minutes >= 60 ? `${Math.floor(minutes / 60)}시간 ${minutes % 60}분 후 만료` : `${minutes}분 후 만료`;
 };
 
-export function renderAgentStatus({ jobs, approvals = [], usage = {}, config, activeCount = 0, deploymentActive = false, now = new Date() }) {
+export function renderAgentStatus({ jobs, approvals = [], usage = {}, accountUsage = null, config, activeCount = 0, deploymentActive = false, now = new Date() }) {
   const pending = approvals.filter((item) => item.status === "pending");
   const snapshots = jobs.map((job) => {
     const approval = pending.find((item) => Number(item.issue) === Number(job.issue)) ?? null;
@@ -186,6 +186,10 @@ export function renderAgentStatus({ jobs, approvals = [], usage = {}, config, ac
   if (!lines.length) lines.push("대기 중 · `agent:ready` Issue가 없습니다.");
   if (snapshots.length > 5) lines.push(`외 ${snapshots.length - 5}개 · 전체 보기`);
   const tokens = Math.max(0, Number(usage.tokens ?? 0));
+  if (accountUsage && Number.isFinite(Number(accountUsage.usedPercent))) {
+    const reset = accountUsage.resetsAt ? new Date(Number(accountUsage.resetsAt) * 1000).toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }) : "확인 불가";
+    return `${health} · Agent ${activeCount}/${config.maxParallel} 실행 중\n결정 필요 ${decision} · 차단 ${blocked} · 대기 ${snapshots.filter((item) => item.status === "Ready").length}\n\n${lines.join("\n")}${overflow}\n\nCodex 실제 7일 한도 ${Number(accountUsage.usedPercent)}% 사용 · ${Number(accountUsage.remainingPercent)}% 남음\n오늘 ${Number(accountUsage.todayTokens ?? 0).toLocaleString("en-US")} tokens · 누적 ${Number(accountUsage.lifetimeTokens ?? 0).toLocaleString("en-US")} tokens\n초기화 ${reset}\nAWS: ${deploymentActive ? "작업 중" : "대기"} · 배포 승인 ${pending.filter((item) => item.type === "aws-deploy").length}${project}`.slice(0, 1900);
+  }
   const percent = tokenPercent(tokens, config.dailyTokenLimit);
   const next = TOKEN_MILESTONES.find((value) => value > (percent ?? 0));
   const nextTokens = next ? Math.max(0, Math.ceil((config.dailyTokenLimit * next) / 100 - tokens)) : Math.max(0, config.dailyTokenLimit - tokens);
