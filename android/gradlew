@@ -1,0 +1,52 @@
+#!/bin/sh
+
+APP_HOME=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+JAVA_CMD=${JAVA_HOME:+$JAVA_HOME/bin/}java
+if ! command -v "$JAVA_CMD" >/dev/null 2>&1; then
+  echo "Java 17 or newer is required." >&2
+  exit 1
+fi
+
+WRAPPER_JAR="$APP_HOME/gradle/wrapper/gradle-wrapper.jar"
+if [ -f "$WRAPPER_JAR" ]; then
+  exec "$JAVA_CMD" -Dorg.gradle.appname=gradlew -classpath "$WRAPPER_JAR" org.gradle.wrapper.GradleWrapperMain "$@"
+fi
+
+# Source checkouts may omit the binary wrapper JAR. Bootstrap the pinned Gradle
+# distribution and verify it with Gradle's published SHA-256 before execution.
+PROPERTIES="$APP_HOME/gradle/wrapper/gradle-wrapper.properties"
+DIST_URL=$(sed -n 's/^distributionUrl=//p' "$PROPERTIES" | sed 's/\\:/:/g')
+DIST_SHA=$(sed -n 's/^distributionSha256Sum=//p' "$PROPERTIES")
+DIST_NAME=$(basename "$DIST_URL" .zip)
+GRADLE_CACHE_HOME=${GRADLE_USER_HOME:-"$APP_HOME/.gradle"}
+BOOTSTRAP_DIR="$GRADLE_CACHE_HOME/wrapper-bootstrap/$DIST_NAME"
+GRADLE_BIN="$BOOTSTRAP_DIR/gradle-8.9/bin/gradle"
+
+if [ ! -x "$GRADLE_BIN" ]; then
+  OFFLINE=false
+  for ARG in "$@"; do
+    [ "$ARG" = "--offline" ] && OFFLINE=true
+  done
+  if [ "$OFFLINE" = true ]; then
+    echo "Pinned Gradle 8.9 is not cached at $GRADLE_BIN; --offline forbids downloading it." >&2
+    echo "Run scripts/gradle-local.sh --version once with approved network access, then retry offline." >&2
+    exit 2
+  fi
+  command -v curl >/dev/null 2>&1 || { echo "curl is required to bootstrap Gradle." >&2; exit 1; }
+  command -v unzip >/dev/null 2>&1 || { echo "unzip is required to bootstrap Gradle." >&2; exit 1; }
+  mkdir -p "$BOOTSTRAP_DIR"
+  ARCHIVE="$BOOTSTRAP_DIR/$DIST_NAME.zip"
+  curl --fail --location --proto '=https' --tlsv1.2 --retry 2 "$DIST_URL" --output "$ARCHIVE" || {
+    echo "Unable to download the pinned Gradle distribution. Check network access." >&2
+    exit 1
+  }
+  if command -v shasum >/dev/null 2>&1; then
+    ACTUAL_SHA=$(shasum -a 256 "$ARCHIVE" | awk '{print $1}')
+  else
+    ACTUAL_SHA=$(sha256sum "$ARCHIVE" | awk '{print $1}')
+  fi
+  [ "$ACTUAL_SHA" = "$DIST_SHA" ] || { echo "Gradle distribution checksum mismatch." >&2; exit 1; }
+  unzip -q "$ARCHIVE" -d "$BOOTSTRAP_DIR"
+fi
+
+exec "$GRADLE_BIN" "$@"

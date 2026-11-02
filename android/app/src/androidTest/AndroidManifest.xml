@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The instrumentation APK is a separate package and must not declare the target app's
+  Startup provider. WorkManager on-demand initialization is configured only in main.
+-->
+<manifest />

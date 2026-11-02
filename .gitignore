@@ -7,3 +7,10 @@ orchestrator/workspaces/
 orchestrator/deployments/
 *.log
 
+# Android local and generated files
+android/.gradle/
+android/.kotlin/
+android/local.properties
+android/**/build/
+android/.idea/
+
