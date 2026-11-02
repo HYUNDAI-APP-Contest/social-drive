@@ -63,3 +63,28 @@ test("persists an authoritative denial even without a seven-day window", () => {
   assert.equal(state.accountUsage.ordinaryUsageAllowed, false);
   assert.equal(state.accountUsage.usedPercent, 20);
 });
+
+test("never lets delayed or lower same-window snapshots reopen admission", () => {
+  const state = {
+    accountUsage: {
+      usedPercent: 96,
+      remainingPercent: 4,
+      ordinaryUsageAllowed: false,
+      resetsAt: 3000,
+      updatedAt: "2026-11-02T10:00:00.000Z",
+      milestones: [30, 60, 90],
+    },
+    outbox: {},
+  };
+  const lower = { ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 40, windowDurationMins: 10080, resetsAt: 3000 } } };
+  recordAccountRateLimit(state, lower, { now: Date.parse("2026-11-02T09:00:00.000Z") });
+  assert.equal(state.accountUsage.usedPercent, 96);
+  assert.equal(state.accountUsage.ordinaryUsageAllowed, false);
+  recordAccountRateLimit(state, lower, { now: Date.parse("2026-11-02T11:00:00.000Z") });
+  assert.equal(state.accountUsage.usedPercent, 96);
+  assert.equal(state.accountUsage.ordinaryUsageAllowed, false);
+  const reset = { ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 5, windowDurationMins: 10080, resetsAt: 4000 } } };
+  recordAccountRateLimit(state, reset, { now: Date.parse("2026-11-02T12:00:00.000Z") });
+  assert.equal(state.accountUsage.usedPercent, 5);
+  assert.equal(state.accountUsage.ordinaryUsageAllowed, true);
+});

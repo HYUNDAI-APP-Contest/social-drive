@@ -32,23 +32,31 @@ export function recordAccountTokenSnapshot(state, response, { day } = {}) {
 
 export function recordAccountRateLimit(state, response, { now = Date.now() } = {}) {
   state.accountUsage ??= { milestones: [] };
-  if (typeof response?.ordinaryUsageAllowed === "boolean") {
-    state.accountUsage.ordinaryUsageAllowed = response.ordinaryUsageAllowed;
-    state.accountUsage.updatedAt = new Date(now).toISOString();
-  }
-  const selected = selectSevenDayRateLimit(response);
-  const usedPercent = finite(selected?.window?.usedPercent);
-  if (usedPercent === null) return { claimed: [], current: state.accountUsage ?? null };
   const current = state.accountUsage;
   const currentUpdatedAt = Date.parse(current.updatedAt ?? "");
   if (Number.isFinite(currentUpdatedAt) && now < currentUpdatedAt) return { claimed: [], current };
+  const selected = selectSevenDayRateLimit(response);
+  const usedPercent = finite(selected?.window?.usedPercent);
+  if (usedPercent === null) {
+    if (response?.ordinaryUsageAllowed === false) {
+      current.ordinaryUsageAllowed = false;
+      current.updatedAt = new Date(now).toISOString();
+    }
+    return { claimed: [], current };
+  }
   const resetsAt = finite(selected.window?.resetsAt);
   if (resetsAt !== null && current.resetsAt !== undefined && resetsAt < current.resetsAt) return { claimed: [], current };
-  if (resetsAt !== null && current.resetsAt !== resetsAt) current.milestones = [];
-  current.usedPercent = Math.max(0, Math.min(100, usedPercent));
+  const newWindow = resetsAt !== null && current.resetsAt !== resetsAt;
+  if (newWindow) current.milestones = [];
+  const boundedPercent = Math.max(0, Math.min(100, usedPercent));
+  current.usedPercent = newWindow || current.usedPercent === undefined
+    ? boundedPercent
+    : Math.max(Number(current.usedPercent), boundedPercent);
   current.remainingPercent = Math.max(0, 100 - current.usedPercent);
   current.windowDurationMins = finite(selected.window?.windowDurationMins);
   if (resetsAt !== null) current.resetsAt = resetsAt;
+  if (response?.ordinaryUsageAllowed === false) current.ordinaryUsageAllowed = false;
+  else if (response?.ordinaryUsageAllowed === true && (newWindow || current.ordinaryUsageAllowed !== false)) current.ordinaryUsageAllowed = true;
   current.updatedAt = new Date(now).toISOString();
   const emitted = new Set(current.milestones ?? []);
   const claimed = MILESTONES.filter((milestone) => current.usedPercent >= milestone && !emitted.has(milestone));
