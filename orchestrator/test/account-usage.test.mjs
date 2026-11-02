@@ -112,3 +112,29 @@ test("latches a no-window denial until a later seven-day window is proven", () =
   assert.equal(state.accountUsage.ordinaryUsageAllowed, true);
   assert.equal(state.accountUsage.denyLatched, undefined);
 });
+
+test("a repeated no-window denial clears an obsolete reset baseline", () => {
+  const state = {
+    accountUsage: {
+      usedPercent: 5,
+      ordinaryUsageAllowed: false,
+      denyLatched: true,
+      denyWindowResetsAt: 3000,
+      resetsAt: 4000,
+      updatedAt: new Date(3_000_000).toISOString(),
+      milestones: [],
+    },
+    outbox: {},
+  };
+  recordAccountRateLimit(state, {
+    ordinaryUsageAllowed: false,
+    rateLimits: { primary: { usedPercent: 1, windowDurationMins: 300 } },
+  }, { now: 3_001_000 });
+  assert.equal(state.accountUsage.denyWindowResetsAt, undefined);
+  recordAccountRateLimit(state, {
+    ordinaryUsageAllowed: true,
+    rateLimits: { primary: { usedPercent: 10, windowDurationMins: 10080, resetsAt: 5000 } },
+  }, { now: 3_001_001 });
+  assert.equal(state.accountUsage.ordinaryUsageAllowed, false);
+  assert.equal(state.accountUsage.denyWindowResetsAt, 5000);
+});

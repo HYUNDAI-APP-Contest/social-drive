@@ -42,6 +42,7 @@ export function recordAccountRateLimit(state, response, { now = Date.now() } = {
       current.ordinaryUsageAllowed = false;
       current.denyLatched = true;
       current.deniedAt = new Date(now).toISOString();
+      delete current.denyWindowResetsAt;
       current.updatedAt = new Date(now).toISOString();
     }
     return { claimed: [], current };
