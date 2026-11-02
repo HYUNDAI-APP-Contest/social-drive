@@ -5,6 +5,7 @@ orchestrator/data/
 orchestrator/logs/
 orchestrator/workspaces/
 orchestrator/deployments/
+status-dashboard.html
 *.log
 
 # Android local and generated files

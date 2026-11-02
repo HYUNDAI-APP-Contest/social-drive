@@ -6,7 +6,9 @@
   "engines": { "node": ">=22" },
   "scripts": {
     "start": "node src/index.mjs",
-    "check": "node --check src/index.mjs && node --test"
+    "check": "node --check src/index.mjs && node --test test/*.test.mjs",
+    "control-center:dry-run": "node ../scripts/setup-control-center.mjs --dry-run",
+    "control-center:check": "node ../scripts/setup-control-center.mjs --check"
   }
 }
 

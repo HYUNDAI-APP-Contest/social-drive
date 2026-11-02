@@ -42,13 +42,17 @@ if [[ -z "$channel_id" || -z "$guild_id" || -z "$application_id" ]]; then
   exit 1
 fi
 
-invite_url="https://discord.com/oauth2/authorize?client_id=${application_id}&permissions=67128320&integration_type=0&scope=bot%20applications.commands"
+invite_url="https://discord.com/oauth2/authorize?client_id=${application_id}&permissions=67193856&integration_type=0&scope=bot%20applications.commands"
 if ! curl -fsS -H "Authorization: Bot $bot_token" "https://discord.com/api/v10/guilds/$guild_id" >/dev/null; then
   printf 'The bot is not in the webhook server yet. Open this URL, add it, then rerun this script:\n%s\n' "$invite_url" >&2
   exit 1
 fi
 if ! curl -fsS -H "Authorization: Bot $bot_token" "https://discord.com/api/v10/channels/$channel_id" >/dev/null; then
   printf 'The bot cannot view the selected webhook channel. Grant View Channel permission, then rerun this script.\n' >&2
+  exit 1
+fi
+if ! DISCORD_BOT_TOKEN="$bot_token" DISCORD_CHANNEL_ID="$channel_id" "$node_bin" "$repo_root/scripts/verify-discord-channel.mjs"; then
+  printf 'Discord send/history verification failed. Re-add the bot with the required permissions, then rerun setup:\n%s\n' "$invite_url" >&2
   exit 1
 fi
 
@@ -130,12 +134,6 @@ launchctl kickstart -k "gui/$(id -u)/com.socialdrive.codex-orchestrator"
 
 gh label create agent:ready --repo HYUNDAI-APP-Contest/social-drive --color 1D76DB --description "Ready for autonomous Codex implementation" --force
 
-git add -- .gitignore .env.example .github compose.yaml design infra orchestrator scripts
-if ! git diff --cached --quiet; then
-  git commit -m "feat: add autonomous development foundation"
-  git push origin main
-fi
-
 "$node_bin" "--env-file=$env_file" "$repo_root/scripts/send-discord-test.mjs"
 
 printf '\nSetup complete.\n'
@@ -144,4 +142,5 @@ printf 'In the configured Discord channel run: /agent-claim code:%s\n' "$bootstr
 printf 'Bot invite URL (only if it is not already in the server):\n'
 printf '%s\n' "$invite_url"
 printf 'Logs: %s/orchestrator.log\n' "$logs_dir"
+printf 'Code changes were not staged, committed, pushed, or merged. Use 개발-관제센터-시작.command for the approval branch and PR flow.\n'
 

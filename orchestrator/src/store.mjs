@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-const emptyState = () => ({ version: 1, jobs: {}, approvals: {}, usage: {} });
+const emptyState = () => ({ version: 2, jobs: {}, approvals: {}, usage: {}, outbox: {} });
 
 export class Store {
   constructor(file) { this.file = file; this.state = emptyState(); this.queue = Promise.resolve(); }
@@ -9,8 +9,19 @@ export class Store {
   async load() {
     try { this.state = JSON.parse(await fs.readFile(this.file, "utf8")); }
     catch (error) { if (error.code !== "ENOENT") throw error; }
+    this.state.version = 2;
+    this.state.jobs ??= {};
+    this.state.approvals ??= {};
+    this.state.usage ??= {};
+    this.state.outbox ??= {};
     for (const job of Object.values(this.state.jobs)) {
       if (["preparing", "running", "publishing"].includes(job.status)) job.status = "retry";
+    }
+    for (const entry of Object.values(this.state.outbox)) {
+      if (entry.state === "sending") {
+        entry.state = "pending";
+        entry.nextAttemptAt = 0;
+      }
     }
     await this.save();
     return this.state;
