@@ -78,6 +78,44 @@ bash scripts/test-contract-harness.sh
 
 See [the contract harness guide](../docs/android-backend-contract-harness.md) for its privacy evidence, covered failure states, prerequisites, and troubleshooting.
 
+## Submission release pipeline
+
+Release artifacts are fail-closed. `assemble…Release`, `bundle…Release`, generic release assembly, and the supported entrypoint require all five environment variables below; debug, unit-test, and lint tasks do not. Values must be injected by the approved operator and must never be written to shell history, Gradle properties, logs, or this repository.
+
+The local history contains PR #2 merge commit `dcffaad`, but local Git ancestry cannot prove that the merge received the required approval or that `agent:ready` was applied afterward. The orchestrator must confirm both before an operator runs this pipeline.
+
+```text
+SOCIAL_DRIVE_RELEASE_STORE_FILE       absolute path outside this repository
+SOCIAL_DRIVE_RELEASE_STORE_PASSWORD   secret value
+SOCIAL_DRIVE_RELEASE_KEY_ALIAS        approved release alias
+SOCIAL_DRIVE_RELEASE_KEY_PASSWORD     secret value
+SOCIAL_DRIVE_RELEASE_CERT_SHA256      approved certificate SHA-256
+```
+
+With a clean worktree and the approved environment already present, run:
+
+```bash
+bash scripts/build-submission-release.sh
+```
+
+The script first requires PR #2 commit `dcffaad` to be an ancestor of the clean HEAD. It uses `--no-daemon`, builds both `demoRelease` and `pleosRelease`, verifies each APK with `apksigner`, rejects an Android Debug subject or a certificate fingerprint mismatch, and uses `aapt2` to require the expected Demo/Pleos application IDs. Identical Demo and Pleos APK hashes are rejected. It then writes an atomic release set below ignored `build/submission/<sourceSha>/`. `metadata.json` contains only the source SHA, variant, filename, and final-file SHA-256. Any missing variant, dirty source, changed HEAD, stale destination, invalid keystore location, variant identity failure, or signature failure rejects the entire set. A checksum identifies the built file; it is not a claim of bit-for-bit deterministic Gradle output.
+
+Do not rename the Demo artifact into a submission APK. Only `SocialDrive_pleos_release.apk` may later be promoted to `apk/[팀명]_SocialDrive_release.apk`, and only after the repository's separate publication approval.
+
+### Clean PLEOS AVD evidence
+
+In Pleos Connect Emulator 2.1.0, cold boot the API 34 AVD with wipe/factory reset. Connect only that AVD and do not use an emulator containing a previous `com.socialdrive.app` install. Then run:
+
+```bash
+bash scripts/verify-pleos-clean-install.sh \
+  --serial <PLEOS_SERIAL> \
+  --apk build/submission/<SOURCE_SHA>/SocialDrive_pleos_release.apk
+```
+
+The verifier refuses zero or multiple device rows (including offline or unauthorized devices), a serial mismatch, non-PLEOS/API 34/2.1.0 images, an existing package, an incomplete two-artifact metadata contract, checksum/signature mismatch, a launch crash, or a reused process. It performs a fresh `adb install` without `-r`, bounds every adb command, explicitly launches `.MainActivity`, waits for a stable PID and resumed Activity, force-stops it, and requires a different stable PID with no crash exit after relaunch. Its adjacent `pleos-clean-install-evidence.json` is created without overwriting prior evidence and is limited to source/artifact/certificate identifiers, non-sensitive AVD identity, user ID, and successful step status; it never collects logcat, screenshots, coordinates, URLs, or raw vehicle data.
+
+This evidence proves only clean installation and process relaunch. Actual Vehicle P/D/R/N callbacks, NaviHelper route/event callbacks, physical/vendor System Back delivery, actual cloud/Cognito E2E, and AWS deployment remain independent acceptance gates.
+
 In a restricted shell where Gradle, network access, or its local lock-listener socket is unavailable, compile and run the SDK-independent PLEOS lifecycle core with Android Studio's bundled Kotlin compiler:
 
 ```bash

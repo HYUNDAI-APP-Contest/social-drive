@@ -27,6 +27,12 @@ cat > "$bootstrap_dir/service-policy.json" <<'JSON'
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "UseExactSamTransform",
+      "Effect": "Allow",
+      "Action": "cloudformation:CreateChangeSet",
+      "Resource": "arn:aws:cloudformation:ap-northeast-2:aws:transform/Serverless-2016-10-31"
+    },
+    {
       "Sid": "ManageSocialDriveLambda",
       "Effect": "Allow",
       "Action": "lambda:*",

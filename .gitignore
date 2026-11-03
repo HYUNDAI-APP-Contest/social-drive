@@ -15,3 +15,10 @@ android/local.properties
 android/**/build/
 android/.idea/
 
+# Submission signing material and generated evidence must never be tracked.
+*.jks
+*.keystore
+*.p12
+*.pfx
+android/build/submission/
+

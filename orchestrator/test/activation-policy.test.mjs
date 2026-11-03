@@ -10,6 +10,10 @@ test("setup never stages or pushes application code", () => {
   const source = read("../../scripts/setup-orchestrator.sh");
   assert.doesNotMatch(source, /git\s+push\s+origin\s+main/);
   assert.doesNotMatch(source, /git\s+add/);
+  assert.match(source, /if ! codex_bin="\$\(command -v codex\)"/);
+  assert.match(source, /CODEX_EXECUTABLE=%s/);
+  assert.match(source, /JSON\.stringify\(process\.argv\[1\]\)/);
+  assert.doesNotMatch(source, /CODEX_COMMAND=/);
 });
 
 test("activation uses an explicit file allowlist and an open PR handoff", () => {
@@ -18,6 +22,9 @@ test("activation uses an explicit file allowlist and an open PR handoff", () => 
   assert.match(source, /git add -- "\$\{control_center_files\[@\]\}"/);
   assert.match(source, /"orchestrator\/src\/follow-up\.mjs"/);
   assert.match(source, /"orchestrator\/test\/follow-up\.test\.mjs"/);
+  assert.match(source, /"orchestrator\/src\/codex\.mjs"/);
+  assert.match(source, /"orchestrator\/src\/process\.mjs"/);
+  assert.match(source, /"orchestrator\/test\/process\.test\.mjs"/);
   assert.match(source, /--name-only -z/);
   assert.match(source, /read -r -d '' staged/);
   assert.match(source, /git diff --name-only -z/);

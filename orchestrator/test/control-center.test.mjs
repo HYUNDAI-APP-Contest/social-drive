@@ -28,10 +28,12 @@ const expected = {
   merge_approval_expired: ["Blocked", "Merge", "Blocked", "Human"],
   deploy_approval_expired: ["Blocked", "Deploy", "Blocked", "Human"],
   retry: ["Blocked", "Queue", "Recovering", "Orchestrator"],
+  review_retry: ["Review", "Review", "At risk", "픽시"],
   paused_usage_limit: ["Blocked", "Queue", "Blocked", "Orchestrator"],
   merge_failed: ["Blocked", "Merge", "Blocked", "Orchestrator"],
   deploy_failed: ["Blocked", "Deploy", "Blocked", "Orchestrator"],
   failed: ["Blocked", "Queue", "Blocked", "Orchestrator"],
+  review_blocked: ["Blocked", "Review", "At risk", "센티넬"],
   rejected: ["Blocked", "Merge", "Blocked", "Human"],
   deploy_rejected: ["Blocked", "Deploy", "Blocked", "Human"],
   merged: ["Done", "Merge", "On track", "Orchestrator"],
@@ -134,4 +136,15 @@ test("renders approval and blocked jobs first in a bounded status response", () 
   assert.match(response, /외 3개/);
   assert.match(response, /오늘 토큰 620,000 \/ 2,000,000 \(31%\)/);
   assert.ok(response.length <= 1900);
+});
+
+test("renders actual account usage without a temporal-dead-zone failure", () => {
+  const rendered = renderAgentStatus({
+    jobs: [], approvals: [], usage: {},
+    accountUsage: { usedPercent: 52, remainingPercent: 48, todayTokens: 138499664, lifetimeTokens: 1624957643, resetsAt: 1793774166 },
+    config: { maxParallel: 3, dailyTokenLimit: 2000000, dailyCostLimitUsd: 25, githubProjectUrl: "" },
+    activeCount: 1,
+  });
+  assert.match(rendered, /실제 7일 한도 52%/);
+  assert.match(rendered, /138,499,664/);
 });

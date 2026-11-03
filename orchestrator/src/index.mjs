@@ -6,7 +6,7 @@ import { budgetStatus, isUsageLimitError } from "./policy.mjs";
 import { GitHub } from "./github.mjs";
 import { Discord } from "./discord.mjs";
 import { WorkspaceManager } from "./workspace.mjs";
-import { CodexAppServer, agentText } from "./codex.mjs";
+import { CodexAppServer, agentText, readCodexAccountState } from "./codex.mjs";
 import { AwsDeployer, formatChangeSummary } from "./aws.mjs";
 import {
   buildProgressSnapshot,
@@ -19,6 +19,8 @@ import {
 } from "./control-center.mjs";
 import { DurableOutbox, enqueueOutbox } from "./outbox.mjs";
 import { recordUsage } from "./usage.mjs";
+import { recordAccountRateLimit, recordAccountTokenSnapshot, threadTotalTokens } from "./account-usage.mjs";
+import { classifyJobFailure, failureNotice, isReviewChangesRequiredError } from "./job-failure.mjs";
 import { DashboardWriter } from "./dashboard.mjs";
 import { reconcileReadyIssues } from "./ready-queue.mjs";
 import { buildVisualReport, visualReportKey } from "./visual-report.mjs";
@@ -40,6 +42,7 @@ const active = new Map();
 const observedUsage = new Map();
 let deploymentActive = false;
 let mergeRecoveryActive = false;
+let lastAccountUsageSyncAt = 0;
 
 const log = (event, fields = {}) => console.log(JSON.stringify({ timestamp: new Date().toISOString(), event, ...fields }));
 const approvalId = (pr) => `pr-${pr.number}`;
@@ -164,17 +167,27 @@ async function updateJob(key, mutator) {
 }
 
 async function accountUsage(issueNumber, event) {
-  const usage = event?.params?.usage ?? event?.params?.turn?.usage;
-  if (!usage) return;
-  const total = Number(usage.totalTokens ?? usage.total_tokens ?? 0);
+  if (event?.event === "account/usage/read") {
+    await store.update((state) => recordAccountTokenSnapshot(state, event.params, { day: utcDay() }));
+    void refreshDashboard();
+    return;
+  }
+  if (event?.event === "account/rateLimits/read" || event?.event === "account/rateLimits/updated") {
+    await store.update((state) => recordAccountRateLimit(state, event.params, { now: event.emittedAtMs ?? Date.now() }));
+    void outbox.drain();
+    void refreshDashboard();
+    return;
+  }
+  const total = threadTotalTokens(event) ?? 0;
   if (!total) return;
-  const previous = observedUsage.get(issueNumber) ?? 0;
+  const observationKey = `${issueNumber}:${event?.params?.threadId ?? "unknown"}`;
+  const previous = observedUsage.get(observationKey) ?? 0;
   const tokens = Math.max(0, total - previous);
-  observedUsage.set(issueNumber, Math.max(previous, total));
+  observedUsage.set(observationKey, Math.max(previous, total));
   if (!tokens) return;
   await store.update((state) => {
     const jobKey = String(issueNumber).split(":", 1)[0];
-    recordUsage(state, { day: utcDay(), jobKey, tokens, dailyTokenLimit: config.dailyTokenLimit, estimatedUsdPerMillionTokens: config.estimatedUsdPerMillionTokens });
+    recordUsage(state, { day: utcDay(), jobKey, tokens, dailyTokenLimit: config.dailyTokenLimit, estimatedUsdPerMillionTokens: config.estimatedUsdPerMillionTokens, emitMilestones: false });
     if (state.jobs[jobKey]) enqueueJobDestinations(state, jobKey);
   });
   void outbox.drain();
@@ -192,7 +205,8 @@ async function runIssue(issue) {
     const runRole = async ({ role, meter, prompt, sandboxMode, instructions }) => {
       const codex = new CodexAppServer(config, {
         workspace,
-        onEvent: (event) => { log("codex_event", { issue: issue.number, role, type: event.event }); void accountUsage(`${issue.number}:${meter}`, event); },
+        onEvent: (event) => { log("codex_event", { issue: issue.number, role, type: event.event }); return accountUsage(`${issue.number}:${meter}`, event); },
+        onAdmission: () => budgetStatus(config, store.state.usage[utcDay()] ?? {}, store.state.accountUsage).allowed,
         onApproval: async (method) => {
           await queueDiscordNotice(
             `permission-blocked:${issue.number}:${store.state.jobs[key]?.attempts ?? 0}:${meter}:${String(method).slice(0, 80)}`,
@@ -229,6 +243,7 @@ async function runIssue(issue) {
       instructions: "You are 픽시, the senior female product designer and implementation engineer. Follow 아키's product and technical contract and repository instructions. Define the UX before editing, then implement and test inside the workspace. Commit locally, and never push, merge, deploy, or access credentials. Report structured test evidence in your final response. Never capture or attach the desktop, terminal, IDE, logs, credentials, real users, precise maps, or QR codes.",
       prompt: `${workflow}\n\n# 역할: 픽시(디자인·개발)\n${issuePrompt}\n\n# 아키의 기획·설계 계약\n${plan}\n\n먼저 기존 디자인 시스템을 기준으로 사용자 흐름, 화면 계층, 컴포넌트 상태, 로딩·빈 화면·오류, 반응형, 접근성, 모션, 문구와 시각 완성도 기준을 정한 뒤 곧바로 구현하세요. UI가 없는 작업이면 사용자 경험과 운영 가시성을 설계하고 구현하세요. 관련 테스트를 실행하고 변경 파일, 테스트 증거, 디자인 반영 증거, 남은 위험을 보고한 뒤 로컬 커밋을 만드세요.`,
     });
+    await workspaces.ensureCommit(workspace, issue);
     await queueVisualOutcome(key, {
       stage: "IMPLEMENTATION_EVIDENCE", role: "designer", revision: `attempt-${store.state.jobs[key]?.attempts ?? 0}`,
       headline: "디자인·구현 결과 생성",
@@ -245,7 +260,7 @@ async function runIssue(issue) {
         role: "센티넬(검토자)",
         meter: `reviewer-${round}`,
         sandboxMode: "read-only",
-        instructions: "You are 센티넬, an independent quality and security reviewer. Never edit files. Inspect the actual diff and test evidence, challenge assumptions, and fail closed. End with exactly VERDICT: APPROVE or VERDICT: CHANGES_REQUIRED.",
+        instructions: "You are 센티넬, an independent quality and security reviewer. Never edit files. Inspect the committed diff and test evidence, challenge assumptions, and fail closed. Your sandbox is intentionally read-only: do not reject solely because it prevents a fresh test rerun, but do reject missing or invalid evidence and real product defects. End with exactly VERDICT: APPROVE or VERDICT: CHANGES_REQUIRED.",
         prompt: `# 역할: 센티넬(검토자)\n${issuePrompt}\n\n# 아키의 기획·설계 계약\n${plan}\n\n# 픽시의 디자인·개발 보고\n${implementationReport}\n\n실제 git diff와 테스트를 독립적으로 확인하세요. 기능 정확성, 기획 수용 기준, 디자인 완성도, 모든 UI 상태, 반응형·접근성, 회귀, 보안, 개인정보, 자동차 UX, 테스트 증거를 검토하고 구체적인 발견사항을 작성하세요. 마지막 줄은 반드시 VERDICT: APPROVE 또는 VERDICT: CHANGES_REQUIRED 중 하나여야 합니다.`,
       });
       await store.update((state) => { state.jobs[key].reviews ??= []; state.jobs[key].reviews.push({ round, report: finalReview }); });
@@ -255,7 +270,7 @@ async function runIssue(issue) {
         stage: "REVIEW_CHANGES_REQUIRED", role: "reviewer", revision: `attempt-${store.state.jobs[key]?.attempts ?? 0}-review-${round}`,
         headline: `독립 검토 ${round}차 · 수정 필요`,
         changes: ["센티넬이 차단 발견사항을 확인", "현재 결과는 승인되지 않음"],
-        tests: [{ state: "FAIL", name: "센티넬 품질 게이트", detail: "CHANGES_REQUIRED" }],
+        tests: [{ state: "REVIEW", name: "센티넬 품질 게이트", detail: "수정 요청" }],
         nextStep: "픽시가 발견사항을 반영한 뒤 다시 검토합니다.",
       });
       if (round === config.maxReviewRounds) throw new Error(`센티넬 검토를 ${config.maxReviewRounds}회 통과하지 못했습니다.`);
@@ -268,6 +283,7 @@ async function runIssue(issue) {
         instructions: "You are 픽시, the product designer and implementation engineer. Address every blocking functional and design finding from 센티넬, rerun tests, and commit locally. Never push, merge, deploy, or access credentials.",
         prompt: `# 역할: 픽시(디자인·개발) · 재작업\n${issuePrompt}\n\n# 아키의 기획·설계 계약\n${plan}\n\n# 센티넬의 반려 의견\n${finalReview}\n\n각 지적을 수정하고 테스트를 다시 실행하세요. 무엇을 어떻게 해결했는지 기능·디자인 근거와 함께 보고하고 로컬 커밋을 만드세요.`,
       });
+      await workspaces.ensureCommit(workspace, issue);
     }
 
     await updateJob(key, (state) => { state.jobs[key].status = "publishing"; });
@@ -300,24 +316,46 @@ async function runIssue(issue) {
   } catch (error) {
     log("job_failed", { issue: issue.number, error: redact(error.message) });
     const usageLimited = isUsageLimitError(error);
+    const reviewChangesRequired = isReviewChangesRequiredError(error);
     await updateJob(key, (state) => {
       const job = state.jobs[key] ?? { issue: issue.number, attempts: 1 };
-      job.status = usageLimited ? "paused_usage_limit" : job.attempts <= config.maxRetries ? "retry" : "failed";
+      job.status = classifyJobFailure({
+        usageLimited,
+        reviewChangesRequired,
+        attempts: job.attempts,
+        maxRetries: config.maxRetries,
+      });
       job.error = redact(error.message);
       job.nextRetryAt = usageLimited ? Date.now() + config.usageLimitCooldownMs : null;
       job.updatedAt = new Date().toISOString(); state.jobs[key] = job;
     });
     const failedStatus = store.state.jobs[key]?.status;
     const failureEvent = `job-failure:${issue.number}:${store.state.jobs[key]?.attempts ?? 1}:${failedStatus}`;
-    if (usageLimited) await queueDiscordNotice(failureEvent, `⏸️ **#${issue.number} 사용량 한도로 일시 정지**\n작업 상태는 보존됩니다. ${Math.round(config.usageLimitCooldownMs / 60_000)}분 후 자동 재시도합니다.`);
-    else if (failedStatus === "retry") await queueDiscordNotice(failureEvent, `⚠️ **#${issue.number} 자동 복구 중**\n실패 상세는 안전하게 보관했습니다. 다음 폴링에서 재시도합니다. (${store.state.jobs[key]?.attempts ?? 1}/${config.maxRetries + 1})`);
-    else await queueDiscordNotice(failureEvent, `❌ **#${issue.number} 자동 복구 실패**\n재시도 한도를 소진했습니다. 작업 범위와 안전한 운영 로그를 확인해 주세요.`);
+    await queueDiscordNotice(failureEvent, failureNotice({
+      issue: issue.number,
+      status: failedStatus,
+      attempts: store.state.jobs[key]?.attempts ?? 1,
+      maxRetries: config.maxRetries,
+      usageLimitCooldownMs: config.usageLimitCooldownMs,
+    }));
   } finally { active.delete(key); }
 }
 
 async function poll() {
   await recoverMergeApprovals();
   await expireApprovals();
+  if (Date.now() - lastAccountUsageSyncAt >= config.accountUsageSyncMs) {
+    try {
+      const snapshot = await readCodexAccountState(config);
+      await store.update((state) => {
+        if (snapshot.accountUsage) recordAccountTokenSnapshot(state, snapshot.accountUsage, { day: utcDay() });
+        if (snapshot.accountRateLimits) recordAccountRateLimit(state, snapshot.accountRateLimits);
+      });
+      lastAccountUsageSyncAt = Date.now();
+    } catch (error) {
+      log("account_usage_sync_failed", { error: redact(error.message) });
+    }
+  }
   const issues = await github.listReadyIssues();
   const readyToStart = await reconcileReadyIssues({
     issues,
@@ -329,7 +367,7 @@ async function poll() {
   void outbox.drain();
   void refreshDashboard();
   const usage = store.state.usage[utcDay()] ?? { tokens: 0, estimatedUsd: 0 };
-  const budget = budgetStatus(config, usage);
+  const budget = budgetStatus(config, usage, store.state.accountUsage);
   if (!budget.allowed) { log("budget_paused", { reason: budget.reason, usage }); return; }
   for (const issue of readyToStart) {
     const key = String(issue.number);
@@ -622,6 +660,7 @@ onAsync("status", async ({ interaction }) => {
     jobs: Object.values(store.state.jobs),
     approvals: Object.values(store.state.approvals),
     usage,
+    accountUsage: store.state.accountUsage,
     config,
     activeCount: active.size,
     deploymentActive,

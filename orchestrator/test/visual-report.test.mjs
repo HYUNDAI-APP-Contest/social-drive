@@ -37,6 +37,20 @@ test("visual report identity is stable but changes with revision", () => {
   assert.notEqual(visualReportKey(first, { repository, runId: "2:1" }), visualReportKey(second, { repository, runId: "2:1" }));
 });
 
+test("renders review feedback as a revision request rather than a failed test", () => {
+  const report = buildVisualReport({
+    issue: 15,
+    stage: "REVIEW_CHANGES_REQUIRED",
+    role: "reviewer",
+    headline: "독립 검토 · 수정 필요",
+    tests: [{ state: "REVIEW", name: "센티넬 품질 게이트", detail: "수정 요청" }],
+    revision: "review-1",
+  }, { repository });
+  const serialized = JSON.stringify(renderVisualReport(report, { eventId: "review-request" }));
+  assert.match(serialized, /🟡 REVIEW · 센티넬 품질 게이트/);
+  assert.doesNotMatch(serialized, /❌ FAIL · 센티넬 품질 게이트/);
+});
+
 test("redacts every repeated path and signed query value and never attaches an image", () => {
   const report = buildVisualReport({
     issue: 7,

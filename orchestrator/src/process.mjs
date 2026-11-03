@@ -1,4 +1,12 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
+
+export function codexLaunch(executable) {
+  if (typeof executable !== "string" || !path.isAbsolute(executable) || executable.includes("\0")) {
+    throw new Error("CODEX_EXECUTABLE must be an absolute executable path");
+  }
+  return { executable, args: ["app-server", "--listen", "stdio://"] };
+}
 
 export function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
