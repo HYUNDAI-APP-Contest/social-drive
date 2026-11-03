@@ -34,8 +34,14 @@ export function safeWorkerEnvironment() {
 }
 
 export function isolatedWorkerEnvironment() {
+  const nodeBin = path.dirname(process.execPath);
+  const inheritedPath = process.env.PATH ?? "/usr/bin:/bin:/usr/sbin:/sbin";
+  const workerPath = [nodeBin, ...inheritedPath.split(path.delimiter)]
+    .filter((value, index, values) => value && values.indexOf(value) === index)
+    .join(path.delimiter);
   return {
     ...safeWorkerEnvironment(),
+    PATH: workerPath,
     AWS_SHARED_CREDENTIALS_FILE: "/dev/null",
     AWS_CONFIG_FILE: "/dev/null",
     AWS_EC2_METADATA_DISABLED: "true",

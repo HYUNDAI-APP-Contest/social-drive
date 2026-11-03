@@ -28,8 +28,9 @@ export function recordMergeResult(state, { approvalId, approval, result, userId,
   const job = state.jobs?.[String(approval.issue)];
   if (!current || !job) throw new Error("Merge approval state is incomplete");
 
-  current.status = "approved";
+  current.status = result.merged ? "approved" : "failed";
   current.decidedBy = userId;
+  if (!result.merged) current.error = String(result.message ?? "GitHub rejected the merge").slice(0, 500);
   job.status = result.merged ? "merged" : "merge_failed";
   if (!result.merged) return;
 

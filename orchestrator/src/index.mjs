@@ -294,7 +294,7 @@ async function runIssue(issue) {
     await updateJob(key, (state) => {
       state.jobs[key] = { ...state.jobs[key], status: "awaiting_merge_approval", pr: pr.number, prUrl: pr.html_url, commit, updatedAt: new Date().toISOString() };
       state.approvals[id] = bindApprovalFollowUp(
-        { id, type: "merge", issue: issue.number, pr: pr.number, createdAt: Date.now(), expiresAt: Date.now() + config.approvalTtlMs, status: "pending" },
+        { id, type: "merge", issue: issue.number, pr: pr.number, commit, createdAt: Date.now(), expiresAt: Date.now() + config.approvalTtlMs, status: "pending" },
         `${config.githubOwner}/${config.githubRepo}`,
       );
     });
@@ -591,8 +591,23 @@ onAsync("approval", async ({ action, id, userId }) => {
   if (action === "approve") {
     let result;
     try {
-      result = await github.mergePullRequest(approval.pr);
+      result = await github.mergePullRequest(approval.pr, approval.commit);
     } catch (error) {
+      if (error?.status === 405) {
+        await updateJob(String(approval.issue), (state) => {
+          state.approvals[id].status = "failed";
+          state.approvals[id].decidedBy = userId;
+          state.approvals[id].error = "GitHub rejected the merge because the pull request is not currently mergeable";
+          state.jobs[String(approval.issue)].status = "merge_failed";
+          state.jobs[String(approval.issue)].error = "Pull request requires conflict resolution or a fresh base before merge";
+          state.jobs[String(approval.issue)].updatedAt = new Date().toISOString();
+        });
+        await queueDiscordNotice(
+          `merge-conflict:${config.githubOwner}/${config.githubRepo}:pr-${approval.pr}`,
+          `🧩 **PR #${approval.pr} 병합 충돌**\n승인은 정상 접수됐지만 GitHub가 병합을 거절했습니다. 충돌 해결과 재검증 후 새 커밋 기준 승인 카드를 발행합니다.`,
+        );
+        return;
+      }
       log("merge_result_ambiguous", { pr: approval.pr, error: redact(error.message) });
       await queueDiscordNotice(
         `merge-reconcile-pending:${config.githubOwner}/${config.githubRepo}:pr-${approval.pr}`,
