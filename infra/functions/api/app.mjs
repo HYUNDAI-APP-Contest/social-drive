@@ -112,10 +112,7 @@ export function createHandler({ repository, assets, clock = () => new Date(), id
         const drive = await repository.getDrive(driveId);
         if (!drive || drive.ownerId !== userId || drive.status !== "DRAFT") throw new ApiError(404, "NOT_FOUND", "드라이브를 찾을 수 없어요.");
         const requested = normalizeAssets(parseBody(event).assets);
-        for (const asset of requested) {
-          const expected = drive.assets.find((item) => item.kind === asset.kind);
-          if (!expected || canonical(expected) !== canonical(asset)) throw new ApiError(409, "ASSET_MISMATCH", "파일 정보를 안전하게 확인하지 못했어요.");
-        }
+        if (canonical(requested) !== canonical(drive.assets)) throw new ApiError(409, "ASSET_MISMATCH", "파일 정보를 안전하게 확인하지 못했어요.");
         result = response(200, { drive: publicDrive(drive), uploads: await uploadResponse(assets, { ...drive, assets: requested }, now) }, requestId);
       } else if (routeKey === "POST /drives/{driveId}/publish") {
         const drive = await repository.getDrive(driveId);

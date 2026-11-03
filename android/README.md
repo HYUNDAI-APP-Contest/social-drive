@@ -70,6 +70,14 @@ When Android SDK/Gradle dependencies are unavailable, the deterministic reposito
 npm test
 ```
 
+The Android–backend contract harness uses a socket-free client–handler bridge to run the real Kotlin client against the real local Node handler in both unit-test flavors, without AWS credentials or deployment. Gradle itself may still require local IPC that a restricted sandbox can deny:
+
+```bash
+bash scripts/test-contract-harness.sh
+```
+
+See [the contract harness guide](../docs/android-backend-contract-harness.md) for its privacy evidence, covered failure states, prerequisites, and troubleshooting.
+
 ## Submission release pipeline
 
 Release artifacts are fail-closed. `assemble…Release`, `bundle…Release`, generic release assembly, and the supported entrypoint require all five environment variables below; debug, unit-test, and lint tasks do not. Values must be injected by the approved operator and must never be written to shell history, Gradle properties, logs, or this repository.

@@ -26,6 +26,14 @@ sam validate --lint --template-file infra/template.yaml
 sam build --template-file infra/template.yaml
 ```
 
+The Android–backend contract can also be exercised locally against the real handler and an in-memory repository, without AWS credentials or deployment:
+
+```bash
+bash android/scripts/test-contract-harness.sh
+```
+
+See [the contract harness guide](../docs/android-backend-contract-harness.md) for covered lifecycle, failure-state, and privacy assertions.
+
 ## Planned deployment sequence
 
 1. Authenticate with the local AWS CLI profile `social-drive-deployer`; keys are never copied into project files.

@@ -803,3 +803,25 @@ test("version conflicts are durable explicit parked-only reviews", () => {
   assert.match(screen, /최신 버전을 기준으로 다시 게시/);
   assert.match(screen, /로컬 초안 유지/);
 });
+
+test("local Android backend harness stays real, socket-free and privacy bounded", () => {
+  const bridge = read("app/src/test/java/com/socialdrive/app/data/remote/LocalBackendContractBridge.kt");
+  const suite = read("app/src/test/java/com/socialdrive/app/data/remote/AndroidBackendContractHarnessTest.kt");
+  const runner = read("scripts/test-contract-harness.sh");
+  const server = fs.readFileSync(path.join(root, "../infra/test/contract-harness-server.mjs"), "utf8");
+
+  assert.match(bridge, /ProcessBuilder\("node"/);
+  assert.doesNotMatch(bridge, /ServerSocket|HttpServer|\bSocket\s*\(|System\.getenv/);
+  assert.match(server, /createHandler/);
+  assert.match(server, /MemoryRepository/);
+  assert.doesNotMatch(server, /production-adapters|\bAWS_|process\.env|createServer|\.listen\s*\(/);
+  assert.match(runner, /testDemoDebugUnitTest/);
+  assert.match(runner, /testPleosDebugUnitTest/);
+  for (const marker of [
+    "privacy-safe lifecycle with deterministic conflicts and delete replay",
+    "object adapter rejects MIME size and checksum mismatches",
+    "loading authentication retryable transport and malformed response",
+    "bounded complete manifest is rejected locally",
+    "malformed and oversized request bodies return safe handler envelopes",
+  ]) assert.ok(suite.includes(marker), marker);
+});
