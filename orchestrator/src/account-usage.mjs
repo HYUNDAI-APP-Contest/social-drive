@@ -2,6 +2,7 @@ import { enqueueOutbox } from "./outbox.mjs";
 
 const MILESTONES = [30, 60, 90];
 const SEVEN_DAYS_MINUTES = 7 * 24 * 60;
+const RESET_JITTER_SECONDS = 60;
 const finite = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
 
 export function selectSevenDayRateLimit(response) {
@@ -48,8 +49,11 @@ export function recordAccountRateLimit(state, response, { now = Date.now() } = {
     return { claimed: [], current };
   }
   const resetsAt = finite(selected.window?.resetsAt);
-  if (resetsAt !== null && current.resetsAt !== undefined && resetsAt < current.resetsAt) return { claimed: [], current };
-  const newWindow = resetsAt !== null && current.resetsAt !== resetsAt;
+  const previousReset = finite(current.resetsAt);
+  if (resetsAt !== null && previousReset !== null && resetsAt < previousReset - RESET_JITTER_SECONDS) return { claimed: [], current };
+  const newWindow = resetsAt !== null && previousReset !== null
+    ? resetsAt > previousReset + RESET_JITTER_SECONDS
+    : resetsAt !== null && previousReset === null;
   if (newWindow) current.milestones = [];
   const boundedPercent = Math.max(0, Math.min(100, usedPercent));
   current.usedPercent = newWindow || current.usedPercent === undefined
@@ -57,7 +61,7 @@ export function recordAccountRateLimit(state, response, { now = Date.now() } = {
     : Math.max(Number(current.usedPercent), boundedPercent);
   current.remainingPercent = Math.max(0, 100 - current.usedPercent);
   current.windowDurationMins = finite(selected.window?.windowDurationMins);
-  if (resetsAt !== null) current.resetsAt = resetsAt;
+  if (resetsAt !== null) current.resetsAt = newWindow || previousReset === null ? resetsAt : Math.max(previousReset, resetsAt);
   if (response?.ordinaryUsageAllowed === false) {
     current.ordinaryUsageAllowed = false;
     current.denyLatched = true;

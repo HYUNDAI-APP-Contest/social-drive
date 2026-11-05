@@ -41,6 +41,18 @@ test("only a successful merged result durably activates the trusted follow-up", 
   assert.deepEqual(entries[0].payload, { issue: 9, pr: 2, repository });
 });
 
+test("a rejected merge records a failed approval instead of pretending approval completed", () => {
+  const state = baseState();
+  const approval = structuredClone(state.approvals["pr-2"]);
+  recordMergeResult(state, {
+    approvalId: "pr-2", approval, result: { merged: false, message: "Pull Request has merge conflicts" }, userId: "owner",
+    repository: "HYUNDAI-APP-Contest/social-drive",
+  });
+  assert.equal(state.approvals["pr-2"].status, "failed");
+  assert.equal(state.jobs["5"].status, "merge_failed");
+  assert.match(state.approvals["pr-2"].error, /merge conflicts/);
+});
+
 test("merge rejection, missing mapping, and invalid targets perform no follow-up mutation", () => {
   for (const { approval, result } of [
     { approval: { id: "pr-2", issue: 5, pr: 2, followUpIssue: 9 }, result: { merged: false } },

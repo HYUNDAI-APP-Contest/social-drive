@@ -16,6 +16,21 @@ const config = {
   baseBranch: "main",
 };
 
+test("pins an approved merge request to the exact reviewed commit", async () => {
+  const calls = [];
+  const github = new GitHub(config, { fetchImpl: async (url, options) => {
+    calls.push({ url, options });
+    return response({ merged: true, sha: "b".repeat(40) });
+  } });
+  const reviewed = "a".repeat(40);
+
+  await github.mergePullRequest(19, reviewed);
+
+  assert.equal(calls[0].options.method, "PUT");
+  assert.deepEqual(JSON.parse(calls[0].options.body), { merge_method: "squash", sha: reviewed });
+  assert.throws(() => github.mergePullRequest(19, "not-a-sha"), /exact commit SHA/);
+});
+
 test("upserts the one marked progress comment instead of appending", async () => {
   const calls = [];
   const github = new GitHub(config, { fetchImpl: async (url, options) => {

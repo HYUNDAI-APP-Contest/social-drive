@@ -29,6 +29,7 @@ test("worker environment strips host and cloud credentials", () => {
 
 test("worker environment cannot fall back to the host AWS profile", () => {
   const environment = isolatedWorkerEnvironment();
+  assert.equal(environment.PATH.split(":" )[0], process.execPath.slice(0, process.execPath.lastIndexOf("/")));
   assert.equal(environment.AWS_SHARED_CREDENTIALS_FILE, "/dev/null");
   assert.equal(environment.AWS_CONFIG_FILE, "/dev/null");
   assert.equal(environment.AWS_EC2_METADATA_DISABLED, "true");

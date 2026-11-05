@@ -53,6 +53,21 @@ test("selects the explicit seven-day window and ignores delayed older snapshots"
   assert.equal(state.accountUsage.resetsAt, 3000);
 });
 
+test("tolerates small reset timestamp jitter without making live usage stale", () => {
+  const state = {
+    accountUsage: { usedPercent: 58, resetsAt: 1793774170, updatedAt: "2026-11-03T06:00:00.000Z", milestones: [30] },
+    outbox: {},
+  };
+  recordAccountRateLimit(state, {
+    ordinaryUsageAllowed: true,
+    rateLimits: { primary: { usedPercent: 62, windowDurationMins: 10080, resetsAt: 1793774166 } },
+  }, { now: Date.parse("2026-11-03T14:00:00.000Z") });
+  assert.equal(state.accountUsage.usedPercent, 62);
+  assert.equal(state.accountUsage.resetsAt, 1793774170);
+  assert.equal(state.accountUsage.updatedAt, "2026-11-03T14:00:00.000Z");
+  assert.deepEqual(state.accountUsage.milestones, [30, 60]);
+});
+
 test("does not label a non-seven-day window as the account budget", () => {
   assert.equal(selectSevenDayRateLimit({ rateLimits: { primary: { usedPercent: 20, windowDurationMins: 300 } } }), null);
 });

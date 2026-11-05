@@ -175,7 +175,10 @@ export class GitHub {
   addReadyLabel(number) { return this.request("POST", `/issues/${number}/labels`, { labels: [this.config.readyLabel] }); }
   removeReadyLabel(number) { return this.request("DELETE", `/issues/${number}/labels/${encodeURIComponent(this.config.readyLabel)}`); }
   createPullRequest(head, title, body) { return this.request("POST", "/pulls", { head, base: this.config.baseBranch, title, body, draft: false }); }
-  mergePullRequest(number) { return this.request("PUT", `/pulls/${number}/merge`, { merge_method: "squash" }); }
+  mergePullRequest(number, sha) {
+    if (!/^[a-f0-9]{40}$/.test(String(sha ?? ""))) throw new Error("Merge approval is missing an exact commit SHA");
+    return this.request("PUT", `/pulls/${number}/merge`, { merge_method: "squash", sha });
+  }
   listPullRequestFiles(number) { return this.request("GET", `/pulls/${number}/files?per_page=100`); }
 }
 
