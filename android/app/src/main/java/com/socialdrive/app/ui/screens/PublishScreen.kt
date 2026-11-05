@@ -10,7 +10,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -99,20 +98,12 @@ fun PublishScreen(
                 Text("3  공개 범위 · 전체 공개", style = MaterialTheme.typography.titleMedium)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = consent, onCheckedChange = { consent = it }, enabled = canAct)
-                    Text("게시할 데모 경로와 하이라이트 정보를 확인했습니다.")
-                }
-                Text("정밀 위치와 원시 차량 상태는 업로드하지 않습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("업로드 상태 데모", style = MaterialTheme.typography.titleMedium)
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    UploadState.entries.forEach { state ->
-                        FilterChip(
-                            selected = uploadState == state,
-                            onClick = { onUploadStateChange(state) },
-                            enabled = canEdit,
-                            label = { Text(state.shortLabel()) },
-                        )
+                    Column {
+                        Text("게시할 항목을 확인했습니다.")
+                        Text("데모 경로 아트워크 · 제목과 설명 · 하이라이트 개수", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
+                Text("정밀 위치와 원시 차량 상태는 제외됩니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 when (uploadState) {
                     UploadState.Published -> Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("피드에서 확인하기") }
                     UploadState.Uploading -> Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("안전하게 업로드 중…") }
@@ -124,13 +115,4 @@ fun PublishScreen(
             }
         }
     }
-}
-
-private fun UploadState.shortLabel() = when (this) {
-    UploadState.Draft -> "초안"
-    UploadState.Queued -> "오프라인"
-    UploadState.Uploading -> "업로드"
-    UploadState.Failed -> "실패"
-    UploadState.NeedsConflictReview -> "검토"
-    UploadState.Published -> "완료"
 }
