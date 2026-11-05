@@ -38,3 +38,10 @@ test("bounds app-server admission requests", () => {
   finally { if (old === undefined) delete process.env.APP_SERVER_REQUEST_TIMEOUT_SECONDS; else process.env.APP_SERVER_REQUEST_TIMEOUT_SECONDS = old; }
 });
 
+test("defers PR handoff until 08:00 KST by default", () => {
+  const previous = process.env.PR_HANDOFF_NOT_BEFORE_HOUR_KST;
+  delete process.env.PR_HANDOFF_NOT_BEFORE_HOUR_KST;
+  try { assert.equal(loadConfig({ requireSecrets: false }).prHandoffNotBeforeHourKst, 8); }
+  finally { previous === undefined ? delete process.env.PR_HANDOFF_NOT_BEFORE_HOUR_KST : process.env.PR_HANDOFF_NOT_BEFORE_HOUR_KST = previous; }
+});
+

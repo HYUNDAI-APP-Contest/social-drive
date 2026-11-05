@@ -61,6 +61,7 @@ export function loadConfig({ requireSecrets = true } = {}) {
     accountUsageMaxAgeMs: integer("ACCOUNT_USAGE_MAX_AGE_SECONDS", 300, 30) * 1000,
     accountUsageSyncMs: integer("ACCOUNT_USAGE_SYNC_SECONDS", 60, 30) * 1000,
     approvalTtlMs: integer("APPROVAL_TTL_MINUTES", 720, 1) * 60_000,
+    prHandoffNotBeforeHourKst: integer("PR_HANDOFF_NOT_BEFORE_HOUR_KST", 8, 0),
     sourceRepository: path.resolve(process.env.SOURCE_REPOSITORY ?? "."),
     workspaceRoot: path.resolve(process.env.WORKSPACE_ROOT ?? "./orchestrator/workspaces"),
     statePath: path.resolve(process.env.STATE_PATH ?? "./orchestrator/data/state.json"),
@@ -79,6 +80,8 @@ export function loadConfig({ requireSecrets = true } = {}) {
     awsCloudFormationRoleArn: process.env.AWS_CLOUDFORMATION_ROLE_ARN ?? "",
     awsDeploymentTimeoutMs: integer("AWS_DEPLOYMENT_TIMEOUT_MINUTES", 30, 5) * 60_000,
   };
+
+  if (config.prHandoffNotBeforeHourKst > 23) throw new Error("PR_HANDOFF_NOT_BEFORE_HOUR_KST must be <= 23");
 
   if (requireSecrets) {
     for (const [name, value] of [["GITHUB_TOKEN", config.githubToken], ["DISCORD_WEBHOOK_URL", config.discordWebhookUrl], ["DISCORD_BOT_TOKEN", config.discordBotToken], ["DISCORD_CHANNEL_ID", config.discordChannelId], ["DISCORD_GUILD_ID", config.discordGuildId], ["DISCORD_APPLICATION_ID", config.discordApplicationId]]) {
