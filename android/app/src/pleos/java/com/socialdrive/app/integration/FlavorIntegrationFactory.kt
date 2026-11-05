@@ -1,6 +1,7 @@
 package com.socialdrive.app.integration
 
 import android.content.Context
+import android.content.pm.PackageManager
 import ai.pleos.playground.navi.constants.NaviErrorCode
 import ai.pleos.playground.navi.constants.WaypointIndex
 import ai.pleos.playground.navi.data.RequestWaypointInfo
@@ -10,6 +11,9 @@ import ai.pleos.playground.navi.data.RouteWithWaypointsRequest
 import ai.pleos.playground.navi.helper.NaviHelper
 import ai.pleos.playground.navi.helper.listener.NaviHelperEventListener
 import ai.pleos.playground.vehicle.Vehicle
+import ai.pleos.playground.vehicle.constant.PleosPermission
+import ai.pleos.playground.vehicle.constant.control.VehicleGear
+import ai.pleos.playground.vehicle.listener.GearSelectionListener
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.IntegrationBundle
@@ -26,7 +30,6 @@ import com.socialdrive.app.domain.VehicleMotionSource
 import com.socialdrive.app.domain.VehicleMotionStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,6 +37,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import java.util.IdentityHashMap
+import java.util.concurrent.CopyOnWriteArraySet
 
 object FlavorIntegrationFactory {
     fun create(context: Context): IntegrationBundle = IntegrationBundle(
@@ -42,39 +46,117 @@ object FlavorIntegrationFactory {
     )
 }
 
-/**
- * Vehicle v2.3.2 lifecycle is real, but this adapter does not call a permissioned Vehicle API.
- * Initialization alone is not proof that the vehicle is parked. Until a documented parking/gear
- * signal is approved and actually read, every path remains Unknown and no Vehicle permission is requested.
- */
 private class PleosVehicleMotionSource(context: Context) : VehicleMotionSource {
-    private val vehicle = Vehicle(context)
     private val actualUnavailable = CapabilityStatus(
         CapabilityState.Unavailable,
         IntegrationSource.Actual,
-        "실차 · 주차 신호 없음",
+        "실차 · 주차 신호 미확인",
+    )
+    private val actualAvailable = CapabilityStatus(
+        CapabilityState.Available,
+        IntegrationSource.Actual,
+        "실차 · 변속 상태 확인",
     )
     private val mutableStatus = MutableStateFlow(VehicleMotionStatus(MotionState.Unknown, actualUnavailable))
+    private val controller = GearMotionController(
+        port = PleosGearSignalPort(context),
+        scheduleScope = CoroutineGearScheduleScope(),
+        onMotionChanged = { motion ->
+            mutableStatus.value = VehicleMotionStatus(
+                motion = motion,
+                integration = if (motion == MotionState.Unknown) actualUnavailable else actualAvailable,
+            )
+        },
+    )
     override val status: StateFlow<VehicleMotionStatus> = mutableStatus.asStateFlow()
 
-    override suspend fun initialize() {
-        mutableStatus.value = VehicleMotionStatus(MotionState.Unknown, actualUnavailable)
-        runCatching { vehicle.initialize() }
-            .onFailure { failClosed() }
-        lifecycleOnlyResult()
-    }
-
-    private fun lifecycleOnlyResult() = failClosed()
-
-    private fun failClosed() {
-        mutableStatus.value = VehicleMotionStatus(MotionState.Unknown, actualUnavailable)
-    }
+    override suspend fun initialize() = controller.initialize()
 
     override suspend fun requestSimulation(motion: MotionState): Boolean = false
 
-    override fun release() {
-        runCatching { vehicle.release() }
-        failClosed()
+    override fun release() = controller.release()
+}
+
+@Suppress("DEPRECATION")
+private class PleosGearSignalPort(context: Context) : GearSignalPort {
+    private val applicationContext = context.applicationContext
+    private val vehicle = Vehicle(applicationContext)
+    private val lock = Any()
+    private val listeners = IdentityHashMap<GearSignalCallback, GearSelectionListener>()
+
+    override fun hasReadPermission(): Boolean =
+        applicationContext.checkSelfPermission(PleosPermission.CAR_DRIVE) == PackageManager.PERMISSION_GRANTED
+
+    override fun initialize() = synchronized(lock) { vehicle.initialize() }
+
+    override fun readCurrent(callback: GearSignalCallback) = synchronized(lock) {
+        vehicle.gear.getCurrentGearSelectionState(
+            onComplete = { gear -> callback.onSignal(gear.toGearSignal()) },
+            onFailed = { callback.onFailure() },
+        )
+    }
+
+    override fun register(callback: GearSignalCallback) = synchronized(lock) {
+        check(!listeners.containsKey(callback))
+        val listener = object : GearSelectionListener {
+            override fun onSelected(gear: VehicleGear) = callback.onSignal(gear.toGearSignal())
+            override fun onFailed(exception: Exception) = callback.onFailure()
+        }
+        listeners[callback] = listener
+        runCatching { vehicle.gear.registerGearSelection(listener) }
+            .onFailure { listeners.remove(callback) }
+            .getOrThrow()
+    }
+
+    override fun unregister(callback: GearSignalCallback) = synchronized(lock) {
+        listeners.remove(callback)?.let(vehicle.gear::unregisterGearSelection)
+    }
+
+    override fun release() = synchronized(lock) {
+        listeners.values.toList().forEach { listener ->
+            runCatching { vehicle.gear.unregisterGearSelection(listener) }
+        }
+        listeners.clear()
+        vehicle.release()
+    }
+}
+
+private fun VehicleGear?.toGearSignal(): GearSignal = when (this) {
+    null,
+    VehicleGear.GEAR_UNKNOWN,
+    -> GearSignal.Unknown
+    VehicleGear.GEAR_NEUTRAL -> GearSignal.Neutral
+    VehicleGear.GEAR_REVERSE -> GearSignal.Reverse
+    VehicleGear.GEAR_PARK -> GearSignal.Park
+    VehicleGear.GEAR_DRIVE -> GearSignal.Drive
+    VehicleGear.GEAR_1 -> GearSignal.Gear1
+    VehicleGear.GEAR_2 -> GearSignal.Gear2
+    VehicleGear.GEAR_3 -> GearSignal.Gear3
+    VehicleGear.GEAR_4 -> GearSignal.Gear4
+    VehicleGear.GEAR_5 -> GearSignal.Gear5
+    VehicleGear.GEAR_6 -> GearSignal.Gear6
+    VehicleGear.GEAR_7 -> GearSignal.Gear7
+    VehicleGear.GEAR_8 -> GearSignal.Gear8
+    VehicleGear.GEAR_9 -> GearSignal.Gear9
+}
+
+private class CoroutineGearScheduleScope : GearScheduleScope {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val jobs = CopyOnWriteArraySet<kotlinx.coroutines.Job>()
+
+    override fun schedule(delayMillis: Long, task: () -> Unit): GearScheduledTask {
+        val job = scope.launch {
+            delay(delayMillis)
+            task()
+        }
+        jobs += job
+        job.invokeOnCompletion { jobs -= job }
+        return GearScheduledTask { job.cancel() }
+    }
+
+    override fun cancelAll() {
+        jobs.toList().forEach { it.cancel() }
+        jobs.clear()
     }
 }
 
@@ -162,7 +244,7 @@ private class PleosNaviPort(private val helper: NaviHelper) : NavigationVendorPo
 }
 
 private class CoroutineNavigationScheduleScope : NavigationScheduleScope {
-    private val rootJob: Job = SupervisorJob()
+    private val rootJob: kotlinx.coroutines.Job = SupervisorJob()
     private val scope = CoroutineScope(rootJob + Dispatchers.Default)
 
     override fun schedule(delayMillis: Long, task: () -> Unit): NavigationScheduledTask {

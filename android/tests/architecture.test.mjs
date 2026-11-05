@@ -374,9 +374,11 @@ test("Pleos dependencies permissions and flavors are least-privilege isolated", 
   assert.doesNotMatch(build, /(?:implementation|demoImplementation).*?(?:Vehicle|NaviHelper)/);
   assert.doesNotMatch(mainManifest, /uses-permission/);
   const permissions = [...pleosManifest.matchAll(/uses-permission android:name="([^"]+)"/g)].map((match) => match[1]);
-  assert.deepEqual(permissions, ["pleos.car.permission.NAVI_ROUTE_SEARCH"]);
-  assert.doesNotMatch(pleosManifest, /CAR_DRIVE/);
-  for (const forbidden of ["FusedLocation", "TextToSpeech", "SpeechToText", "CONTROL_CAR_"]) {
+  assert.deepEqual(permissions, [
+    "pleos.car.permission.CAR_DRIVE",
+    "pleos.car.permission.NAVI_ROUTE_SEARCH",
+  ]);
+  for (const forbidden of ["FusedLocation", "TextToSpeech", "SpeechToText", "CONTROL_CAR_", "PRIVATE_CAR_"]) {
     assert.doesNotMatch(build + pleosManifest, new RegExp(forbidden));
   }
 });
@@ -389,12 +391,14 @@ test("actual adapters fail closed and never fall back to demo state", () => {
   const demo = read("app/src/demo/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
   assert.match(application, /FlavorIntegrationFactory\.create\(this\)/);
   assert.match(application, /vehicleMotionSource\.status\.collect[\s\S]*parkedExecutionGate\.transitionTo\(status\.motion\)/);
-  assert.match(pleos, /Vehicle\(context\)/);
-  assert.match(pleos, /vehicle\.initialize\(\)/);
-  assert.match(pleos, /lifecycleOnlyResult\(\)/);
-  assert.match(pleos, /VehicleMotionStatus\(MotionState\.Unknown, actualUnavailable\)/);
+  assert.match(pleos, /PleosGearSignalPort\(context\)/);
+  assert.match(pleos, /checkSelfPermission\(PleosPermission\.CAR_DRIVE\)/);
+  assert.match(pleos, /vehicle\.gear\.getCurrentGearSelectionState/);
+  assert.match(pleos, /vehicle\.gear\.registerGearSelection/);
+  assert.match(pleos, /vehicle\.gear\.unregisterGearSelection/);
+  assert.match(pleos, /VehicleGear\.GEAR_PARK -> GearSignal\.Park/);
   assert.match(pleos, /requestSimulation\(motion: MotionState\): Boolean = false/);
-  assert.doesNotMatch(pleos, /DemoVehicle|FakePleos|VehicleMotionStatus\(MotionState\.Parked/);
+  assert.doesNotMatch(pleos, /DemoVehicle|FakePleos|println\(|Log\./);
   assert.match(demo, /requestSimulation[\s\S]*mutableStatus\.value/);
   assert.match(viewModel, /vehicleMotion\.value\.motion != MotionState\.Parked[\s\S]*NavigationRequestResult\.Rejected/);
   assert.match(app, /LaunchedEffect\(motion\)[\s\S]*motion != MotionState\.Parked[\s\S]*destination = AppDestination\.Home/);
@@ -464,7 +468,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 74/);
+  assert.match(coreRunner, /expectedTests = 83/);
   assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 
