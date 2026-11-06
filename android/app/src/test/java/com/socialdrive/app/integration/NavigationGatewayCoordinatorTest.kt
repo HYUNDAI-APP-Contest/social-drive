@@ -11,9 +11,41 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotSame
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class NavigationGatewayCoordinatorTest {
+    @Test
+    fun `permission denial records fail closed evidence without creating helper`() {
+        val harness = Harness()
+
+        harness.coordinator.initialize(permissionGranted = false)
+
+        assertTrue(harness.ports.isEmpty())
+        assertIs<NavigationState.Failed>(harness.observer.states.last())
+        assertEquals(
+            listOf(NavigationRuntimeStage.INITIALIZE_STARTED, NavigationRuntimeStage.PERMISSION_DENIED),
+            harness.evidence.events.map { it.stage },
+        )
+    }
+
+    @Test
+    fun `missing initialization callback times out releases and ignores late callback`() {
+        lateinit var callback: NavigationInitializationCallback
+        val harness = Harness { port -> port.initializeAction = { callback = it } }
+
+        harness.coordinator.initialize()
+        harness.scheduler.advanceBy(10_000)
+
+        assertIs<NavigationState.Failed>(harness.observer.states.last())
+        assertEquals(listOf("release"), harness.ports.single().events)
+        assertTrue(NavigationRuntimeStage.TIMED_OUT in harness.evidence.stages())
+        assertTrue(NavigationRuntimeStage.RELEASED in harness.evidence.stages())
+
+        callback.onConnected()
+        assertIs<NavigationState.Failed>(harness.observer.states.last())
+    }
+
     @Test
     fun `connected then late initialization failure is ignored and release is not recursive`() {
         val harness = Harness { port ->
@@ -92,6 +124,59 @@ class NavigationGatewayCoordinatorTest {
         harness.scheduler.advanceBy(250)
         assertEquals(NavigationState.Active("동기 경로"), harness.observer.states.last())
         assertEquals(1, port.events.count { it == "removeListener" })
+        assertEquals(
+            listOf(
+                NavigationRuntimeStage.INITIALIZE_STARTED,
+                NavigationRuntimeStage.INITIALIZE_CONNECTED,
+                NavigationRuntimeStage.REQUEST_VALIDATED,
+                NavigationRuntimeStage.REQUEST_DISPATCHED,
+                NavigationRuntimeStage.TERMINAL_COMPLETED,
+                NavigationRuntimeStage.LISTENER_REMOVED,
+            ),
+            harness.evidence.stages(),
+        )
+    }
+
+    @Test
+    fun `listener removal failure prevents active success and release failure is visible`() {
+        val harness = Harness { port ->
+            port.removeFailure = true
+            port.releaseFailure = true
+        }
+        harness.coordinator.initialize()
+        val port = harness.ports.single()
+        harness.coordinator.requestRoute(request("cleanup", "정리 검증"))
+
+        requireNotNull(port.listener).onRoutingCompleted()
+        harness.scheduler.advanceBy(250)
+
+        assertIs<NavigationState.Failed>(harness.observer.states.last())
+        assertTrue(NavigationRuntimeStage.CLEANUP_FAILED in harness.evidence.stages())
+        assertTrue(NavigationRuntimeStage.LISTENER_REMOVED !in harness.evidence.stages())
+
+        harness.coordinator.release()
+        harness.coordinator.release()
+        assertIs<NavigationState.Failed>(harness.observer.states.last())
+        assertEquals(2, harness.evidence.stages().count { it == NavigationRuntimeStage.CLEANUP_FAILED })
+        assertTrue(NavigationRuntimeStage.RELEASED !in harness.evidence.stages())
+    }
+
+    @Test
+    fun `error is terminal once and stale completion cannot become active`() {
+        val harness = Harness()
+        harness.coordinator.initialize()
+        val port = harness.ports.single()
+        harness.coordinator.requestRoute(request("error", "오류 경로"))
+        val listener = requireNotNull(port.listener)
+
+        listener.onError("안전한 오류")
+        listener.onRoutingCompleted()
+        harness.scheduler.advanceBy(250)
+
+        assertIs<NavigationState.Failed>(harness.observer.states.last())
+        assertEquals(1, harness.evidence.stages().count { it == NavigationRuntimeStage.TERMINAL_ERROR })
+        assertEquals(0, harness.evidence.stages().count { it == NavigationRuntimeStage.TERMINAL_COMPLETED })
+        assertNull(port.listener)
     }
 
     @Test
@@ -151,6 +236,7 @@ class NavigationGatewayCoordinatorTest {
 
     private class Harness(configure: (FakePort) -> Unit = {}) {
         val observer = RecordingObserver()
+        val evidence = RecordingEvidence()
         val ports = mutableListOf<FakePort>()
         val schedulers = mutableListOf<ManualScheduleScope>()
         val coordinator = NavigationGatewayCoordinator(
@@ -166,9 +252,16 @@ class NavigationGatewayCoordinatorTest {
             connectedState = NavigationState.Idle(
                 CapabilityStatus(CapabilityState.Available, IntegrationSource.Actual, "실차"),
             ),
+            evidence = evidence,
         )
 
         val scheduler: ManualScheduleScope get() = schedulers.last()
+    }
+
+    private class RecordingEvidence : NavigationRuntimeEvidenceSink {
+        val events = mutableListOf<NavigationRuntimeEvidence>()
+        override fun record(evidence: NavigationRuntimeEvidence) { events += evidence }
+        fun stages() = events.map { it.stage }
     }
 
     private class RecordingObserver : NavigationCoordinatorObserver {
@@ -186,6 +279,8 @@ class NavigationGatewayCoordinatorTest {
             callback.onConnected()
         }
         var requestAction: (NavigationVendorListener) -> Unit = {}
+        var removeFailure = false
+        var releaseFailure = false
 
         override fun initialize(callback: NavigationInitializationCallback) = initializeAction(callback)
         override fun addListener(listener: NavigationVendorListener) {
@@ -198,9 +293,13 @@ class NavigationGatewayCoordinatorTest {
         }
         override fun removeListener(listener: NavigationVendorListener) {
             events += "removeListener"
+            if (removeFailure) throw IllegalStateException("remove failed")
             if (this.listener === listener) this.listener = null
         }
-        override fun release() { events += "release" }
+        override fun release() {
+            events += "release"
+            if (releaseFailure) throw IllegalStateException("release failed")
+        }
     }
 
     private class ManualScheduleScope : NavigationScheduleScope {

@@ -13,7 +13,7 @@ An offline-first visual foundation for the Hyundai app contest with isolated `de
 - Confirmed recording stop: parked sessions continue to publish; driving/unknown sessions retain a draft without opening editing
 - Explicit actual/demo/unavailable badges and fail-closed Pleos boundaries
 - Pleos Vehicle 2.3.2 read-only Gear adapter with permission preflight, fresh-state timeout, and fail-closed `Unknown`; actual P/D/R/N callback evidence is still pending
-- Pleos NaviHelper 3.0.5 route adapter with named coordinate validation, one-waypoint limit, duplicate request exclusion, request timeout, bounded stale-event quarantine, and privacy-safe errors
+- Pleos NaviHelper 3.0.5 route adapter with permission preflight, named coordinate validation, bounded initialize/request timeouts, one-waypoint limit, duplicate request exclusion, stale-event quarantine, privacy-safe lifecycle evidence, and fail-closed cleanup
 - Honest Coming Soon status for Fused Location, TTS, STT, and Vehicle Control (no dependencies or permissions included)
 - Room-backed recording sessions, durable drafts, and a staged upload queue with exported schemas and non-destructive migrations
 - A unique WorkManager chain per draft (`create → asset upload → publish`) that resumes after process restart
@@ -144,6 +144,17 @@ The Pleos flavor declares the read-only `CAR_DRIVE` permission for Vehicle 2.3.2
 NaviHelper callbacks do not contain the app request id. Each request therefore installs its own listener closure carrying a lifecycle epoch and request generation. `onRouteStarted` remains non-terminal; `onRoutingCompleted` or `onError` settles the request once after the minimum feedback interval. Missing callbacks time out, remove the listener, and enter a short no-listener quarantine before the next request. Old listener callbacks, old initialization callbacks, and delayed timeout jobs cannot mutate a newer request. Release cancels every job, removes the exact listener instance, releases the helper, and a later initialize creates a new `NaviHelper` object.
 
 The production gateway runs through an SDK-independent coordinator and a narrow vendor port. Lifecycle state is detached atomically before cleanup, while `initialize`, listener registration/removal, route requests, and helper release execute outside the lifecycle lock. In-flight vendor-call accounting defers cleanup until a synchronous SDK callback has returned, preventing release recursion and lock inversion. The same coordinator is exercised by fake-port Kotlin tests with a deterministic scheduler.
+
+`PleosNaviRuntimeSmokeTest` is an opt-in application-boundary test. Normal connected suites skip it; the Pleos Connect Emulator 2.1.0/API 34 runner must grant `NAVI_ROUTE_SEARCH` and explicitly provide `requirePleosNavi=true`. The test uses the production application gateway and production `NaviHelper` adapter, sends one fixed privacy-reviewed public destination, requires `Active` plus `TERMINAL_COMPLETED`, then requires exact listener removal and release within a separate deadline. Its logs contain constant stage names only; the in-memory evidence contains only lifecycle generation, request generation, and an allowlisted stage.
+
+```bash
+ANDROID_SERIAL=<PLEOS_API34_SERIAL> ./gradlew \
+  :app:connectedPleosDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=com.socialdrive.app.PleosNaviRuntimeSmokeTest \
+  -Pandroid.testInstrumentationRunnerArguments.requirePleosNavi=true
+```
+
+The issue #28 implementation run compiled and packaged this Android test APK, but the exact connected task stopped with `No connected devices!`; therefore no NaviHelper terminal callback is claimed by this README. A later evidence update must name the tested commit and non-sensitive PLEOS/API image identity and may mark the callback verified only after the command above passes without a skip. This does not prove a physical vehicle, signed release, AWS, or vendor System Back behavior.
 
 The pinned repository, artifacts, permissions, lifecycle, listener, and route request shapes follow the current official Pleos guides: [Vehicle SDK import](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/Vehicle/project-setup), [Vehicle permissions](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/Vehicle/vehicle-permission), [NaviHelper import](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/importing-sdk), [initialization/release](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/initialization-and-release), [event listeners](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/event-listeners), and [waypoint routes](https://document.pleos.ai/docs/pleos-only/connect-sdk-pleos/NaviHelper/route-with-waypoints).
 The instrumented safety suite verifies that Driving/Unknown home states contain no feed or settings controls, a Back delivered directly to the resumed `MainActivity` dispatcher during recording opens the shared stop confirmation, and only the parked flow reaches publish. This is a Compose navigation contract, not proof that a physical or synthetic PLEOS system Back reaches the embedded child task.

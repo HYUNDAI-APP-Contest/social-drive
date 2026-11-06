@@ -163,8 +163,9 @@ private class CoroutineGearScheduleScope : GearScheduleScope {
     }
 }
 
-private class PleosNavigationGateway(context: Context) : NavigationGateway {
+private class PleosNavigationGateway(context: Context) : NavigationGateway, NavigationRuntimeEvidenceSource {
     private val applicationContext = context.applicationContext
+    private val runtimeEvidence = BoundedNavigationRuntimeEvidence()
     private val actualUnavailable = CapabilityStatus(CapabilityState.Unavailable, IntegrationSource.Actual, "실차 · 연결 안 됨")
     private val actualAvailable = CapabilityStatus(CapabilityState.Available, IntegrationSource.Actual, "실차")
     private val mutableCapability = MutableStateFlow(actualUnavailable)
@@ -187,12 +188,16 @@ private class PleosNavigationGateway(context: Context) : NavigationGateway {
         },
         disconnectedState = NavigationState.Idle(actualUnavailable),
         connectedState = NavigationState.Idle(actualAvailable),
+        evidence = runtimeEvidence,
     )
 
     override val state: StateFlow<NavigationState> = mutableState.asStateFlow()
     override val capability: StateFlow<CapabilityStatus> = mutableCapability.asStateFlow()
 
-    override suspend fun initialize() = coordinator.initialize()
+    override suspend fun initialize() = coordinator.initialize(
+        permissionGranted = applicationContext.checkSelfPermission(NAVI_ROUTE_SEARCH_PERMISSION) ==
+            PackageManager.PERMISSION_GRANTED,
+    )
 
     override suspend fun requestRoute(request: NavigationRequest): NavigationRequestResult {
         val validation = NavigationRequestValidator.validate(request)
@@ -204,6 +209,13 @@ private class PleosNavigationGateway(context: Context) : NavigationGateway {
     }
 
     override fun release() = coordinator.release()
+
+    override fun navigationRuntimeEvidence(): List<NavigationRuntimeEvidence> =
+        runtimeEvidence.navigationRuntimeEvidence()
+
+    private companion object {
+        const val NAVI_ROUTE_SEARCH_PERMISSION = "pleos.car.permission.NAVI_ROUTE_SEARCH"
+    }
 }
 
 private class PleosNaviPort(private val helper: NaviHelper) : NavigationVendorPort {

@@ -111,7 +111,7 @@ bash scripts/build-submission-release.sh
 | Gradle | 프로젝트 wrapper 8.9 | clean/unit/lint/assemble 179 tasks 성공 |
 | Emulator | Pleos Connect Emulator 2.1.0, Android 14, user 10 | 앱 설치·UI 8/8·비UI 43/43 성공. physical system Back은 미검증 |
 | Vehicle | Vehicle SDK 2.3.2 / Vehicle Service 대응 버전 | 초기화·release 수명주기와 fail-closed Unknown 실행. 실제 permissioned state callback은 미검증 |
-| Navigation | NaviHelper 3.0.5 | 초기화·request coordinator 계약은 빌드/코어 검증. 실제 route callback 실기 증거는 미완료 |
+| Navigation | NaviHelper 3.0.5 | permission·초기화·request·terminal·listener 제거·release의 privacy-safe 계약과 opt-in PLEOS 계측 테스트는 빌드/코어 검증. 연결 기기가 없어 실제 route callback 실기 증거는 미완료 |
 | AWS | Cognito JWT, DynamoDB, private S3 기반 목표 | backend `ddbd61f` 계약 포함. concrete Cognito/API host·no-redirect HTTP adapter 설정 부재로 actual cloud unavailable; AWS E2E 미실행 |
 
 P0-3A bootstrap/doctor의 과거 차단은 해소되어 build·emulator·debug APK 증거가 생겼습니다. signing secret과 keystore는 조회하지 않았고, 제출용 signed release와 actual cloud는 여전히 별도 승인·검증 경계입니다.

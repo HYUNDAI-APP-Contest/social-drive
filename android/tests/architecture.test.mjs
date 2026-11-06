@@ -423,7 +423,9 @@ test("navigation validates named coordinates and serializes requests without log
   const contract = read("app/src/main/java/com/socialdrive/app/domain/IntegrationContracts.kt");
   const controller = read("app/src/main/java/com/socialdrive/app/integration/NavigationRequestController.kt");
   const coordinator = read("app/src/main/java/com/socialdrive/app/integration/NavigationGatewayCoordinator.kt");
+  const evidence = read("app/src/main/java/com/socialdrive/app/integration/NavigationRuntimeEvidence.kt");
   const pleos = read("app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
+  const naviSmoke = read("app/src/androidTest/java/com/socialdrive/app/PleosNaviRuntimeSmokeTest.kt");
   const detail = read("app/src/main/java/com/socialdrive/app/ui/screens/DetailScreen.kt");
   for (const marker of ["val name: String", "val latitude: Double", "val longitude: Double", "isFinite()", "-90.0..90.0", "-180.0..180.0", "MAX_WAYPOINTS"]) {
     assert.ok(contract.includes(marker), marker);
@@ -437,6 +439,7 @@ test("navigation validates named coordinates and serializes requests without log
   assert.match(controller, /fun endQuarantine\(/);
   assert.match(coordinator, /RequestStart\.Busy -> return NavigationRequestResult\.Busy/);
   assert.match(coordinator, /requestTimeoutMillis: Long = 15_000L/);
+  assert.match(coordinator, /initializationTimeoutMillis: Long = 10_000L/);
   assert.match(coordinator, /minimumFeedbackMillis: Long = 250L/);
   assert.match(coordinator, /staleEventQuarantineMillis: Long = 750L/);
   assert.match(coordinator, /requestListener\(session, start\.token\)/);
@@ -447,9 +450,23 @@ test("navigation validates named coordinates and serializes requests without log
   assert.match(coordinator, /cancelTimeout = session\.request\?\.timeoutTask[\s\S]*timeoutTask = null/);
   assert.match(pleos, /NavigationGatewayCoordinator\(/);
   assert.match(pleos, /PleosNaviPort\(NaviHelper\(applicationContext\)\)/);
+  assert.match(pleos, /checkSelfPermission\(NAVI_ROUTE_SEARCH_PERMISSION\)/);
+  assert.match(pleos, /NavigationRequestValidator\.validate\(request\)[\s\S]*coordinator\.requestRoute\(request\)/);
+  assert.match(pleos, /NavigationRuntimeEvidenceSource/);
   assert.match(pleos, /NaviHelperEventListener/);
   assert.match(pleos, /safeUserMessage/);
   assert.doesNotMatch(pleos, /android\.util\.Log|println\(|printStackTrace/);
+  assert.match(evidence, /data class NavigationRuntimeEvidence\([\s\S]*lifecycleGeneration: Long,[\s\S]*requestGeneration: Long,[\s\S]*stage: NavigationRuntimeStage/);
+  assert.doesNotMatch(evidence, /latitude|longitude|requestId|RouteInfo|RouteWithWaypointsRequest|token|exception|message/i);
+  assert.match(naviSmoke, /getString\(REQUIRE_PLEOS_NAVI_ARGUMENT\) == "true"/);
+  assert.match(naviSmoke, /assertEquals\("pleos", BuildConfig\.INTEGRATION_MODE\)/);
+  assert.match(naviSmoke, /application\.navigationGateway/);
+  assert.match(naviSmoke, /NavigationRequestResult\.Accepted/);
+  assert.match(naviSmoke, /terminal is NavigationState\.Active/);
+  assert.match(naviSmoke, /releaseWithinDeadline\(gateway::release\)/);
+  assert.match(naviSmoke, /NavigationRuntimeStage\.LISTENER_REMOVED/);
+  assert.match(naviSmoke, /NavigationRuntimeStage\.RELEASED/);
+  assert.doesNotMatch(naviSmoke, /Log\.[a-z]+\([^,]+,\s*(?:PRIVACY_REVIEWED_PUBLIC_FIXTURE|.*latitude|.*longitude|.*requestId)/i);
   assert.match(detail, /drive\.navigationRequest == null/);
   assert.match(detail, /실제 좌표가 포함되지 않아/);
 });
@@ -483,7 +500,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 83/);
+  assert.match(coreRunner, /expectedTests = 87/);
   assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 
