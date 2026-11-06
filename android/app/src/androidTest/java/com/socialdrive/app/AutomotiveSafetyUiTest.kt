@@ -209,6 +209,8 @@ private fun NavigationContractContent() {
             )
             AppDestination.Recording -> RecordingScreen(
                 snapshot = RecordingSnapshot(
+                    storyId = "demo-coast",
+                    route = FakeDriveRepository().drive("demo-coast")!!.route,
                     elapsed = "00:01:24",
                     distance = "1.2 km",
                     highlights = 1,

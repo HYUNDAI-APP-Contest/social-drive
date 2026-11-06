@@ -42,6 +42,8 @@ private annotation class JudgeLandscapeLargeText
 @PreviewTest @JudgeLandscape @Composable fun HomeOfflineCachedNight() = fixture(VisualScenario.HomeOfflineCached, ThemeMode.Night)
 @PreviewTest @JudgeLandscape @Composable fun HomeErrorDay() = fixture(VisualScenario.HomeError, ThemeMode.Day)
 @PreviewTest @JudgeLandscape @Composable fun HomeErrorNight() = fixture(VisualScenario.HomeError, ThemeMode.Night)
+@PreviewTest @JudgeLandscape @Composable fun PublishDraftDay() = fixture(VisualScenario.PublishDraft, ThemeMode.Day)
+@PreviewTest @JudgeLandscape @Composable fun PublishDraftNight() = fixture(VisualScenario.PublishDraft, ThemeMode.Night)
 
 @PreviewTest @JudgeLandscapeLargeText @Composable fun HomeContentLargeText() = fixture(VisualScenario.HomeContent, ThemeMode.Day)
 @PreviewTest @JudgeLandscapeLargeText @Composable fun RecordingActiveLargeText() = fixture(VisualScenario.RecordingActive, ThemeMode.Day)
@@ -51,6 +53,7 @@ private annotation class JudgeLandscapeLargeText
 @PreviewTest @JudgeLandscapeLargeText @Composable fun HomeEmptyLargeText() = fixture(VisualScenario.HomeEmpty, ThemeMode.Day)
 @PreviewTest @JudgeLandscapeLargeText @Composable fun HomeOfflineCachedLargeText() = fixture(VisualScenario.HomeOfflineCached, ThemeMode.Day)
 @PreviewTest @JudgeLandscapeLargeText @Composable fun HomeErrorLargeText() = fixture(VisualScenario.HomeError, ThemeMode.Day)
+@PreviewTest @JudgeLandscapeLargeText @Composable fun PublishDraftLargeText() = fixture(VisualScenario.PublishDraft, ThemeMode.Day)
 
 @Composable
 private fun fixture(scenario: VisualScenario, theme: ThemeMode) = VisualScenarioFixture(scenario, theme)

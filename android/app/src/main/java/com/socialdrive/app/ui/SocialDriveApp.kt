@@ -23,7 +23,6 @@ import com.socialdrive.app.domain.AppDestination
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.ContentState
 import com.socialdrive.app.domain.ConflictReviewDecision
-import com.socialdrive.app.domain.DriveSessionState
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.NavigationRequestResult
 import com.socialdrive.app.domain.RecordingSnapshot
@@ -39,6 +38,7 @@ import com.socialdrive.app.ui.screens.PublishScreen
 import com.socialdrive.app.ui.screens.RecordingScreen
 import com.socialdrive.app.ui.screens.RecordingStopDialog
 import com.socialdrive.app.ui.screens.SettingsScreen
+import com.socialdrive.app.ui.components.memoryPaletteFor
 import com.socialdrive.app.ui.theme.SocialDriveTheme
 import kotlinx.coroutines.launch
 
@@ -47,6 +47,7 @@ fun SocialDriveApp(
     repository: FakeDriveRepository = remember { FakeDriveRepository() },
     offlineViewModel: SocialDriveViewModel = viewModel(),
 ) {
+    val defaultStoryDrive = remember(repository) { requireNotNull(repository.drive("demo-coast")) }
     val scope = rememberCoroutineScope()
     val activeRecording by offlineViewModel.activeRecording.collectAsStateWithLifecycle()
     val latestDraft by offlineViewModel.latestDraft.collectAsStateWithLifecycle()
@@ -60,15 +61,30 @@ fun SocialDriveApp(
     var destination by rememberSaveable { mutableStateOf(AppDestination.Home) }
     val motion = vehicleMotion.motion
     var theme by rememberSaveable { mutableStateOf(ThemeMode.Night) }
-    var selectedDrive by rememberSaveable { mutableStateOf("demo-coast") }
     var blockedMessage by rememberSaveable { mutableStateOf<String?>(null) }
-    var sessionState by rememberSaveable { mutableStateOf(DriveSessionState.Idle) }
+    var memoryStory by rememberSaveable(stateSaver = MemoryStoryPresentation.Saver) {
+        mutableStateOf(MemoryStoryPresentation.browsing(defaultStoryDrive))
+    }
+    var hydratedDraftId by rememberSaveable { mutableStateOf<String?>(null) }
     var demoUploadState by rememberSaveable { mutableStateOf<UploadState?>(null) }
     var stopConfirmationRequested by rememberSaveable { mutableStateOf(false) }
     var privacyMessage by rememberSaveable { mutableStateOf<String?>(null) }
 
     LaunchedEffect(persistedUploadState) {
         if (persistedUploadState != UploadState.Draft) demoUploadState = null
+    }
+    LaunchedEffect(activeRecording?.id, activeRecording?.highlightCount) {
+        activeRecording?.let { recording ->
+            memoryStory = memoryStory.recordingProgress(recording.highlightCount)
+        }
+    }
+    LaunchedEffect(latestDraft?.id, latestDraft?.highlightCount, activeRecording?.id) {
+        val draft = latestDraft
+        if (activeRecording == null && draft != null && hydratedDraftId != draft.id) {
+            val recoveredStory = repository.drive(draft.storyId) ?: defaultStoryDrive
+            memoryStory = MemoryStoryPresentation.browsing(recoveredStory).finishDraft(draft.highlightCount)
+            hydratedDraftId = draft.id
+        }
     }
     LaunchedEffect(motion) {
         if (motion != MotionState.Parked && destination !in setOf(AppDestination.Home, AppDestination.Recording)) {
@@ -96,7 +112,8 @@ fun SocialDriveApp(
                 destination = AppDestination.Home
                 return@launch
             }
-            sessionState = DriveSessionState.DraftReady
+            memoryStory = memoryStory.finishDraft(draft.highlightCount)
+            hydratedDraftId = draft.id
             demoUploadState = null
             if (motion == MotionState.Parked) {
                 navigate(AppDestination.Publish)
@@ -115,6 +132,8 @@ fun SocialDriveApp(
     SocialDriveTheme(theme) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Box(Modifier.fillMaxSize()) {
+                val storyBase = repository.drive(memoryStory.driveId) ?: defaultStoryDrive
+                val presentedStory = memoryStory.present(storyBase)
                 if (destination == AppDestination.Recording && stopConfirmationRequested) {
                     RecordingStopDialog(
                         motion = motion,
@@ -128,9 +147,12 @@ fun SocialDriveApp(
                         motion = motion,
                         vehicleStatus = vehicleMotion.integration,
                         blockedMessage = blockedMessage,
-                        onDetail = { selectedDrive = it; navigate(AppDestination.Detail) },
+                        onDetail = { id ->
+                            repository.drive(id)?.let { memoryStory = memoryStory.select(it) }
+                            navigate(AppDestination.Detail)
+                        },
                         onRecord = {
-                            sessionState = DriveSessionState.Recording
+                            memoryStory = memoryStory.beginRecording(defaultStoryDrive)
                             navigate(AppDestination.Recording)
                             scope.launch { offlineViewModel.startRecording() }
                         },
@@ -138,7 +160,7 @@ fun SocialDriveApp(
                         onRetry = {},
                     )
                     AppDestination.Detail -> DetailScreen(
-                        drive = requireNotNull(repository.drive(selectedDrive)),
+                        drive = presentedStory,
                         navigationCapability = navigationCapability,
                         navigationState = navigationState,
                         onRequestNavigation = { request ->
@@ -155,9 +177,11 @@ fun SocialDriveApp(
                     )
                     AppDestination.Recording -> RecordingScreen(
                         snapshot = RecordingSnapshot(
+                            storyId = presentedStory.id,
+                            route = presentedStory.route,
                             elapsed = "01:24:17",
                             distance = "64.2 km",
-                            highlights = activeRecording?.highlightCount ?: 0,
+                            highlights = presentedStory.highlights,
                             gps = CapabilityState.Unavailable,
                             vehicle = vehicleMotion.integration.capability,
                             routeSource = routePrivacy.displayedSource,
@@ -165,40 +189,45 @@ fun SocialDriveApp(
                         onHighlight = { scope.launch { offlineViewModel.addHighlight() } },
                         onRequestStop = { stopConfirmationRequested = true },
                     )
-                    AppDestination.Publish -> PublishScreen(
-                        canEdit = SafetyPolicy.canEdit(motion) && persistedUploadState == UploadState.Draft,
-                        uploadState = demoUploadState ?: persistedUploadState,
-                        onUploadStateChange = { requested ->
-                            if (requested == UploadState.Uploading && latestDraft != null) {
-                                demoUploadState = null
-                                scope.launch {
-                                    when (val result = offlineViewModel.enqueuePublish(motion)) {
-                                        is EnqueueResult.Rejected -> blockedMessage = result.message
-                                        EnqueueResult.MissingDraft -> blockedMessage = "게시할 초안을 찾지 못했어요. 기록은 삭제하지 않았습니다."
-                                        EnqueueResult.NeedsConflictReview -> navigate(AppDestination.ConflictReview)
-                                        else -> Unit
+                    AppDestination.Publish -> {
+                        PublishScreen(
+                            canEdit = SafetyPolicy.canEdit(motion) && persistedUploadState == UploadState.Draft,
+                            uploadState = demoUploadState ?: persistedUploadState,
+                            onUploadStateChange = { requested ->
+                                if (requested == UploadState.Uploading && latestDraft != null) {
+                                    demoUploadState = null
+                                    scope.launch {
+                                        when (val result = offlineViewModel.enqueuePublish(motion)) {
+                                            is EnqueueResult.Rejected -> blockedMessage = result.message
+                                            EnqueueResult.MissingDraft -> blockedMessage = "게시할 초안을 찾지 못했어요. 기록은 삭제하지 않았습니다."
+                                            EnqueueResult.NeedsConflictReview -> navigate(AppDestination.ConflictReview)
+                                            else -> Unit
+                                        }
                                     }
+                                } else {
+                                    demoUploadState = requested
                                 }
+                            },
+                            onBack = { navigate(AppDestination.Detail) },
+                            onDone = { navigate(AppDestination.Home) },
+                            initialTitle = latestDraft?.title ?: "빛나는 해안도로의 저녁",
+                            initialDescription = latestDraft?.description ?: "바다를 따라 만난 좋은 순간을 나눠요.",
+                            onCopyChanged = { title, description ->
+                                scope.launch { offlineViewModel.updateDraftCopy(title, description) }
+                            },
+                            canAct = SafetyPolicy.canEdit(motion),
+                            editingRestriction = if (motion == MotionState.Parked) {
+                                "게시 대기열에 추가되어 원본을 안전하게 잠갔어요."
                             } else {
-                                demoUploadState = requested
-                            }
-                        },
-                        onBack = { navigate(AppDestination.Detail) },
-                        onDone = { sessionState = DriveSessionState.Idle; navigate(AppDestination.Home) },
-                        initialTitle = latestDraft?.title ?: "빛나는 해안도로의 저녁",
-                        initialDescription = latestDraft?.description ?: "바다를 따라 만난 좋은 순간을 나눠요.",
-                        onCopyChanged = { title, description ->
-                            scope.launch { offlineViewModel.updateDraftCopy(title, description) }
-                        },
-                        canAct = SafetyPolicy.canEdit(motion),
-                        editingRestriction = if (motion == MotionState.Parked) {
-                            "게시 대기열에 추가되어 원본을 안전하게 잠갔어요."
-                        } else {
-                            "주차 상태를 확인한 뒤 게시물을 편집할 수 있어요."
-                        },
-                        routeSource = routePrivacy.displayedSource,
-                        onReviewConflict = { navigate(AppDestination.ConflictReview) },
-                    )
+                                "주차 상태를 확인한 뒤 게시물을 편집할 수 있어요."
+                            },
+                            routeSource = routePrivacy.displayedSource,
+                            onReviewConflict = { navigate(AppDestination.ConflictReview) },
+                            route = presentedStory.route,
+                            highlightCount = presentedStory.highlights,
+                            memoryPalette = memoryPaletteFor(presentedStory.id),
+                        )
+                    }
                     AppDestination.ConflictReview -> ConflictReviewScreen(
                         state = conflictReview,
                         motion = motion,

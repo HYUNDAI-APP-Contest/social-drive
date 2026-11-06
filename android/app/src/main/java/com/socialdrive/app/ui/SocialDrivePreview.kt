@@ -46,7 +46,15 @@ private fun DrivingHomePreview() = SocialDriveTheme(ThemeMode.Night) {
 @Composable
 private fun RecordingPreview() = SocialDriveTheme(ThemeMode.Night) {
     RecordingScreen(
-        snapshot = RecordingSnapshot("01:24:17", "64.2 km", 3, CapabilityState.Available, CapabilityState.Unavailable),
+        snapshot = RecordingSnapshot(
+            storyId = "demo-coast",
+            route = requireNotNull(previewRepository.drive("demo-coast")).route,
+            elapsed = "01:24:17",
+            distance = "64.2 km",
+            highlights = 3,
+            gps = CapabilityState.Available,
+            vehicle = CapabilityState.Unavailable,
+        ),
         onHighlight = {},
         onRequestStop = {},
     )

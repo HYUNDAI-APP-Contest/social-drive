@@ -206,7 +206,7 @@ test("recording stop is confirmed and non-parked drafts cannot auto-publish", ()
   assert.match(app, /BackHandler[\s\S]*destination == AppDestination\.Recording\) stopConfirmationRequested = true/);
   assert.match(app, /onRequestStop = \{ stopConfirmationRequested = true \}/);
   assert.match(app, /onConfirm = ::completeRecording/);
-  assert.match(app, /DriveSessionState\.DraftReady/);
+  assert.match(app, /memoryStory = memoryStory\.finishDraft\(draft\.highlightCount\)/);
   assert.match(app, /if \(motion == MotionState\.Parked\)[\s\S]*AppDestination\.Publish[\s\S]*초안으로 안전하게 보존/);
 });
 
@@ -248,7 +248,7 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.match(contract, /BackHandler\(destination != AppDestination\.Home\)[\s\S]*destination == AppDestination\.Recording\) stopConfirmationRequested = true/);
   assert.match(ui, /host\.setContent \{ NavigationContractContent\(\) \}[\s\S]*compose\.waitForIdle\(\)/);
   assert.doesNotMatch(ui, /(?:Thread|SystemClock)\.sleep|waitUntil|@Ignore/);
-  assert.match(app, /onDetail = \{ selectedDrive = it; navigate\(AppDestination\.Detail\) \}/);
+  assert.match(app, /onDetail = \{ id ->[\s\S]*memoryStory = memoryStory\.select\(it\)[\s\S]*navigate\(AppDestination\.Detail\)/);
   assert.match(app, /onRecord = \{[\s\S]*?navigate\(AppDestination\.Recording\)/);
   assert.match(app, /AppDestination\.Detail -> DetailScreen\([\s\S]*?onPublish = \{ navigate\(AppDestination\.Publish\) \}/);
   assert.match(app, /BackHandler\(destination != AppDestination\.Home\)[\s\S]*destination == AppDestination\.Recording\) stopConfirmationRequested = true/);
@@ -771,6 +771,39 @@ test("hex colors stay inside the theme color source", () => {
   for (const file of kotlinFiles(sourceRoot)) {
     if (file.endsWith(path.join("theme", "Color.kt"))) continue;
     assert.doesNotMatch(fs.readFileSync(file, "utf8"), /0x[0-9A-Fa-f]{8}/, file);
+  }
+});
+
+test("memory story reuses privacy-safe artwork from recording through publish", () => {
+  const components = read("app/src/main/java/com/socialdrive/app/ui/components/RouteComponents.kt");
+  const repository = read("app/src/main/java/com/socialdrive/app/data/fake/FakeDriveRepository.kt");
+  const home = read("app/src/main/java/com/socialdrive/app/ui/screens/HomeScreen.kt");
+  const recording = read("app/src/main/java/com/socialdrive/app/ui/screens/RecordingScreen.kt");
+  const detail = read("app/src/main/java/com/socialdrive/app/ui/screens/DetailScreen.kt");
+  const publish = read("app/src/main/java/com/socialdrive/app/ui/screens/PublishScreen.kt");
+  const app = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
+  const presentation = read("app/src/main/java/com/socialdrive/app/ui/MemoryStoryPresentation.kt");
+  const screenshots = read("app/src/screenshotTest/kotlin/com/socialdrive/app/VisualScreenshotTest.kt");
+
+  assert.match(components, /fun RouteMemoryArtwork/);
+  assert.match(components, /MemoryPalette\.Coast[\s\S]*MemoryPalette\.Mountain[\s\S]*MemoryPalette\.City/);
+  assert.match(components, /개인 위치가 제거된 데모 경로와 하이라이트/);
+  assert.doesNotMatch(components, /latitude|longitude/i);
+  assert.match(repository, /coastRoute[\s\S]*mountainRoute[\s\S]*cityRoute/);
+  assert.doesNotMatch(home, /카드 태그 · 바다 · 산 · 도심/);
+  assert.match(home, /OfflineCacheBanner[\s\S]*DriveGrid\(state\.cached, onDetail, Modifier\.weight\(1f\)\)/);
+  assert.match(recording, /순간 \$count 저장됨 · 주차 후 이야기에서 확인/);
+  assert.match(recording, /points = snapshot\.route/);
+  assert.doesNotMatch(recording, /val demoRoute/);
+  assert.match(detail, /selectedMomentIndex[\s\S]*순간 \$\{selectedMomentIndex \+ 1}/);
+  assert.match(publish, /RouteMemoryArtwork/);
+  assert.doesNotMatch(publish, /ROUTE ARTWORK/);
+  assert.match(presentation, /fun beginRecording[\s\S]*fun recordingProgress[\s\S]*fun finishDraft[\s\S]*fun present/);
+  assert.match(app, /RecordingSnapshot\([\s\S]*storyId = presentedStory\.id[\s\S]*route = presentedStory\.route[\s\S]*highlights = presentedStory\.highlights/);
+  assert.match(app, /AppDestination\.Publish[\s\S]*route = presentedStory\.route[\s\S]*highlightCount = presentedStory\.highlights/);
+  assert.match(app, /AppDestination\.Detail -> DetailScreen\([\s\S]*drive = presentedStory/);
+  for (const marker of ["PublishDraftDay", "PublishDraftNight", "PublishDraftLargeText"]) {
+    assert.ok(screenshots.includes(marker), marker);
   }
 });
 

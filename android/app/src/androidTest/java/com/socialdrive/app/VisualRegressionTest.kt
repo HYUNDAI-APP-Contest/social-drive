@@ -8,7 +8,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertHeightIsAtLeast
-import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -16,6 +15,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -61,16 +61,17 @@ class VisualRegressionTest {
         assertScenario(VisualScenario.HomeError, "드라이브를 불러오지 못했어요")
         compose.onNodeWithText("기기에 저장된 초안과 기록은 삭제되지 않았습니다.").assertIsDisplayed()
         compose.onNodeWithText("다시 시도").assertIsDisplayed()
+        assertScenario(VisualScenario.PublishDraft, "좋았던 순간을 한 장의 이야기로")
     }
 
     @Test
-    fun offlineLargeTextKeepsHomeStructureAndPassiveScopeLabelInsideJudgeViewport() {
+    fun offlineLargeTextKeepsHomeStructureWithoutDeadTagCopy() {
         showLargeText(VisualScenario.HomeOfflineCached)
         compose.onNodeWithText("오늘의 드라이브").assertIsDisplayed().assertWithinFixture()
         compose.onNodeWithText("기록 시작", substring = true).assertIsDisplayed().assertWithinFixture()
         compose.onNodeWithText("데모 차량 상태", substring = true).assertIsDisplayed().assertWithinFixture()
         compose.onNodeWithContentDescription("설정 열기").assertIsDisplayed().assertWithinFixture()
-        compose.onNodeWithText("전체 기록").assertIsDisplayed().assertHasNoClickAction().assertWithinFixture()
+        compose.onNodeWithText("카드 태그", substring = true).assertDoesNotExist()
         compose.onNodeWithText("오프라인 · 저장된 기록 표시 중").assertIsDisplayed().assertWithinFixture()
         compose.onNodeWithText("연결되면 최신 목록을 다시 확인합니다.").assertIsDisplayed().assertWithinFixture()
         assertJudgeViewport()
@@ -140,6 +141,7 @@ class VisualRegressionTest {
             Triple(VisualScenario.HomeEmpty, "아직 남긴 드라이브가 없어요", "첫 드라이브 기록하기"),
             Triple(VisualScenario.HomeOfflineCached, "오프라인 · 저장된 기록 표시 중", "연결되면 최신 목록을 다시 확인합니다."),
             Triple(VisualScenario.HomeError, "드라이브를 불러오지 못했어요", "다시 시도"),
+            Triple(VisualScenario.PublishDraft, "드라이브 게시", "좋았던 순간을 한 장의 이야기로"),
         )
 
         expectations.forEach { (scenario, primary, secondary) ->
@@ -150,6 +152,20 @@ class VisualRegressionTest {
             secondaryNode.assertWithinFixture()
             assertFalse("$scenario primary copy overlaps its action/detail", primaryNode.bounds().overlaps(secondaryNode.bounds()))
         }
+    }
+
+    @Test
+    fun recordingMomentShowsImmediateMemoryFeedback() {
+        show(VisualScenario.RecordingActive)
+        compose.onNodeWithText("방금 좋았어", substring = true).performClick()
+        compose.onNodeWithText("순간 4 저장됨 · 주차 후 이야기에서 확인").assertIsDisplayed()
+    }
+
+    @Test
+    fun detailMomentSelectionUpdatesTheStoryArtwork() {
+        show(VisualScenario.MemoryDetailDemo)
+        compose.onNodeWithContentDescription("등대가 보이는 길 순간 보기").performClick()
+        compose.onNodeWithText("순간 2 · 18:03").assertIsDisplayed()
     }
 
     @Test

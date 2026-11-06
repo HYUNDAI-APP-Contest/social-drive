@@ -25,6 +25,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -34,10 +38,10 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.RecordingSnapshot
-import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.MotionState
-import com.socialdrive.app.ui.components.RouteRibbon
+import com.socialdrive.app.ui.components.RouteMemoryArtwork
 import com.socialdrive.app.ui.components.RouteSourceBadge
+import com.socialdrive.app.ui.components.memoryPaletteFor
 import com.socialdrive.app.ui.theme.LocalRouteMemoryColors
 
 @Composable
@@ -45,16 +49,33 @@ fun RecordingScreen(snapshot: RecordingSnapshot, onHighlight: () -> Unit, onRequ
     val colors = LocalRouteMemoryColors.current
     val haptics = LocalHapticFeedback.current
     val largeText = LocalDensity.current.fontScale >= 1.2f
+    var capturedFeedbackCount by rememberSaveable { mutableStateOf<Int?>(null) }
     Box(
         Modifier.fillMaxSize().background(
             Brush.linearGradient(listOf(colors.brand, MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.surfaceVariant)),
         ),
     ) {
-        RouteRibbon(
-            points = listOf(RoutePoint(.04f, .82f), RoutePoint(.3f, .7f), RoutePoint(.5f, .38f), RoutePoint(.76f, .48f), RoutePoint(.96f, .2f)),
-            modifier = Modifier.fillMaxSize().padding(start = 360.dp, top = 72.dp, bottom = 72.dp),
-            showMoments = true,
+        RouteMemoryArtwork(
+            points = snapshot.route,
+            palette = memoryPaletteFor(snapshot.storyId),
+            momentCount = snapshot.highlights,
+            selectedMomentIndex = (snapshot.highlights - 1).takeIf { it >= 0 },
+            modifier = Modifier.fillMaxSize().padding(start = 350.dp, top = 92.dp, end = 20.dp, bottom = 104.dp),
         )
+        capturedFeedbackCount?.let { count ->
+            Surface(
+                modifier = Modifier.align(Alignment.TopCenter).padding(start = 320.dp, top = 104.dp),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+            ) {
+                Text(
+                    "순간 $count 저장됨 · 주차 후 이야기에서 확인",
+                    Modifier.padding(horizontal = 18.dp, vertical = 10.dp),
+                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
         Column(Modifier.fillMaxSize().padding(28.dp)) {
             if (largeText) {
                 Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -98,7 +119,11 @@ fun RecordingScreen(snapshot: RecordingSnapshot, onHighlight: () -> Unit, onRequ
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Button(
-                    onClick = { haptics.performHapticFeedback(HapticFeedbackType.LongPress); onHighlight() },
+                    onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        capturedFeedbackCount = snapshot.highlights + 1
+                        onHighlight()
+                    },
                     modifier = Modifier.weight(1f).heightIn(min = 72.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = colors.highlight, contentColor = MaterialTheme.colorScheme.background),
                 ) {

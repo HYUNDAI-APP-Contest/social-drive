@@ -21,11 +21,11 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.ContentState
 import com.socialdrive.app.domain.CapabilityStatus
@@ -56,7 +56,11 @@ fun HomeScreen(
     }
     Column(Modifier.fillMaxSize()) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 20.dp),
+            Modifier
+                .fillMaxWidth()
+                .heightIn(min = 104.dp)
+                .zIndex(1f)
+                .padding(horizontal = 28.dp, vertical = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
@@ -80,22 +84,6 @@ fun HomeScreen(
             }
         }
         if (blockedMessage != null) SafetyRestrictionBanner(blockedMessage, Modifier.padding(horizontal = 28.dp, vertical = 4.dp))
-        Row(
-            Modifier.padding(horizontal = 28.dp, vertical = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("표시 범위", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.secondaryContainer) {
-                Text(
-                    "전체 기록",
-                    Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    style = MaterialTheme.typography.labelLarge,
-                )
-            }
-            Text("카드 태그 · 바다 · 산 · 도심", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
         // Give state content only the remaining viewport. This keeps the header and
         // primary action stable when a state (notably offline cache) fills its area.
         Box(Modifier.fillMaxWidth().weight(1f)) {
@@ -142,7 +130,7 @@ fun HomeScreen(
                     )
                 } else Column(Modifier.fillMaxSize()) {
                     OfflineCacheBanner(Modifier.padding(horizontal = 28.dp, vertical = 8.dp))
-                    DriveGrid(state.cached, onDetail)
+                    DriveGrid(state.cached, onDetail, Modifier.weight(1f))
                 }
             }
         }
@@ -179,10 +167,14 @@ private fun DrivingHome(
     }
 }
 @Composable
-private fun DriveGrid(drives: List<DriveSummary>, onDetail: (String) -> Unit) {
+private fun DriveGrid(
+    drives: List<DriveSummary>,
+    onDetail: (String) -> Unit,
+    modifier: Modifier = Modifier.fillMaxSize(),
+) {
     LazyVerticalGrid(
         columns = GridCells.Adaptive(360.dp),
-        modifier = Modifier.fillMaxSize(),
+        modifier = modifier,
         contentPadding = PaddingValues(28.dp),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
