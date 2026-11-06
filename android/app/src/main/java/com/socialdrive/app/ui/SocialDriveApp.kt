@@ -23,7 +23,6 @@ import com.socialdrive.app.domain.AppDestination
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.ContentState
 import com.socialdrive.app.domain.ConflictReviewDecision
-import com.socialdrive.app.domain.DemoContentMode
 import com.socialdrive.app.domain.DriveSessionState
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.NavigationRequestResult
@@ -63,7 +62,6 @@ fun SocialDriveApp(
     var theme by rememberSaveable { mutableStateOf(ThemeMode.Night) }
     var selectedDrive by rememberSaveable { mutableStateOf("demo-coast") }
     var blockedMessage by rememberSaveable { mutableStateOf<String?>(null) }
-    var demoContentMode by rememberSaveable { mutableStateOf(DemoContentMode.Content) }
     var sessionState by rememberSaveable { mutableStateOf(DriveSessionState.Idle) }
     var demoUploadState by rememberSaveable { mutableStateOf<UploadState?>(null) }
     var stopConfirmationRequested by rememberSaveable { mutableStateOf(false) }
@@ -126,10 +124,9 @@ fun SocialDriveApp(
                 }
                 when (destination) {
                     AppDestination.Home -> HomeScreen(
-                        state = demoContentState(demoContentMode, repository),
+                        state = ContentState.Content(repository.drives()),
                         motion = motion,
                         vehicleStatus = vehicleMotion.integration,
-                        demoMode = demoContentMode,
                         blockedMessage = blockedMessage,
                         onDetail = { selectedDrive = it; navigate(AppDestination.Detail) },
                         onRecord = {
@@ -138,8 +135,7 @@ fun SocialDriveApp(
                             scope.launch { offlineViewModel.startRecording() }
                         },
                         onSettings = { navigate(AppDestination.Settings) },
-                        onRetry = { demoContentMode = DemoContentMode.Content },
-                        onDemoModeChange = { demoContentMode = it },
+                        onRetry = {},
                     )
                     AppDestination.Detail -> DetailScreen(
                         drive = requireNotNull(repository.drive(selectedDrive)),
@@ -239,32 +235,10 @@ fun SocialDriveApp(
                         theme = theme,
                         vehicleStatus = vehicleMotion.integration,
                         navigationStatus = navigationCapability,
-                        onMotionChange = {
-                            scope.launch {
-                                if (offlineViewModel.requestDemoMotion(it)) {
-                                    if (it != MotionState.Parked) {
-                                        blockedMessage = "주행 상태로 전환되어 탐색과 설정을 잠갔어요."
-                                        destination = AppDestination.Home
-                                    }
-                                } else {
-                                    blockedMessage = "실차 상태는 앱에서 바꿀 수 없어요."
-                                }
-                            }
-                        },
                         onThemeChange = { theme = it },
                         onBack = { navigate(AppDestination.Home) },
                         routePrivacy = routePrivacy,
                         privacyMessage = privacyMessage,
-                        onRequestLiveConsent = {
-                            scope.launch {
-                                val decision = offlineViewModel.requestLiveRouteConsent()
-                                privacyMessage = if (decision.unavailableReason != null) {
-                                    "실시간 경로 SDK가 아직 제공되지 않아 동의를 저장하지 않았어요. 데모 데이터만 계속 사용합니다."
-                                } else {
-                                    "경로 동의 상태를 저장했어요."
-                                }
-                            }
-                        },
                         onWithdrawConsent = {
                             scope.launch {
                                 val result = offlineViewModel.withdrawRouteConsent()
@@ -289,17 +263,4 @@ fun SocialDriveApp(
             }
         }
     }
-}
-
-private fun demoContentState(
-    mode: DemoContentMode,
-    repository: FakeDriveRepository,
-): ContentState<List<com.socialdrive.app.domain.DriveSummary>> = when (mode) {
-    DemoContentMode.Loading -> ContentState.Loading
-    DemoContentMode.Content -> ContentState.Content(repository.drives())
-    DemoContentMode.Empty -> ContentState.Empty
-    DemoContentMode.Offline -> ContentState.Offline(repository.drives())
-    DemoContentMode.Error -> ContentState.Error("피드를 불러오지 못했어요. 저장된 기록은 안전합니다.")
-    DemoContentMode.PermissionDenied -> ContentState.PermissionDenied("위치")
-    DemoContentMode.Retry -> ContentState.Retry("연결이 불안정합니다. 잠시 후 다시 시도해 주세요.")
 }

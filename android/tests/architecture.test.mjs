@@ -339,11 +339,15 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.match(hostTest, /changedDrivingId[\s\S]*drivingId = "21"[\s\S]*assertFalse\(tracker\.record\(changedDrivingId\)\)/);
 });
 
-test("content and upload states are observable in the demo", () => {
+test("content and upload states are observable without judge-facing state controls", () => {
   const home = read("app/src/main/java/com/socialdrive/app/ui/screens/HomeScreen.kt");
   const publish = read("app/src/main/java/com/socialdrive/app/ui/screens/PublishScreen.kt");
-  assert.match(home, /DemoContentMode\.entries/);
-  assert.match(publish, /UploadState\.entries/);
+  const fixtures = read("app/src/debug/java/com/socialdrive/app/ui/visual/VisualStateCatalog.kt");
+  assert.doesNotMatch(home, /DemoContentMode\.entries/);
+  assert.doesNotMatch(publish, /UploadState\.entries/);
+  for (const scenario of ["HomeContent", "HomeLoading", "HomeEmpty", "HomeOfflineCached", "HomeError"]) {
+    assert.match(fixtures, new RegExp(`VisualScenario\\.${scenario}`));
+  }
   for (const state of ["Draft", "Queued", "Uploading", "Failed", "Published"]) assert.match(publish, new RegExp(`UploadState\\.${state}`));
 });
 
@@ -573,16 +577,25 @@ test("publish concurrency and upload recovery retain frozen versions and bounded
   }
 });
 
-test("integration UI is explicit about actual demo unavailable and coming-soon features", () => {
+test("integration UI is explicit about actual demo and unavailable features", () => {
   const components = read("app/src/main/java/com/socialdrive/app/ui/components/RouteComponents.kt");
+  const contentState = read("app/src/main/java/com/socialdrive/app/ui/components/ContentStatePanel.kt");
+  const home = read("app/src/main/java/com/socialdrive/app/ui/screens/HomeScreen.kt");
   const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
   for (const marker of ["IntegrationSource.Actual", "IntegrationSource.Demo", "IntegrationSource.Unavailable"]) {
     assert.ok(components.includes(marker), marker);
   }
-  for (const marker of ["Fused Location", "TTS / STT", "Vehicle Control", "Coming Soon"]) {
+  for (const marker of ["위치 연동", "음성 안내·인식", "차량 제어", "준비 중 · 사용 불가", "Icons.Rounded.Schedule"]) {
     assert.ok(settings.includes(marker), marker);
   }
-  assert.match(settings, /vehicleStatus\.source == IntegrationSource\.Demo/);
+  assert.ok(!settings.includes("Icons.Rounded.CheckCircle"), "unavailable rows must not use a success icon");
+  assert.match(components, /"데모 \$contextLabel"/);
+  assert.match(home, /"차량 상태"/);
+  assert.match(settings, /실시간 경로 SDK 준비 중/);
+  assert.match(settings, /향후 제공 예정/);
+  assert.doesNotMatch(settings, /Coming Soon/);
+  assert.doesNotMatch(settings, /차량 상태 시뮬레이션/);
+  assert.doesNotMatch(contentState, /progress\s*=/, "loading must not invent a determinate percentage");
 });
 
 test("preview matrix includes day night driving recording and failed upload", () => {
@@ -688,7 +701,7 @@ test("demo route source remains visible across every route surface", () => {
   }
   const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
   assert.match(settings, /enabled = motion == MotionState\.Parked/);
-  assert.match(settings, /SDK 준비 중 · Coming Soon/);
+  assert.match(settings, /SDK 준비 중 · 향후 제공 예정/);
 });
 
 test("published delete is parked durable idempotent bounded and fail closed", () => {
@@ -759,6 +772,37 @@ test("hex colors stay inside the theme color source", () => {
     if (file.endsWith(path.join("theme", "Color.kt"))) continue;
     assert.doesNotMatch(fs.readFileSync(file, "utf8"), /0x[0-9A-Fa-f]{8}/, file);
   }
+});
+
+test("day highlight time foreground meets WCAG text contrast", () => {
+  const colors = read("app/src/main/java/com/socialdrive/app/ui/theme/Color.kt");
+  const theme = read("app/src/main/java/com/socialdrive/app/ui/theme/Theme.kt");
+  const detail = read("app/src/main/java/com/socialdrive/app/ui/screens/DetailScreen.kt");
+  const namedRgb = (name) => {
+    const match = colors.match(new RegExp(`val ${name} = Color\\(0xFF([0-9A-Fa-f]{6})\\)`));
+    assert.ok(match, `${name} must be a literal opaque theme color`);
+    return [0, 2, 4].map((offset) => Number.parseInt(match[1].slice(offset, offset + 2), 16));
+  };
+  const luminance = (rgb) => rgb
+    .map((channel) => channel / 255)
+    .map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4)
+    .reduce((sum, channel, index) => sum + channel * [0.2126, 0.7152, 0.0722][index], 0);
+  const contrast = (foreground, background) => {
+    const [lighter, darker] = [luminance(foreground), luminance(background)].sort((a, b) => b - a);
+    return (lighter + 0.05) / (darker + 0.05);
+  };
+  const foreground = namedRgb("MomentAmberForegroundDay");
+  for (const surface of ["DaySurface", "DaySurfaceRaised", "MomentAmberContainerDay"]) {
+    assert.ok(contrast(foreground, namedRgb(surface)) >= 4.5, `${surface} contrast must be at least 4.5:1`);
+  }
+  assert.match(theme, /onTertiaryContainer = MomentAmberForegroundDay/);
+  assert.match(detail, /moment\.time,[\s\S]*color = MaterialTheme\.colorScheme\.onTertiaryContainer/);
+  assert.doesNotMatch(detail, /Text\(moment\.time, color = MaterialTheme\.colorScheme\.tertiary/);
+});
+
+test("recording stop action has a visible automotive button boundary", () => {
+  const recording = read("app/src/main/java/com/socialdrive/app/ui/screens/RecordingScreen.kt");
+  assert.match(recording, /onClick = onRequestStop,[\s\S]*heightIn\(min = 72\.dp\)[\s\S]*containerColor = MaterialTheme\.colorScheme\.surface,[\s\S]*contentColor = MaterialTheme\.colorScheme\.primary,[\s\S]*border = BorderStroke\(2\.dp, MaterialTheme\.colorScheme\.primary\)/);
 });
 
 test("version conflicts are durable explicit parked-only reviews", () => {

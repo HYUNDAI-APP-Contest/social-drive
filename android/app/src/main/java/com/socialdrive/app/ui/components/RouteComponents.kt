@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -37,6 +36,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.DriveSummary
@@ -77,9 +77,13 @@ fun RouteRibbon(
 @Composable
 fun DriveSummaryCard(drive: DriveSummary, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val colors = LocalRouteMemoryColors.current
+    val largeText = LocalDensity.current.fontScale >= 1.2f
     Card(
         modifier = modifier
-            .heightIn(min = 232.dp)
+            // A concrete height lets the artwork Box own the complete grid item.
+            // heightIn(min) left fillMaxSize() measuring only the text content,
+            // which produced a visually empty lower half in the judge viewport.
+            .height(232.dp)
             .clickable(role = Role.Button, onClickLabel = "${drive.title} 상세 보기", onClick = onClick),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -94,16 +98,30 @@ fun DriveSummaryCard(drive: DriveSummary, onClick: () -> Unit, modifier: Modifie
                 Modifier
                     .align(Alignment.BottomStart)
                     .fillMaxWidth()
-                    .background(Brush.verticalGradient(listOf(androidx.compose.ui.graphics.Color.Transparent, MaterialTheme.colorScheme.surface)))
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.surface.copy(alpha = .82f),
+                                MaterialTheme.colorScheme.surface,
+                            ),
+                        ),
+                    )
                     .padding(20.dp),
             ) {
                 Text(drive.date, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(drive.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Text(drive.summary, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Metric(Icons.Rounded.Route, "${drive.distance} · ${drive.duration}")
-                    Metric(Icons.Rounded.Star, "하이라이트 ${drive.highlights}")
+                if (largeText) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Metric(Icons.Rounded.Route, "${drive.distance} · ${drive.duration}")
+                        Metric(Icons.Rounded.Star, "하이라이트 ${drive.highlights}")
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(18.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Metric(Icons.Rounded.Route, "${drive.distance} · ${drive.duration}")
+                        Metric(Icons.Rounded.Star, "하이라이트 ${drive.highlights}")
+                    }
                 }
             }
             RouteSourceBadge(drive.routeSource, Modifier.align(Alignment.TopEnd).padding(16.dp))
@@ -146,12 +164,12 @@ fun RouteSourceBadge(source: RouteSource, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun IntegrationStatusChip(status: CapabilityStatus, modifier: Modifier = Modifier) {
-    val label = when (status.source) {
-        IntegrationSource.Actual -> "ACTUAL · ${status.label}"
-        IntegrationSource.Demo -> "DEMO · ${status.label}"
-        IntegrationSource.Unavailable -> "UNAVAILABLE"
-    }
+fun IntegrationStatusChip(
+    status: CapabilityStatus,
+    modifier: Modifier = Modifier,
+    contextLabel: String = "연동 상태",
+) {
+    val label = integrationStatusLabel(status, contextLabel)
     Surface(modifier.clip(CircleShape), color = MaterialTheme.colorScheme.secondaryContainer) {
         Text(
             label,
@@ -162,6 +180,17 @@ fun IntegrationStatusChip(status: CapabilityStatus, modifier: Modifier = Modifie
             overflow = TextOverflow.Ellipsis,
         )
     }
+}
+
+internal fun integrationStatusLabel(status: CapabilityStatus, contextLabel: String): String = when (status.source) {
+    IntegrationSource.Actual -> when {
+        status.capability == com.socialdrive.app.domain.CapabilityState.Available -> "PLEOS 연결됨 · $contextLabel"
+        status.label.contains("주차 신호") -> "PLEOS 연결됨 · 주차 신호 미확인"
+        status.label.contains("연결 안 됨") -> "$contextLabel 연결 미확인"
+        else -> "$contextLabel 미확인"
+    }
+    IntegrationSource.Demo -> "데모 $contextLabel"
+    IntegrationSource.Unavailable -> "$contextLabel 사용 불가"
 }
 
 @Composable

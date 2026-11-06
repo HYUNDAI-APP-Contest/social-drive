@@ -17,9 +17,10 @@ import com.socialdrive.app.domain.AppDestination
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.ContentState
-import com.socialdrive.app.domain.DemoContentMode
 import com.socialdrive.app.domain.IntegrationSource
 import com.socialdrive.app.domain.MotionState
+import com.socialdrive.app.domain.NavigationPlace
+import com.socialdrive.app.domain.NavigationRequest
 import com.socialdrive.app.domain.NavigationState
 import com.socialdrive.app.domain.RecordingSnapshot
 import com.socialdrive.app.domain.RouteSource
@@ -71,9 +72,8 @@ class HomeSafetyUiTest {
                 HomeScreen(
                     state = ContentState.Content(drives),
                     motion = motion,
-                    demoMode = DemoContentMode.Content,
                     blockedMessage = null,
-                    onDetail = {}, onRecord = {}, onSettings = {}, onRetry = {}, onDemoModeChange = {},
+                    onDetail = {}, onRecord = {}, onSettings = {}, onRetry = {},
                 )
             }
         }
@@ -113,6 +113,39 @@ class NavigationSafetyUiTest {
         compose.onNodeWithText("이 드라이브 게시하기").assertIsDisplayed()
         compose.onNodeWithText("이 드라이브 게시하기").performClick()
         compose.onNodeWithText("드라이브 게시").assertIsDisplayed()
+    }
+
+    @Test
+    fun unavailableNavigationWithRequestShowsGuidanceInsteadOfSuccessAction() {
+        val repository = FakeDriveRepository()
+        val unavailable = CapabilityStatus(
+            capability = CapabilityState.Unavailable,
+            source = IntegrationSource.Unavailable,
+            label = "사용 불가",
+        )
+        val driveWithRequest = requireNotNull(repository.drive("demo-coast")).copy(
+            navigationRequest = NavigationRequest(
+                requestId = "privacy-reviewed-route",
+                destination = NavigationPlace("테스트 목적지", 37.0, 127.0),
+            ),
+        )
+
+        host.setContent {
+            SocialDriveTheme(ThemeMode.Day) {
+                DetailScreen(
+                    drive = driveWithRequest,
+                    navigationCapability = unavailable,
+                    navigationState = NavigationState.Idle(unavailable),
+                    onRequestNavigation = {},
+                    onBack = {},
+                    onPublish = {},
+                )
+            }
+        }
+        compose.waitForIdle()
+
+        compose.onNodeWithText("차량 내비게이션 연결 안내", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("차량 내비게이션으로 보내기", substring = true).assertDoesNotExist()
     }
 }
 
@@ -160,13 +193,11 @@ private fun NavigationContractContent() {
             AppDestination.Home -> HomeScreen(
                 state = ContentState.Content(repository.drives()),
                 motion = motion,
-                demoMode = DemoContentMode.Content,
                 blockedMessage = null,
                 onDetail = { selectedDrive = it; navigate(AppDestination.Detail) },
                 onRecord = { navigate(AppDestination.Recording) },
                 onSettings = {},
                 onRetry = {},
-                onDemoModeChange = {},
             )
             AppDestination.Detail -> DetailScreen(
                 drive = requireNotNull(repository.drive(selectedDrive)),

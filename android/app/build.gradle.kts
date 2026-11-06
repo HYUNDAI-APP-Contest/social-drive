@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+    id("com.android.compose.screenshot")
 }
 
 val releaseSigningEnvironment = listOf(
@@ -57,6 +58,7 @@ gradle.taskGraph.whenReady {
 android {
     namespace = "com.socialdrive.app"
     compileSdk = 35
+    experimentalProperties["android.experimental.enableScreenshotTest"] = true
 
     defaultConfig {
         applicationId = "com.socialdrive.app"
@@ -112,10 +114,23 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    testOptions { unitTests.isIncludeAndroidResources = true }
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+        unitTests.all {
+            if (it.name.startsWith("testDemo")) {
+                it.systemProperty("user.home", rootProject.file(".gradle/local-runtime").absolutePath)
+            }
+        }
+    }
 
     sourceSets {
         getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
+}
+
+afterEvaluate {
+    tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileDemoDebugScreenshotTestKotlin") {
+        kotlinOptions.freeCompilerArgs += "-Xskip-metadata-version-check"
     }
 }
 
@@ -149,6 +164,9 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlin:kotlin-test:2.0.21")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    "testDemoImplementation"("org.robolectric:robolectric:4.14.1")
+    "testDemoImplementation"(composeBom)
+    "testDemoImplementation"("androidx.compose.ui:ui-test-junit4")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
@@ -158,4 +176,8 @@ dependencies {
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    screenshotTestImplementation("com.android.tools.screenshot:screenshot-validation-api:0.0.1-alpha16") {
+        isTransitive = false
+    }
+    screenshotTestImplementation("androidx.compose.ui:ui-tooling")
 }

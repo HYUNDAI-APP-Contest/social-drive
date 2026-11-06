@@ -7,7 +7,6 @@ import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.ConflictReviewUiState
 import com.socialdrive.app.domain.ConflictUiPhase
 import com.socialdrive.app.domain.ContentState
-import com.socialdrive.app.domain.DemoContentMode
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.RecordingSnapshot
 import com.socialdrive.app.domain.ThemeMode
@@ -23,13 +22,13 @@ private val previewRepository = FakeDriveRepository()
 @Preview(name = "Night · feed content", widthDp = 1280, heightDp = 720, showBackground = true)
 @Composable
 private fun NightFeedPreview() = SocialDriveTheme(ThemeMode.Night) {
-    PreviewHome(ContentState.Content(previewRepository.drives()), DemoContentMode.Content)
+    PreviewHome(ContentState.Content(previewRepository.drives()))
 }
 
 @Preview(name = "Day · offline cache", widthDp = 1280, heightDp = 720, showBackground = true)
 @Composable
 private fun DayOfflinePreview() = SocialDriveTheme(ThemeMode.Day) {
-    PreviewHome(ContentState.Offline(previewRepository.drives()), DemoContentMode.Offline)
+    PreviewHome(ContentState.Offline(previewRepository.drives()))
 }
 
 @Preview(name = "Driving · restricted home", widthDp = 1280, heightDp = 720, showBackground = true)
@@ -38,9 +37,8 @@ private fun DrivingHomePreview() = SocialDriveTheme(ThemeMode.Night) {
     HomeScreen(
         state = ContentState.Content(previewRepository.drives()),
         motion = MotionState.Driving,
-        demoMode = DemoContentMode.Content,
         blockedMessage = null,
-        onDetail = {}, onRecord = {}, onSettings = {}, onRetry = {}, onDemoModeChange = {},
+        onDetail = {}, onRecord = {}, onSettings = {}, onRetry = {},
     )
 }
 
@@ -103,12 +101,11 @@ private fun ConflictFetchingPreview() = SocialDriveTheme(ThemeMode.Night) {
 }
 
 @Composable
-private fun PreviewHome(state: ContentState<List<com.socialdrive.app.domain.DriveSummary>>, mode: DemoContentMode) {
+private fun PreviewHome(state: ContentState<List<com.socialdrive.app.domain.DriveSummary>>) {
     HomeScreen(
         state = state,
         motion = MotionState.Parked,
-        demoMode = mode,
         blockedMessage = null,
-        onDetail = {}, onRecord = {}, onSettings = {}, onRetry = {}, onDemoModeChange = {},
+        onDetail = {}, onRecord = {}, onSettings = {}, onRetry = {},
     )
 }
