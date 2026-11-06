@@ -388,20 +388,33 @@ test("actual adapters fail closed and never fall back to demo state", () => {
   const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");
   const app = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
   const pleos = read("app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
+  const gearSmoke = read("app/src/androidTest/java/com/socialdrive/app/PleosGearRuntimeSmokeTest.kt");
   const demo = read("app/src/demo/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
   assert.match(application, /FlavorIntegrationFactory\.create\(this\)/);
   assert.match(application, /vehicleMotionSource\.status\.collect[\s\S]*parkedExecutionGate\.transitionTo\(status\.motion\)/);
   assert.match(pleos, /PleosGearSignalPort\(context\)/);
   assert.match(pleos, /checkSelfPermission\(PleosPermission\.CAR_DRIVE\)/);
-  assert.match(pleos, /vehicle\.gear\.getCurrentGearSelectionState/);
-  assert.match(pleos, /vehicle\.gear\.registerGearSelection/);
-  assert.match(pleos, /vehicle\.gear\.unregisterGearSelection/);
+  assert.match(pleos, /gearApi = vehicle\.getGear\(\)/);
+  assert.match(pleos, /gearApi\.getCurrentGearSelectionState/);
+  assert.match(pleos, /gearApi\.registerGearSelection/);
+  assert.match(pleos, /gearApi(?:::|\.)unregisterGearSelection/);
   assert.match(pleos, /VehicleGear\.GEAR_PARK -> GearSignal\.Park/);
   assert.match(pleos, /requestSimulation\(motion: MotionState\): Boolean = false/);
   assert.doesNotMatch(pleos, /DemoVehicle|FakePleos|println\(|Log\./);
   assert.match(demo, /requestSimulation[\s\S]*mutableStatus\.value/);
   assert.match(viewModel, /vehicleMotion\.value\.motion != MotionState\.Parked[\s\S]*NavigationRequestResult\.Rejected/);
   assert.match(app, /LaunchedEffect\(motion\)[\s\S]*motion != MotionState\.Parked[\s\S]*destination = AppDestination\.Home/);
+  assert.match(gearSmoke, /assumeTrue\([\s\S]*InstrumentationRegistry\.getArguments\(\)\.getString\(REQUIRE_PLEOS_GEAR_ARGUMENT\) == "true"[\s\S]*val host = PleosComposeHost\(\)/);
+  assert.match(gearSmoke, /withTimeoutOrNull\(PARK_CALLBACK_TIMEOUT_MILLIS\)/);
+  assert.match(gearSmoke, /IntegrationSource\.Actual/);
+  assert.match(gearSmoke, /CapabilityState\.Available/);
+  assert.match(gearSmoke, /closeWithinDeadline\(host\)/);
+  assert.match(gearSmoke, /isDaemon = true/);
+  assert.match(gearSmoke, /completed\.await\(CLOSE_TIMEOUT_SECONDS, TimeUnit\.SECONDS\)/);
+  for (const stage of ["start", "host_launched", "source_acquired", "park_observed", "asserted", "close_start", "close_done"]) {
+    assert.ok(gearSmoke.includes(`stage=${stage}`), stage);
+  }
+  assert.doesNotMatch(gearSmoke, /source\.release\(|source\.initialize\(|println\(|printStackTrace|VehicleGear|status\.motion.*Log/);
 });
 
 test("navigation validates named coordinates and serializes requests without logging private places", () => {

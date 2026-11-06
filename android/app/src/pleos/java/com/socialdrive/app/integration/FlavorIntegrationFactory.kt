@@ -81,6 +81,7 @@ private class PleosVehicleMotionSource(context: Context) : VehicleMotionSource {
 private class PleosGearSignalPort(context: Context) : GearSignalPort {
     private val applicationContext = context.applicationContext
     private val vehicle = Vehicle(applicationContext)
+    private val gearApi = vehicle.getGear()
     private val lock = Any()
     private val listeners = IdentityHashMap<GearSignalCallback, GearSelectionListener>()
 
@@ -90,7 +91,7 @@ private class PleosGearSignalPort(context: Context) : GearSignalPort {
     override fun initialize() = synchronized(lock) { vehicle.initialize() }
 
     override fun readCurrent(callback: GearSignalCallback) = synchronized(lock) {
-        vehicle.gear.getCurrentGearSelectionState(
+        gearApi.getCurrentGearSelectionState(
             onComplete = { gear -> callback.onSignal(gear.toGearSignal()) },
             onFailed = { callback.onFailure() },
         )
@@ -99,22 +100,24 @@ private class PleosGearSignalPort(context: Context) : GearSignalPort {
     override fun register(callback: GearSignalCallback) = synchronized(lock) {
         check(!listeners.containsKey(callback))
         val listener = object : GearSelectionListener {
-            override fun onSelected(gear: VehicleGear) = callback.onSignal(gear.toGearSignal())
+            override fun onSelected(gear: VehicleGear?) = callback.onSignal(gear.toGearSignal())
             override fun onFailed(exception: Exception) = callback.onFailure()
         }
         listeners[callback] = listener
-        runCatching { vehicle.gear.registerGearSelection(listener) }
+        runCatching { gearApi.registerGearSelection(listener) }
             .onFailure { listeners.remove(callback) }
             .getOrThrow()
     }
 
-    override fun unregister(callback: GearSignalCallback) = synchronized(lock) {
-        listeners.remove(callback)?.let(vehicle.gear::unregisterGearSelection)
+    override fun unregister(callback: GearSignalCallback) {
+        synchronized(lock) {
+            listeners.remove(callback)?.let(gearApi::unregisterGearSelection)
+        }
     }
 
     override fun release() = synchronized(lock) {
         listeners.values.toList().forEach { listener ->
-            runCatching { vehicle.gear.unregisterGearSelection(listener) }
+            runCatching { gearApi.unregisterGearSelection(listener) }
         }
         listeners.clear()
         vehicle.release()
