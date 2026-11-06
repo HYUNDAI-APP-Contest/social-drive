@@ -8,11 +8,12 @@ import com.socialdrive.app.data.work.PublishRecoveryPolicyTest
 import com.socialdrive.app.data.work.DeleteCancellationGuardTest
 import com.socialdrive.app.integration.NavigationGatewayCoordinatorTest
 import com.socialdrive.app.integration.NavigationRequestControllerTest
+import com.socialdrive.app.integration.GearMotionControllerTest
 import java.lang.reflect.InvocationTargetException
 import org.junit.Test
 
 fun main() {
-    val expectedTests = 74
+    val expectedTests = 83
     val classes = listOf(
         IntegrationContractsTest::class.java,
         RoutePrivacyTest::class.java,
@@ -22,6 +23,7 @@ fun main() {
         RemoteDriveApiTest::class.java,
         PublishRecoveryPolicyTest::class.java,
         DeleteCancellationGuardTest::class.java,
+        GearMotionControllerTest::class.java,
         NavigationRequestControllerTest::class.java,
         NavigationGatewayCoordinatorTest::class.java,
     )

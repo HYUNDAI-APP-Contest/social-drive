@@ -32,8 +32,10 @@ classpath="$kotlin_home/lib/kotlin-test.jar:$kotlin_home/lib/kotlin-test-junit.j
   "$android_root/app/src/main/java/com/socialdrive/app/data/remote/CloudRemoteDriveApi.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/work/PublishRecoveryPolicy.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/work/DeleteCancellationGuard.kt" \
+  "$android_root/app/src/main/java/com/socialdrive/app/safety/ParkedExecutionGate.kt" \
   "$android_root/app/src/demo/java/com/socialdrive/app/data/remote/FakeRemoteDriveApi.kt" \
   "$android_root/app/src/demo/java/com/socialdrive/app/data/remote/FakeRemoteDeleteApi.kt" \
+  "$android_root/app/src/main/java/com/socialdrive/app/integration/GearMotionController.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/integration/NavigationRequestController.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/integration/NavigationGatewayCoordinator.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/domain/IntegrationContractsTest.kt" \
@@ -43,6 +45,7 @@ classpath="$kotlin_home/lib/kotlin-test.jar:$kotlin_home/lib/kotlin-test-junit.j
   "$android_root/app/src/test/java/com/socialdrive/app/data/remote/CloudDriveClientTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/data/work/PublishRecoveryPolicyTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/data/work/DeleteCancellationGuardTest.kt" \
+  "$android_root/app/src/test/java/com/socialdrive/app/integration/GearMotionControllerTest.kt" \
   "$android_root/app/src/testDemo/java/com/socialdrive/app/data/remote/RemoteDriveApiTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/integration/NavigationRequestControllerTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/integration/NavigationGatewayCoordinatorTest.kt" \
