@@ -68,8 +68,15 @@ export class AwsDeployer {
 
   async stackExists() {
     try {
-      await this.aws(["cloudformation", "describe-stacks", "--stack-name", this.config.awsStackName, "--output", "json"]);
-      return true;
+      const description = json((await this.aws([
+        "cloudformation", "describe-stacks", "--stack-name", this.config.awsStackName, "--output", "json",
+      ])).stdout);
+      const status = description.Stacks?.[0]?.StackStatus;
+      // CloudFormation creates a REVIEW_IN_PROGRESS placeholder for a CREATE change set.
+      // A failed or abandoned change set can leave that placeholder visible to
+      // describe-stacks even though there is no deployed stack to update. The next
+      // candidate must therefore be another CREATE change set.
+      return Boolean(status && status !== "REVIEW_IN_PROGRESS");
     } catch (error) {
       if (/does not exist/i.test(error.message)) return false;
       throw error;
