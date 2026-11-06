@@ -1,11 +1,14 @@
 package com.socialdrive.app.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material3.Button
@@ -14,6 +17,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -24,10 +28,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.UploadState
+import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.RouteSource
+import com.socialdrive.app.ui.components.MemoryPalette
+import com.socialdrive.app.ui.components.RouteMemoryArtwork
 import com.socialdrive.app.ui.components.RouteSourceBadge
 import com.socialdrive.app.ui.components.SafetyRestrictionBanner
 import com.socialdrive.app.ui.components.UploadStateChip
+
+private val PublishDemoRoute = listOf(
+    RoutePoint(.06f, .72f), RoutePoint(.18f, .58f), RoutePoint(.31f, .63f),
+    RoutePoint(.45f, .39f), RoutePoint(.62f, .45f), RoutePoint(.78f, .24f), RoutePoint(.94f, .32f),
+)
 
 @Composable
 fun PublishScreen(
@@ -43,13 +55,18 @@ fun PublishScreen(
     editingRestriction: String = "주차 상태를 확인한 뒤 게시물을 편집할 수 있어요.",
     routeSource: RouteSource = RouteSource.DemoPreset,
     onReviewConflict: () -> Unit = {},
+    route: List<RoutePoint> = PublishDemoRoute,
+    highlightCount: Int = 4,
+    memoryPalette: MemoryPalette = MemoryPalette.Coast,
 ) {
     var title by remember(initialTitle) { mutableStateOf(initialTitle) }
     var description by remember(initialDescription) { mutableStateOf(initialDescription) }
     var consent by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().padding(24.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "뒤로가기") }
+            IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "뒤로가기")
+            }
             Column(Modifier.weight(1f)) {
                 Text("드라이브 게시", style = MaterialTheme.typography.headlineMedium)
                 Text("대표 이미지 → 이야기 → 공개 범위 → 동의", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -65,9 +82,28 @@ fun PublishScreen(
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Text("1  대표 장면", style = MaterialTheme.typography.titleLarge)
                 androidx.compose.material3.Card(Modifier.fillMaxWidth().weight(1f)) {
-                    Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("데모 데이터 · ROUTE ARTWORK", color = MaterialTheme.colorScheme.secondary)
-                        Text("실제 위치와 사진은 포함되지 않습니다", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Box(Modifier.fillMaxSize()) {
+                        RouteMemoryArtwork(
+                            points = route,
+                            palette = memoryPalette,
+                            momentCount = highlightCount,
+                            selectedMomentIndex = (highlightCount - 1).takeIf { it >= 0 },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        Surface(
+                            modifier = Modifier.align(Alignment.TopStart).padding(20.dp),
+                            shape = MaterialTheme.shapes.medium,
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = .9f),
+                        ) {
+                            Column(
+                                Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                RouteSourceBadge(routeSource)
+                                Text("좋았던 순간을 한 장의 이야기로", style = MaterialTheme.typography.titleLarge)
+                                Text("실제 위치와 사진은 포함되지 않습니다", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                 }
             }
@@ -97,7 +133,12 @@ fun PublishScreen(
                 )
                 Text("3  공개 범위 · 전체 공개", style = MaterialTheme.typography.titleMedium)
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = consent, onCheckedChange = { consent = it }, enabled = canAct)
+                    Checkbox(
+                        checked = consent,
+                        onCheckedChange = { consent = it },
+                        enabled = canAct,
+                        modifier = Modifier.size(48.dp),
+                    )
                     Column {
                         Text("게시할 항목을 확인했습니다.")
                         Text("데모 경로 아트워크 · 제목과 설명 · 하이라이트 개수", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -105,12 +146,12 @@ fun PublishScreen(
                 }
                 Text("정밀 위치와 원시 차량 상태는 제외됩니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 when (uploadState) {
-                    UploadState.Published -> Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("피드에서 확인하기") }
-                    UploadState.Uploading -> Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("안전하게 업로드 중…") }
-                    UploadState.Failed -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canAct && consent, modifier = Modifier.fillMaxWidth()) { Text("업로드 다시 시도") }
-                    UploadState.NeedsConflictReview -> Button(onClick = onReviewConflict, enabled = canAct, modifier = Modifier.fillMaxWidth()) { Text("서버 버전 검토") }
-                    UploadState.Queued -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = false, modifier = Modifier.fillMaxWidth()) { Text("네트워크 연결을 기다리는 중") }
-                    UploadState.Draft -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canEdit && consent, modifier = Modifier.fillMaxWidth()) { Text("안전하게 게시하기") }
+                    UploadState.Published -> Button(onClick = onDone, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("피드에서 확인하기") }
+                    UploadState.Uploading -> Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("안전하게 업로드 중…") }
+                    UploadState.Failed -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canAct && consent, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("업로드 다시 시도") }
+                    UploadState.NeedsConflictReview -> Button(onClick = onReviewConflict, enabled = canAct, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("서버 버전 검토") }
+                    UploadState.Queued -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = false, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("네트워크 연결을 기다리는 중") }
+                    UploadState.Draft -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canEdit && consent, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("안전하게 게시하기") }
                 }
             }
         }

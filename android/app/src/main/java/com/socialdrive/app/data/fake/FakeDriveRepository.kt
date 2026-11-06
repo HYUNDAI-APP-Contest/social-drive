@@ -11,9 +11,17 @@ interface DriveRepository {
 }
 
 class FakeDriveRepository : DriveRepository {
-    private val route = listOf(
+    private val coastRoute = listOf(
         RoutePoint(.06f, .72f), RoutePoint(.18f, .58f), RoutePoint(.31f, .63f),
         RoutePoint(.45f, .39f), RoutePoint(.62f, .45f), RoutePoint(.78f, .24f), RoutePoint(.94f, .32f),
+    )
+    private val mountainRoute = listOf(
+        RoutePoint(.05f, .7f), RoutePoint(.17f, .42f), RoutePoint(.32f, .54f),
+        RoutePoint(.48f, .25f), RoutePoint(.64f, .37f), RoutePoint(.79f, .18f), RoutePoint(.95f, .41f),
+    )
+    private val cityRoute = listOf(
+        RoutePoint(.05f, .68f), RoutePoint(.2f, .68f), RoutePoint(.2f, .43f),
+        RoutePoint(.44f, .43f), RoutePoint(.44f, .25f), RoutePoint(.7f, .25f), RoutePoint(.7f, .55f), RoutePoint(.95f, .55f),
     )
 
     private val items = listOf(
@@ -25,7 +33,7 @@ class FakeDriveRepository : DriveRepository {
             distance = "128.4 km",
             duration = "2시간 36분",
             highlights = 4,
-            route = route,
+            route = coastRoute,
             moments = listOf(
                 DriveMoment("m1", "17:24", "노을이 시작된 순간", "따뜻한 빛이 길 위로 번졌어요."),
                 DriveMoment("m2", "18:03", "등대가 보이는 길", "잠시 머물고 싶었던 풍경이에요."),
@@ -42,7 +50,7 @@ class FakeDriveRepository : DriveRepository {
             distance = "86.1 km",
             duration = "1시간 52분",
             highlights = 3,
-            route = route.reversed(),
+            route = mountainRoute,
             moments = emptyList(),
             routeSource = RouteSource.DemoPreset,
         ),
@@ -54,7 +62,7 @@ class FakeDriveRepository : DriveRepository {
             distance = "32.8 km",
             duration = "58분",
             highlights = 2,
-            route = route,
+            route = cityRoute,
             moments = emptyList(),
             routeSource = RouteSource.DemoPreset,
         ),

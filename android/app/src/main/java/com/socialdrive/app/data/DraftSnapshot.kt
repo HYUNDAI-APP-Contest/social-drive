@@ -15,4 +15,6 @@ data class DraftSnapshot(
     val coverPreset: String,
     val originalContentRef: String,
     val state: String,
+    val highlightCount: Int = 0,
+    val storyId: String = "demo-coast",
 )

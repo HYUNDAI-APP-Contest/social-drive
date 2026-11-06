@@ -1,5 +1,6 @@
 package com.socialdrive.app.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -18,11 +19,13 @@ import androidx.compose.material.icons.rounded.Navigation
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,9 +33,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.DriveSummary
 import com.socialdrive.app.domain.CapabilityState
@@ -40,9 +47,10 @@ import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.NavigationRequest
 import com.socialdrive.app.domain.NavigationState
 import com.socialdrive.app.ui.components.IntegrationStatusChip
+import com.socialdrive.app.ui.components.RouteMemoryArtwork
 import com.socialdrive.app.ui.components.RouteSourceBadge
-import com.socialdrive.app.ui.components.RouteRibbon
 import com.socialdrive.app.ui.components.SafetyRestrictionBanner
+import com.socialdrive.app.ui.components.memoryPaletteFor
 
 internal fun navigationActionLabel(
     capability: CapabilityState,
@@ -66,6 +74,8 @@ fun DetailScreen(
 ) {
     var showCapabilitySheet by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
+    var selectedMomentIndex by rememberSaveable(drive.id) { mutableStateOf(0) }
+    val selectedMoment = drive.moments.getOrNull(selectedMomentIndex)
     LaunchedEffect(navigationState) {
         feedback = when (navigationState) {
             is NavigationState.Requesting -> "차량 내비게이션에 경로를 요청하고 있어요."
@@ -118,14 +128,36 @@ fun DetailScreen(
         Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 24.dp)) {
             Card(Modifier.fillMaxSize(), shape = MaterialTheme.shapes.large) {
                 Box(Modifier.fillMaxSize()) {
-                    RouteRibbon(drive.route, Modifier.fillMaxSize().padding(30.dp), showMoments = true)
-                    Column(Modifier.align(Alignment.TopStart).padding(22.dp)) {
-                        RouteSourceBadge(drive.routeSource)
-                        Text(
-                            "개인 위치를 제거한 비정밀 경로 아트워크",
-                            Modifier.padding(top = 8.dp),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    RouteMemoryArtwork(
+                        points = drive.route,
+                        palette = memoryPaletteFor(drive.id),
+                        momentCount = drive.moments.size,
+                        selectedMomentIndex = selectedMomentIndex.takeIf { drive.moments.isNotEmpty() },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    Surface(
+                        modifier = Modifier.align(Alignment.TopStart).padding(20.dp),
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = .9f),
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            RouteSourceBadge(drive.routeSource)
+                            Text(
+                                "개인 위치를 제거한 비정밀 경로 아트워크",
+                                Modifier.padding(top = 8.dp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            selectedMoment?.let { moment ->
+                                Text(
+                                    "순간 ${selectedMomentIndex + 1} · ${moment.time}",
+                                    Modifier.padding(top = 12.dp),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                )
+                                Text(moment.title, style = MaterialTheme.typography.titleLarge)
+                                Text(moment.description, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
                     }
                 }
             }
@@ -164,13 +196,35 @@ fun DetailScreen(
             } else {
                 LazyRow(Modifier.padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     items(drive.moments, key = { it.id }) { moment ->
-                        Card(Modifier.fillParentMaxWidth(.28f).height(126.dp)) {
-                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text(
-                                    moment.time,
-                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
-                                    style = MaterialTheme.typography.labelLarge,
+                        val selected = selectedMomentIndex == drive.moments.indexOf(moment)
+                        Card(
+                            Modifier
+                                .fillParentMaxWidth(.28f)
+                                .height(126.dp)
+                                .clickable(
+                                    role = Role.Button,
+                                    onClickLabel = "${moment.title} 순간 보기",
+                                    onClick = { selectedMomentIndex = drive.moments.indexOf(moment) },
                                 )
+                                .semantics { contentDescription = "${moment.title} 순간 보기" },
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer
+                                else MaterialTheme.colorScheme.surfaceVariant,
+                            ),
+                        ) {
+                            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row {
+                                    Text(
+                                        "${drive.moments.indexOf(moment) + 1} · ",
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        style = MaterialTheme.typography.labelLarge,
+                                    )
+                                    Text(
+                                        moment.time,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                        style = MaterialTheme.typography.labelLarge,
+                                    )
+                                }
                                 Text(moment.title, style = MaterialTheme.typography.titleMedium)
                                 Text(moment.description, maxLines = 2, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }

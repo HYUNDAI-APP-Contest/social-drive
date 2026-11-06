@@ -52,7 +52,9 @@ class RecordingRepository(
     }
 
     suspend fun finishAsDraft(id: String): DraftSnapshot? = database.withTransaction {
-        database.draftDao().findByRecording(id)?.toSnapshot()?.let { return@withTransaction it }
+        database.draftDao().findByRecording(id)?.toSnapshot(
+            database.recordingDao().find(id)?.highlightCount ?: 0,
+        )?.let { return@withTransaction it }
         val recording = database.recordingDao().find(id) ?: return@withTransaction null
         val now = clock()
         database.recordingDao().update(recording.copy(state = LocalState.DRAFTED, endedAtEpochMs = now))
@@ -62,7 +64,7 @@ class RecordingRepository(
             clientRequestId = "drive-${ids.create()}",
             title = "새로운 드라이브 기록",
             description = "좋았던 순간 ${recording.highlightCount}개를 안전하게 보관했어요.",
-            coverPreset = "route-memory-default",
+            coverPreset = "route-memory-demo-coast",
             originalContentRef = "local-recording://${recording.id}",
             state = LocalState.DRAFT,
             remoteDriveId = null,
@@ -72,7 +74,7 @@ class RecordingRepository(
             publishedAtEpochMs = null,
         )
         database.draftDao().insert(draft)
-        draft.toSnapshot()
+        draft.toSnapshot(recording.highlightCount)
     }
 
     suspend fun finishActiveAsDraft(): DraftSnapshot? =
@@ -83,9 +85,15 @@ class DraftRepository(
     private val database: SocialDriveDatabase,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
-    val drafts: Flow<List<DraftSnapshot>> = database.draftDao().observeAll().map { items -> items.map(DraftEntity::toSnapshot) }
+    val drafts: Flow<List<DraftSnapshot>> = database.draftDao().observeAll().map { items ->
+        items.map { entity ->
+            entity.toSnapshot(database.recordingDao().find(entity.recordingId)?.highlightCount ?: 0)
+        }
+    }
 
-    suspend fun find(id: String): DraftSnapshot? = database.draftDao().find(id)?.toSnapshot()
+    suspend fun find(id: String): DraftSnapshot? = database.draftDao().find(id)?.let { entity ->
+        entity.toSnapshot(database.recordingDao().find(entity.recordingId)?.highlightCount ?: 0)
+    }
 
     suspend fun updateCopy(id: String, title: String, description: String): Boolean =
         database.draftDao().updateEditableCopy(id, title.take(40), description.take(120), clock()) == 1
@@ -161,7 +169,7 @@ class PublishQueueRepository(
     }
 }
 
-private fun DraftEntity.toSnapshot() = DraftSnapshot(
+private fun DraftEntity.toSnapshot(highlightCount: Int) = DraftSnapshot(
     id = id,
     recordingId = recordingId,
     clientRequestId = clientRequestId,
@@ -170,4 +178,6 @@ private fun DraftEntity.toSnapshot() = DraftSnapshot(
     coverPreset = coverPreset,
     originalContentRef = originalContentRef,
     state = state,
+    highlightCount = highlightCount.coerceIn(0, 100),
+    storyId = coverPreset.removePrefix("route-memory-").takeIf { it.startsWith("demo-") } ?: "demo-coast",
 )

@@ -11,8 +11,8 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.SemanticsNodeInteraction
-import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -89,6 +89,7 @@ class VisualAccessibilityHostTest {
             Triple(VisualScenario.HomeEmpty, "아직 남긴 드라이브가 없어요", "첫 드라이브 기록하기"),
             Triple(VisualScenario.HomeOfflineCached, "오프라인 · 저장된 기록 표시 중", "연결되면 최신 목록을 다시 확인합니다."),
             Triple(VisualScenario.HomeError, "드라이브를 불러오지 못했어요", "다시 시도"),
+            Triple(VisualScenario.PublishDraft, "드라이브 게시", "좋았던 순간을 한 장의 이야기로"),
         )
 
         expectations.forEach { (scenario, primary, secondary) ->
@@ -125,14 +126,73 @@ class VisualAccessibilityHostTest {
     }
 
     @Test
-    fun largeTextOfflineHeaderAndPassiveScopeRemainVisible() {
+    fun largeTextOfflineHeaderRemainsVisibleWithoutDeadTagCopy() {
         installFixture(VisualScenario.HomeOfflineCached, fontScale = 1.3f)
         compose.onNodeWithText("오늘의 드라이브").assertWithinFixture()
         compose.onNodeWithText("기록 시작", substring = true).assertWithinFixture()
         compose.onNodeWithContentDescription("설정 열기").assertWithinFixture()
-        compose.onNodeWithText("전체 기록").assertHasNoClickAction().assertWithinFixture()
+        compose.onNodeWithText("카드 태그", substring = true).assertDoesNotExist()
         compose.onNodeWithText("오프라인 · 저장된 기록 표시 중").assertWithinFixture()
         compose.onNodeWithText("연결되면 최신 목록을 다시 확인합니다.").assertWithinFixture()
+    }
+
+    @Test
+    fun everyHomeStateKeepsTheStandardHeaderAcrossDayNightAndLargeText() {
+        val scenarioState = mutableStateOf(VisualScenario.HomeContent)
+        val themeState = mutableStateOf(ThemeMode.Day)
+        val fontScaleState = mutableStateOf(1f)
+        compose.setContent {
+            CompositionLocalProvider(LocalDensity provides Density(1f, fontScaleState.value)) {
+                VisualScenarioFixture(
+                    scenario = scenarioState.value,
+                    theme = themeState.value,
+                    modifier = Modifier.requiredSize(
+                        JUDGE_VIEWPORT_WIDTH_PX.dp,
+                        JUDGE_VIEWPORT_HEIGHT_PX.dp,
+                    ),
+                )
+            }
+        }
+        val homeStates = listOf(
+            VisualScenario.HomeContent,
+            VisualScenario.HomeLoading,
+            VisualScenario.HomeEmpty,
+            VisualScenario.HomeOfflineCached,
+            VisualScenario.HomeError,
+        )
+        val variants = listOf(
+            ThemeMode.Day to 1f,
+            ThemeMode.Night to 1f,
+            ThemeMode.Day to 1.3f,
+        )
+        homeStates.forEach { scenario ->
+            variants.forEach { (theme, fontScale) ->
+                compose.runOnIdle {
+                    scenarioState.value = scenario
+                    themeState.value = theme
+                    fontScaleState.value = fontScale
+                }
+                compose.waitForIdle()
+                compose.onNodeWithText("오늘의 드라이브").assertWithinFixture()
+                compose.onNodeWithText("기록 시작", substring = true).assertWithinFixture()
+                compose.onNodeWithText("데모 차량 상태").assertWithinFixture()
+                compose.onNodeWithContentDescription("설정 열기").assertWithinFixture()
+            }
+        }
+    }
+
+    @Test
+    fun highlightCaptureShowsImmediateMemoryFeedback() {
+        installFixture(VisualScenario.RecordingActive)
+        compose.onNodeWithText("방금 좋았어", substring = true).performClick()
+        compose.onNodeWithText("순간 4 저장됨 · 주차 후 이야기에서 확인").assertIsDisplayed()
+    }
+
+    @Test
+    fun detailMomentSelectionUpdatesTheStoryArtwork() {
+        installFixture(VisualScenario.MemoryDetailDemo)
+        compose.onNodeWithContentDescription("등대가 보이는 길 순간 보기").performClick()
+        compose.onNodeWithText("순간 2 · 18:03").assertIsDisplayed()
     }
 
     @Test
@@ -193,6 +253,8 @@ class VisualAccessibilityHostTest {
                     var showStopDialog by remember { mutableStateOf(false) }
                     RecordingScreen(
                         snapshot = RecordingSnapshot(
+                            storyId = "demo-coast",
+                            route = com.socialdrive.app.data.fake.FakeDriveRepository().drive("demo-coast")!!.route,
                             elapsed = "01:24:17",
                             distance = "64.2 km",
                             highlights = 3,

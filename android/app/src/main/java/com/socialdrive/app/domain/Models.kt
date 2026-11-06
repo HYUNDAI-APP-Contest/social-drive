@@ -49,6 +49,8 @@ data class DriveSummary(
 )
 
 data class RecordingSnapshot(
+    val storyId: String,
+    val route: List<RoutePoint>,
     val elapsed: String,
     val distance: String,
     val highlights: Int,

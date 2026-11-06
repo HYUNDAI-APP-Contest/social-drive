@@ -17,10 +17,12 @@ import com.socialdrive.app.domain.NavigationState
 import com.socialdrive.app.domain.RecordingSnapshot
 import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.ThemeMode
+import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.ui.screens.DetailScreen
 import com.socialdrive.app.ui.screens.HomeScreen
 import com.socialdrive.app.ui.screens.RecordingScreen
 import com.socialdrive.app.ui.screens.SettingsScreen
+import com.socialdrive.app.ui.screens.PublishScreen
 import com.socialdrive.app.ui.theme.SocialDriveTheme
 
 const val VISUAL_FIXTURE_TAG = "visual_fixture"
@@ -36,6 +38,7 @@ enum class VisualScenario(val fixtureId: String) {
     HomeEmpty("home_empty"),
     HomeOfflineCached("home_offline_cached"),
     HomeError("home_error"),
+    PublishDraft("publish_draft"),
 }
 
 private val fixtureRepository = FakeDriveRepository()
@@ -60,6 +63,8 @@ fun VisualScenarioFixture(
                     VisualScenario.HomeError -> FixtureHome(ContentState.Error("고정 테스트 오류"))
                     VisualScenario.RecordingActive -> RecordingScreen(
                         snapshot = RecordingSnapshot(
+                            storyId = "demo-coast",
+                            route = requireNotNull(fixtureRepository.drive("demo-coast")).route,
                             elapsed = "01:24:17",
                             distance = "64.2 km",
                             highlights = 3,
@@ -85,6 +90,16 @@ fun VisualScenarioFixture(
                         onRequestNavigation = {},
                         onBack = {},
                         onPublish = {},
+                    )
+                    VisualScenario.PublishDraft -> PublishScreen(
+                        canEdit = true,
+                        uploadState = UploadState.Draft,
+                        onUploadStateChange = {},
+                        onBack = {},
+                        onDone = {},
+                        routeSource = RouteSource.DemoPreset,
+                        route = requireNotNull(fixtureRepository.drive("demo-coast")).route,
+                        highlightCount = 4,
                     )
                 }
             }

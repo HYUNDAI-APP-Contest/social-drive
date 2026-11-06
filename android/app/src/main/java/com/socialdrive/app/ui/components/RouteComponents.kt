@@ -29,7 +29,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -47,6 +49,87 @@ import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.ui.theme.LocalRouteMemoryColors
 
+enum class MemoryPalette { Coast, Mountain, City }
+
+internal fun memoryPaletteFor(id: String): MemoryPalette = when {
+    id.contains("mountain") -> MemoryPalette.Mountain
+    id.contains("city") -> MemoryPalette.City
+    else -> MemoryPalette.Coast
+}
+
+/**
+ * Privacy-safe memory artwork made only from normalized route points and theme tokens.
+ * It deliberately contains no map tiles, place names, photographs, or raw coordinates.
+ */
+@Composable
+fun RouteMemoryArtwork(
+    points: List<RoutePoint>,
+    modifier: Modifier = Modifier,
+    palette: MemoryPalette = MemoryPalette.Coast,
+    momentCount: Int = 0,
+    selectedMomentIndex: Int? = null,
+    compact: Boolean = false,
+) {
+    val scheme = MaterialTheme.colorScheme
+    val routeColors = LocalRouteMemoryColors.current
+    val gradient = when (palette) {
+        MemoryPalette.Coast -> listOf(routeColors.brand, scheme.secondaryContainer, scheme.surfaceVariant)
+        MemoryPalette.Mountain -> listOf(scheme.tertiaryContainer, routeColors.brand, scheme.surfaceVariant)
+        MemoryPalette.City -> listOf(routeColors.brand, scheme.surfaceVariant, scheme.secondaryContainer)
+    }
+    Box(modifier.background(Brush.linearGradient(gradient))) {
+        Canvas(
+            Modifier
+                .fillMaxSize()
+                .clearAndSetSemantics {
+                    contentDescription = "개인 위치가 제거된 데모 경로와 하이라이트 ${momentCount.coerceAtLeast(0)}개"
+                },
+        ) {
+            when (palette) {
+                MemoryPalette.Coast -> {
+                    drawCircle(scheme.secondary.copy(alpha = .16f), radius = size.minDimension * .34f, center = Offset(size.width * .82f, size.height * .12f))
+                    repeat(3) { index ->
+                        val y = size.height * (.7f + index * .07f)
+                        drawLine(scheme.onSurface.copy(alpha = .08f), Offset(0f, y), Offset(size.width, y - size.height * .06f), 2.dp.toPx())
+                    }
+                }
+                MemoryPalette.Mountain -> {
+                    val ridge = Path().apply {
+                        moveTo(0f, size.height)
+                        lineTo(size.width * .2f, size.height * .38f)
+                        lineTo(size.width * .38f, size.height * .72f)
+                        lineTo(size.width * .63f, size.height * .24f)
+                        lineTo(size.width, size.height * .7f)
+                        lineTo(size.width, size.height)
+                        close()
+                    }
+                    drawPath(ridge, scheme.onSurface.copy(alpha = .09f))
+                }
+                MemoryPalette.City -> {
+                    repeat(9) { index ->
+                        val width = size.width / 13f
+                        val height = size.height * (.12f + (index % 4) * .055f)
+                        drawRect(
+                            scheme.onSurface.copy(alpha = .09f),
+                            topLeft = Offset(size.width * (.03f + index * .11f), size.height - height),
+                            size = Size(width, height),
+                        )
+                    }
+                }
+            }
+            drawMemoryRoute(
+                points = points,
+                route = routeColors.route,
+                endpoint = routeColors.highlight,
+                moment = routeColors.moment,
+                momentCount = momentCount,
+                selectedMomentIndex = selectedMomentIndex,
+                compact = compact,
+            )
+        }
+    }
+}
+
 @Composable
 fun RouteRibbon(
     points: List<RoutePoint>,
@@ -59,24 +142,51 @@ fun RouteRibbon(
             contentDescription = "개인 위치가 제거된 데모 드라이브 경로"
         },
     ) {
-        if (points.size < 2) return@Canvas
-        val path = Path().apply {
-            moveTo(points.first().horizontal * size.width, points.first().vertical * size.height)
-            points.drop(1).forEach { lineTo(it.horizontal * size.width, it.vertical * size.height) }
-        }
-        drawPath(path, routeColors.route.copy(alpha = .18f), style = Stroke(18.dp.toPx(), cap = StrokeCap.Round))
-        drawPath(path, routeColors.route, style = Stroke(6.dp.toPx(), cap = StrokeCap.Round))
-        drawCircle(routeColors.highlight, 9.dp.toPx(), Offset(points.first().horizontal * size.width, points.first().vertical * size.height))
-        drawCircle(routeColors.highlight, 9.dp.toPx(), Offset(points.last().horizontal * size.width, points.last().vertical * size.height))
-        if (showMoments) points.drop(1).dropLast(1).filterIndexed { index, _ -> index % 2 == 0 }.forEach {
-            drawCircle(routeColors.moment, 7.dp.toPx(), Offset(it.horizontal * size.width, it.vertical * size.height))
-        }
+        drawMemoryRoute(
+            points,
+            routeColors.route,
+            routeColors.highlight,
+            routeColors.moment,
+            momentCount = if (showMoments) points.size.coerceAtMost(4) else 0,
+            selectedMomentIndex = null,
+            compact = false,
+        )
+    }
+}
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMemoryRoute(
+    points: List<RoutePoint>,
+    route: Color,
+    endpoint: Color,
+    moment: Color,
+    momentCount: Int,
+    selectedMomentIndex: Int?,
+    compact: Boolean,
+) {
+    if (points.size < 2) return
+    fun RoutePoint.offset() = Offset(horizontal.coerceIn(0f, 1f) * size.width, vertical.coerceIn(0f, 1f) * size.height)
+    val path = Path().apply {
+        moveTo(points.first().offset().x, points.first().offset().y)
+        points.drop(1).forEach { point -> point.offset().let { lineTo(it.x, it.y) } }
+    }
+    val routeWidth = if (compact) 4.dp.toPx() else 6.dp.toPx()
+    drawPath(path, route.copy(alpha = .2f), style = Stroke(routeWidth * 3f, cap = StrokeCap.Round))
+    drawPath(path, route, style = Stroke(routeWidth, cap = StrokeCap.Round))
+    val endpointRadius = if (compact) 7.dp.toPx() else 9.dp.toPx()
+    drawCircle(endpoint, endpointRadius, points.first().offset())
+    drawCircle(endpoint, endpointRadius, points.last().offset())
+    val count = momentCount.coerceIn(0, (points.size - 2).coerceAtLeast(0))
+    repeat(count) { index ->
+        val pointIndex = ((index + 1) * (points.lastIndex.toFloat() / (count + 1))).toInt().coerceIn(1, points.lastIndex - 1)
+        val center = points[pointIndex].offset()
+        val selected = selectedMomentIndex == index
+        if (selected) drawCircle(moment.copy(alpha = .25f), 16.dp.toPx(), center)
+        drawCircle(if (selected) endpoint else moment, (if (selected) 10 else 7).dp.toPx(), center)
     }
 }
 
 @Composable
 fun DriveSummaryCard(drive: DriveSummary, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val colors = LocalRouteMemoryColors.current
     val largeText = LocalDensity.current.fontScale >= 1.2f
     Card(
         modifier = modifier
@@ -88,12 +198,14 @@ fun DriveSummaryCard(drive: DriveSummary, onClick: () -> Unit, modifier: Modifie
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
     ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Brush.linearGradient(listOf(colors.brand, MaterialTheme.colorScheme.surfaceVariant))),
-        ) {
-            RouteRibbon(drive.route, Modifier.fillMaxSize().padding(18.dp))
+        Box(Modifier.fillMaxSize()) {
+            RouteMemoryArtwork(
+                points = drive.route,
+                palette = memoryPaletteFor(drive.id),
+                momentCount = drive.highlights,
+                compact = true,
+                modifier = Modifier.fillMaxSize(),
+            )
             Column(
                 Modifier
                     .align(Alignment.BottomStart)
