@@ -24,6 +24,7 @@ import { classifyJobFailure, failureNotice, isReviewChangesRequiredError } from 
 import { DashboardWriter } from "./dashboard.mjs";
 import { reconcileReadyIssues } from "./ready-queue.mjs";
 import { buildVisualReport, visualReportKey } from "./visual-report.mjs";
+import { prHandoffSchedule, recordHandoffFailure } from "./handoff-schedule.mjs";
 import {
   activateFollowUp,
   bindApprovalFollowUp,
@@ -40,6 +41,7 @@ const workspaces = new WorkspaceManager(config);
 const aws = new AwsDeployer(config);
 const active = new Map();
 const observedUsage = new Map();
+const handoffActive = new Set();
 let deploymentActive = false;
 let mergeRecoveryActive = false;
 let lastAccountUsageSyncAt = 0;
@@ -61,6 +63,7 @@ const outbox = new DurableOutbox({
   handlers: {
     "discord-report": ({ content }, entry) => discord.reportOnce(entry.key, content),
     "discord-visual": ({ report }, entry) => discord.visualReportOnce(entry.key, report),
+    "discord-approval": ({ approval }) => discord.requestApproval(approval),
     "github-progress": async ({ issue, body, knownCommentId }) => {
       const commentId = await github.upsertProgressComment(issue, body, knownCommentId);
       await store.update((state) => {
@@ -260,7 +263,7 @@ async function runIssue(issue) {
         role: "센티넬(검토자)",
         meter: `reviewer-${round}`,
         sandboxMode: "read-only",
-        instructions: "You are 센티넬, an independent quality and security reviewer. Never edit files. Inspect the committed diff and test evidence, challenge assumptions, and fail closed. Your sandbox is intentionally read-only: do not reject solely because it prevents a fresh test rerun, but do reject missing or invalid evidence and real product defects. End with exactly VERDICT: APPROVE or VERDICT: CHANGES_REQUIRED.",
+        instructions: "You are 센티넬, an independent quality and security reviewer. Never edit files. Inspect the committed diff and test evidence, challenge assumptions, and fail closed. Your sandbox is intentionally read-only: do not reject solely because it prevents a fresh test rerun, but do reject missing or invalid evidence and real product defects. A tracked evidence document cannot contain the SHA of the commit that contains that same document because Git hashes the document content; accept an explicit tested implementation SHA plus your own observed clean-tree/final-HEAD check, and never demand this impossible self-referential SHA. End with exactly VERDICT: APPROVE or VERDICT: CHANGES_REQUIRED.",
         prompt: `# 역할: 센티넬(검토자)\n${issuePrompt}\n\n# 아키의 기획·설계 계약\n${plan}\n\n# 픽시의 디자인·개발 보고\n${implementationReport}\n\n실제 git diff와 테스트를 독립적으로 확인하세요. 기능 정확성, 기획 수용 기준, 디자인 완성도, 모든 UI 상태, 반응형·접근성, 회귀, 보안, 개인정보, 자동차 UX, 테스트 증거를 검토하고 구체적인 발견사항을 작성하세요. 마지막 줄은 반드시 VERDICT: APPROVE 또는 VERDICT: CHANGES_REQUIRED 중 하나여야 합니다.`,
       });
       await store.update((state) => { state.jobs[key].reviews ??= []; state.jobs[key].reviews.push({ round, report: finalReview }); });
@@ -286,33 +289,23 @@ async function runIssue(issue) {
       await workspaces.ensureCommit(workspace, issue);
     }
 
-    await updateJob(key, (state) => { state.jobs[key].status = "publishing"; });
     const commit = await workspaces.ensureCommit(workspace, issue);
-    await workspaces.push(workspace, branch);
-    const pr = await github.createPullRequest(branch, `[Agent] ${issue.title}`, `Closes #${issue.number}\n\nThree-role autonomous workflow completed: 아키 product planning and architecture, 픽시 product design and implementation, 센티넬 independent approval. Merge is gated by Discord approval.\n\nCommit: ${commit}\n\nReviewer verdict:\n${finalReview.slice(-1200)}`);
-    const id = approvalId(pr);
-    await updateJob(key, (state) => {
-      state.jobs[key] = { ...state.jobs[key], status: "awaiting_merge_approval", pr: pr.number, prUrl: pr.html_url, commit, updatedAt: new Date().toISOString() };
-      state.approvals[id] = bindApprovalFollowUp(
-        { id, type: "merge", issue: issue.number, pr: pr.number, commit, createdAt: Date.now(), expiresAt: Date.now() + config.approvalTtlMs, status: "pending" },
-        `${config.githubOwner}/${config.githubRepo}`,
-      );
-    });
-    await queueVisualOutcome(key, {
-      stage: "PR_READY", role: "team", revision: commit,
-      headline: "3역할 품질 게이트 통과 · PR 준비",
-      changes: ["아키 설계 계약 반영", "픽시 디자인·구현 완료", "센티넬 독립 검토 승인"],
-      tests: [
-        { state: "PASS", name: "센티넬 독립 검토", detail: "APPROVE" },
-        { state: "NOT_RUN", name: "PR 병합", detail: "사용자 승인 대기" },
-        { state: "NOT_RUN", name: "AWS 배포", detail: "별도 승인 전 미실행" },
-      ],
-      nextStep: "변경사항을 확인한 뒤 별도의 승인 카드에서 병합 여부를 결정해 주세요.",
-      links: [pr.html_url],
-    });
-    await github.removeReadyLabel(issue.number).catch(() => {});
-    await github.comment(issue.number, `Codex completed the implementation: ${pr.html_url}\n\nMerge is waiting for Discord approval.`);
-    await discord.requestApproval({ id, title: `PR #${pr.number} 병합`, description: `#${issue.number} ${issue.title}\n\nCodex 구현과 검증이 끝났습니다. PR을 검토한 뒤 버튼을 선택하세요.`, url: pr.html_url });
+    const schedule = prHandoffSchedule(new Date(), config.prHandoffNotBeforeHourKst);
+    if (!schedule.open) {
+      await updateJob(key, (state) => {
+        state.jobs[key] = {
+          ...state.jobs[key],
+          status: "handoff_deferred",
+          commit,
+          deferredReview: finalReview.slice(-1200),
+          handoffNotBefore: schedule.nextAt,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+      log("pr_handoff_deferred", { issue: issue.number, notBefore: schedule.nextAt });
+      return;
+    }
+    await publishReviewedChange({ key, issue, workspace, branch, commit, finalReview });
   } catch (error) {
     log("job_failed", { issue: issue.number, error: redact(error.message) });
     const usageLimited = isUsageLimitError(error);
@@ -341,9 +334,74 @@ async function runIssue(issue) {
   } finally { active.delete(key); }
 }
 
+async function publishReviewedChange({ key, issue, workspace, branch, commit, finalReview }) {
+    await updateJob(key, (state) => {
+      state.jobs[key] = {
+        ...state.jobs[key], status: "publishing", commit, deferredReview: finalReview.slice(-1200),
+        workspace, branch, updatedAt: new Date().toISOString(),
+      };
+    });
+    const verifiedCommit = await workspaces.ensureCommit(workspace, issue);
+    if (verifiedCommit !== commit) throw new Error("Deferred PR handoff commit changed after review");
+    await workspaces.push(workspace, branch);
+    const pr = await github.createPullRequest(branch, `[Agent] ${issue.title}`, `Closes #${issue.number}\n\nThree-role autonomous workflow completed: 아키 product planning and architecture, 픽시 product design and implementation, 센티넬 independent approval. Merge is gated by Discord approval.\n\nCommit: ${commit}\n\nReviewer verdict:\n${finalReview.slice(-1200)}`, commit);
+    const id = approvalId(pr);
+    await updateJob(key, (state) => {
+      state.jobs[key] = { ...state.jobs[key], status: "awaiting_merge_approval", pr: pr.number, prUrl: pr.html_url, commit, updatedAt: new Date().toISOString() };
+      state.approvals[id] = bindApprovalFollowUp(
+        { id, type: "merge", issue: issue.number, pr: pr.number, commit, createdAt: Date.now(), expiresAt: Date.now() + config.approvalTtlMs, status: "pending" },
+        `${config.githubOwner}/${config.githubRepo}`,
+      );
+      enqueueOutbox(state, {
+        key: `approval-card:${config.githubOwner}/${config.githubRepo}:pr-${pr.number}:${commit}`,
+        destination: "discord-approval",
+        payload: { approval: { id, title: `PR #${pr.number} 병합`, description: `#${issue.number} ${issue.title}\n\nCodex 구현과 검증이 끝났습니다. PR을 검토한 뒤 버튼을 선택하세요.`, url: pr.html_url } },
+      });
+    });
+    await queueVisualOutcome(key, {
+      stage: "PR_READY", role: "team", revision: commit,
+      headline: "3역할 품질 게이트 통과 · PR 준비",
+      changes: ["아키 설계 계약 반영", "픽시 디자인·구현 완료", "센티넬 독립 검토 승인"],
+      tests: [
+        { state: "PASS", name: "센티넬 독립 검토", detail: "APPROVE" },
+        { state: "NOT_RUN", name: "PR 병합", detail: "사용자 승인 대기" },
+        { state: "NOT_RUN", name: "AWS 배포", detail: "별도 승인 전 미실행" },
+      ],
+      nextStep: "변경사항을 확인한 뒤 별도의 승인 카드에서 병합 여부를 결정해 주세요.",
+      links: [pr.html_url],
+    });
+    void outbox.drain();
+    await github.removeReadyLabel(issue.number).catch((error) => log("ready_label_remove_failed", { issue: issue.number, error: redact(error.message) }));
+    await github.comment(issue.number, `Codex completed the implementation: ${pr.html_url}\n\nMerge is waiting for Discord approval.`)
+      .catch((error) => log("completion_comment_failed", { issue: issue.number, error: redact(error.message) }));
+}
+
+async function publishDeferredHandoffs() {
+  if (!prHandoffSchedule(new Date(), config.prHandoffNotBeforeHourKst).open) return;
+  const deferred = Object.entries(store.state.jobs).filter(([, job]) => job.status === "handoff_deferred");
+  for (const [key, job] of deferred) {
+    if (handoffActive.has(key)) continue;
+    handoffActive.add(key);
+    void publishReviewedChange({
+      key,
+      issue: { number: job.issue, title: job.title, node_id: job.issueNodeId },
+      workspace: job.workspace,
+      branch: job.branch,
+      commit: job.commit,
+      finalReview: job.deferredReview ?? "VERDICT: APPROVE",
+    }).catch(async (error) => {
+      log("deferred_pr_handoff_failed", { issue: job.issue, error: redact(error.message) });
+      await updateJob(key, (state) => {
+        recordHandoffFailure(state, key, redact(error.message));
+      });
+    }).finally(() => handoffActive.delete(key));
+  }
+}
+
 async function poll() {
   await recoverMergeApprovals();
   await expireApprovals();
+  await publishDeferredHandoffs();
   if (Date.now() - lastAccountUsageSyncAt >= config.accountUsageSyncMs) {
     try {
       const snapshot = await readCodexAccountState(config);

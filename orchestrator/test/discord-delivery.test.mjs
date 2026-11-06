@@ -62,3 +62,28 @@ test("POST accepted then crash before state save reconciles to zero visible dupl
   assert.equal(restartedStore.state.outbox[claimed.key].state, "delivered");
   await fs.rm(directory, { recursive: true, force: true });
 });
+
+test("approval delivery uses a stable marker and nonce across retries", async () => {
+  const messages = [];
+  let postCount = 0;
+  const fetchImpl = async (url, options) => {
+    if (options.method === "GET") return response(messages);
+    const body = JSON.parse(options.body);
+    postCount += 1;
+    const message = { id: "1", content: body.content, nonce: body.nonce };
+    messages.push(message);
+    return response(message);
+  };
+  const discord = new Discord({
+    githubToken: "", discordBotToken: "token", discordWebhookUrl: "https://discord.invalid/webhook",
+    discordChannelId: "channel-1", discordApprovers: new Set(),
+  }, { fetchImpl });
+  const approval = { id: "pr-22", title: "Merge", description: "Reviewed" };
+
+  await discord.requestApproval(approval);
+  await discord.requestApproval(approval);
+
+  assert.equal(postCount, 1);
+  assert.match(messages[0].content, /approval-event:[a-f0-9]{20}/);
+  assert.match(messages[0].nonce, /^ap[a-f0-9]{20}$/);
+});

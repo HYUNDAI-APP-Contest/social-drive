@@ -174,7 +174,36 @@ export class GitHub {
   }
   addReadyLabel(number) { return this.request("POST", `/issues/${number}/labels`, { labels: [this.config.readyLabel] }); }
   removeReadyLabel(number) { return this.request("DELETE", `/issues/${number}/labels/${encodeURIComponent(this.config.readyLabel)}`); }
-  createPullRequest(head, title, body) { return this.request("POST", "/pulls", { head, base: this.config.baseBranch, title, body, draft: false }); }
+  async findExactOpenPullRequest(head, expectedSha) {
+    if (!/^[a-f0-9]{40}$/.test(String(expectedSha ?? ""))) throw new Error("PR handoff is missing an exact commit SHA");
+    const ownerHead = encodeURIComponent(`${this.config.githubOwner}:${head}`);
+    for (let page = 1; page <= 10; page += 1) {
+      const pulls = await this.request("GET", `/pulls?state=open&base=${encodeURIComponent(this.config.baseBranch)}&head=${ownerHead}&per_page=100&page=${page}`);
+      const exact = pulls.find((pull) => (
+        pull.state === "open"
+        && pull.base?.ref === this.config.baseBranch
+        && pull.head?.ref === head
+        && pull.head?.sha === expectedSha
+        && pull.head?.repo?.full_name === `${this.config.githubOwner}/${this.config.githubRepo}`
+      ));
+      if (exact) return exact;
+      if (pulls.length < 100) return null;
+    }
+    throw new Error("Too many open pull requests to reconcile handoff safely");
+  }
+
+  async createPullRequest(head, title, body, expectedSha) {
+    const existing = await this.findExactOpenPullRequest(head, expectedSha);
+    if (existing) return existing;
+    try {
+      return await this.request("POST", "/pulls", { head, base: this.config.baseBranch, title, body, draft: false });
+    } catch (error) {
+      if (error?.status !== 422) throw error;
+      const reconciled = await this.findExactOpenPullRequest(head, expectedSha);
+      if (reconciled) return reconciled;
+      throw error;
+    }
+  }
   mergePullRequest(number, sha) {
     if (!/^[a-f0-9]{40}$/.test(String(sha ?? ""))) throw new Error("Merge approval is missing an exact commit SHA");
     return this.request("PUT", `/pulls/${number}/merge`, { merge_method: "squash", sha });

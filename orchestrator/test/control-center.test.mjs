@@ -23,6 +23,7 @@ const expected = {
   reviewing: ["Review", "Review", "On track", "센티넬"],
   reworking: ["Review", "Build", "At risk", "픽시"],
   publishing: ["Review", "PR", "On track", "Orchestrator"],
+  handoff_deferred: ["Review", "PR", "On track", "Orchestrator"],
   awaiting_merge_approval: ["Approval needed", "Merge", "At risk", "Human"],
   awaiting_deploy_approval: ["Approval needed", "Deploy", "At risk", "Human"],
   merge_approval_expired: ["Blocked", "Merge", "Blocked", "Human"],

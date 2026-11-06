@@ -2,6 +2,7 @@ const terminalStatuses = new Set([
   "awaiting_merge_approval", "awaiting_deploy_approval", "merged", "deployed",
   "rejected", "deploy_rejected", "failed", "review_blocked", "merge_failed", "deploy_failed",
   "merge_approval_expired", "deploy_approval_expired",
+  "handoff_deferred",
 ]);
 
 export async function reconcileReadyIssues({

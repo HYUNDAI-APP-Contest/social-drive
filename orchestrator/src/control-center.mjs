@@ -31,6 +31,7 @@ export const STATUS_CONTRACT = Object.freeze({
   reviewing: contract("Review", "Review", "On track", "센티넬", 70, "review", "변경과 테스트 증거를 독립 검토합니다."),
   reworking: contract("Review", "Build", "At risk", "픽시", 65, "review", "검토 의견을 반영한 뒤 다시 검토합니다."),
   publishing: contract("Review", "PR", "On track", "Orchestrator", 85, "review", "승인 가능한 PR을 준비합니다."),
+  handoff_deferred: contract("Review", "PR", "On track", "Orchestrator", 85, "review", "한국시간 오전 8시 이후 PR과 승인 카드를 발행합니다."),
   awaiting_merge_approval: contract("Approval needed", "Merge", "At risk", "Human", 90, "approval", "Discord에서 PR 병합 여부를 결정해 주세요."),
   awaiting_deploy_approval: contract("Approval needed", "Deploy", "At risk", "Human", 95, "approval", "Discord에서 dev 배포 여부를 결정해 주세요."),
   merge_approval_expired: contract("Blocked", "Merge", "Blocked", "Human", 90, "blocked", "병합 승인이 만료되었습니다. 새 승인 요청이 필요합니다."),

@@ -15,7 +15,8 @@ export class Store {
     this.state.usage ??= {};
     this.state.outbox ??= {};
     for (const job of Object.values(this.state.jobs)) {
-      if (["preparing", "running", "publishing"].includes(job.status)) job.status = "retry";
+      if (job.status === "publishing" && job.commit && job.workspace && job.branch) job.status = "handoff_deferred";
+      else if (["preparing", "running", "publishing"].includes(job.status)) job.status = "retry";
     }
     for (const entry of Object.values(this.state.outbox)) {
       if (entry.state === "sending") {

@@ -97,10 +97,17 @@ export class Discord extends EventEmitter {
   }
 
   async requestApproval({ id, title, description, url = null }) {
+    const digest = createHash("sha256").update(String(id)).digest("hex").slice(0, 20);
+    const marker = `approval-event:${digest}`;
+    const recent = await this.api("GET", `/channels/${this.config.discordChannelId}/messages?limit=100`);
+    const existing = recent.find((message) => String(message.content ?? "").includes(marker));
+    if (existing) return existing;
     const fields = [{ name: "승인 ID", value: `\`${id}\``, inline: true }];
     if (url) fields.push({ name: "검토", value: `[변경사항 열기](${url})`, inline: true });
-    await this.api("POST", `/channels/${this.config.discordChannelId}/messages`, {
-      content: "🔐 **사용자 승인이 필요합니다**",
+    return this.api("POST", `/channels/${this.config.discordChannelId}/messages`, {
+      content: `🔐 **사용자 승인이 필요합니다**\n-# ${marker}`,
+      nonce: `ap${digest}`,
+      enforce_nonce: true,
       embeds: [{ title, description, color: 0x002c5f, fields, footer: { text: "일반 개발 작업은 자동 진행되며 중요한 변경만 묻습니다." } }],
       components: [{ type: 1, components: [
         { type: 2, style: 3, label: "승인", emoji: { name: "✅" }, custom_id: `approval:approve:${id}` },
