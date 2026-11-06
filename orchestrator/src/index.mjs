@@ -24,7 +24,7 @@ import { classifyJobFailure, failureNotice, isReviewChangesRequiredError } from 
 import { DashboardWriter } from "./dashboard.mjs";
 import { reconcileReadyIssues } from "./ready-queue.mjs";
 import { buildVisualReport, visualReportKey } from "./visual-report.mjs";
-import { prHandoffSchedule } from "./handoff-schedule.mjs";
+import { prHandoffSchedule, recordHandoffFailure } from "./handoff-schedule.mjs";
 import {
   activateFollowUp,
   bindApprovalFollowUp,
@@ -63,6 +63,7 @@ const outbox = new DurableOutbox({
   handlers: {
     "discord-report": ({ content }, entry) => discord.reportOnce(entry.key, content),
     "discord-visual": ({ report }, entry) => discord.visualReportOnce(entry.key, report),
+    "discord-approval": ({ approval }) => discord.requestApproval(approval),
     "github-progress": async ({ issue, body, knownCommentId }) => {
       const commentId = await github.upsertProgressComment(issue, body, knownCommentId);
       await store.update((state) => {
@@ -334,11 +335,16 @@ async function runIssue(issue) {
 }
 
 async function publishReviewedChange({ key, issue, workspace, branch, commit, finalReview }) {
-    await updateJob(key, (state) => { state.jobs[key].status = "publishing"; state.jobs[key].updatedAt = new Date().toISOString(); });
+    await updateJob(key, (state) => {
+      state.jobs[key] = {
+        ...state.jobs[key], status: "publishing", commit, deferredReview: finalReview.slice(-1200),
+        workspace, branch, updatedAt: new Date().toISOString(),
+      };
+    });
     const verifiedCommit = await workspaces.ensureCommit(workspace, issue);
     if (verifiedCommit !== commit) throw new Error("Deferred PR handoff commit changed after review");
     await workspaces.push(workspace, branch);
-    const pr = await github.createPullRequest(branch, `[Agent] ${issue.title}`, `Closes #${issue.number}\n\nThree-role autonomous workflow completed: 아키 product planning and architecture, 픽시 product design and implementation, 센티넬 independent approval. Merge is gated by Discord approval.\n\nCommit: ${commit}\n\nReviewer verdict:\n${finalReview.slice(-1200)}`);
+    const pr = await github.createPullRequest(branch, `[Agent] ${issue.title}`, `Closes #${issue.number}\n\nThree-role autonomous workflow completed: 아키 product planning and architecture, 픽시 product design and implementation, 센티넬 independent approval. Merge is gated by Discord approval.\n\nCommit: ${commit}\n\nReviewer verdict:\n${finalReview.slice(-1200)}`, commit);
     const id = approvalId(pr);
     await updateJob(key, (state) => {
       state.jobs[key] = { ...state.jobs[key], status: "awaiting_merge_approval", pr: pr.number, prUrl: pr.html_url, commit, updatedAt: new Date().toISOString() };
@@ -346,6 +352,11 @@ async function publishReviewedChange({ key, issue, workspace, branch, commit, fi
         { id, type: "merge", issue: issue.number, pr: pr.number, commit, createdAt: Date.now(), expiresAt: Date.now() + config.approvalTtlMs, status: "pending" },
         `${config.githubOwner}/${config.githubRepo}`,
       );
+      enqueueOutbox(state, {
+        key: `approval-card:${config.githubOwner}/${config.githubRepo}:pr-${pr.number}:${commit}`,
+        destination: "discord-approval",
+        payload: { approval: { id, title: `PR #${pr.number} 병합`, description: `#${issue.number} ${issue.title}\n\nCodex 구현과 검증이 끝났습니다. PR을 검토한 뒤 버튼을 선택하세요.`, url: pr.html_url } },
+      });
     });
     await queueVisualOutcome(key, {
       stage: "PR_READY", role: "team", revision: commit,
@@ -359,9 +370,10 @@ async function publishReviewedChange({ key, issue, workspace, branch, commit, fi
       nextStep: "변경사항을 확인한 뒤 별도의 승인 카드에서 병합 여부를 결정해 주세요.",
       links: [pr.html_url],
     });
-    await github.removeReadyLabel(issue.number).catch(() => {});
-    await github.comment(issue.number, `Codex completed the implementation: ${pr.html_url}\n\nMerge is waiting for Discord approval.`);
-    await discord.requestApproval({ id, title: `PR #${pr.number} 병합`, description: `#${issue.number} ${issue.title}\n\nCodex 구현과 검증이 끝났습니다. PR을 검토한 뒤 버튼을 선택하세요.`, url: pr.html_url });
+    void outbox.drain();
+    await github.removeReadyLabel(issue.number).catch((error) => log("ready_label_remove_failed", { issue: issue.number, error: redact(error.message) }));
+    await github.comment(issue.number, `Codex completed the implementation: ${pr.html_url}\n\nMerge is waiting for Discord approval.`)
+      .catch((error) => log("completion_comment_failed", { issue: issue.number, error: redact(error.message) }));
 }
 
 async function publishDeferredHandoffs() {
@@ -380,9 +392,7 @@ async function publishDeferredHandoffs() {
     }).catch(async (error) => {
       log("deferred_pr_handoff_failed", { issue: job.issue, error: redact(error.message) });
       await updateJob(key, (state) => {
-        state.jobs[key].status = "handoff_deferred";
-        state.jobs[key].error = redact(error.message);
-        state.jobs[key].updatedAt = new Date().toISOString();
+        recordHandoffFailure(state, key, redact(error.message));
       });
     }).finally(() => handoffActive.delete(key));
   }

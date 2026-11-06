@@ -1,6 +1,7 @@
 const DESTINATIONS = new Set([
   "discord-report",
   "discord-visual",
+  "discord-approval",
   "github-progress",
   "github-labels",
   "github-project",

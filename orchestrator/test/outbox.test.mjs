@@ -68,3 +68,25 @@ test("recovers in-flight deliveries after restart without accepting arbitrary de
   assert.throws(() => enqueueOutbox(restarted.state, { key: "bad", destination: "https://attacker.invalid", payload: {} }), /Unsupported/);
   await fs.rm(ctx.directory, { recursive: true, force: true });
 });
+
+test("recovers a publishing handoff as deferred without rerunning implementation", async () => {
+  const ctx = await harness();
+  await ctx.store.update((state) => {
+    state.jobs["15"] = {
+      status: "publishing", commit: "a".repeat(40), workspace: "/safe/workspace", branch: "agent/issue-15",
+    };
+  });
+  const restarted = new Store(ctx.file);
+  await restarted.load();
+  assert.equal(restarted.state.jobs["15"].status, "handoff_deferred");
+  await fs.rm(ctx.directory, { recursive: true, force: true });
+});
+
+test("accepts only the fixed Discord approval outbox destination", async () => {
+  const ctx = await harness();
+  const entry = enqueueOutbox(ctx.store.state, {
+    key: "approval-card:pr-22", destination: "discord-approval", payload: { approval: { id: "pr-22" } },
+  }, 1000);
+  assert.equal(entry.destination, "discord-approval");
+  await fs.rm(ctx.directory, { recursive: true, force: true });
+});

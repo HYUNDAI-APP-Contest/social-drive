@@ -62,3 +62,8 @@ test("treats a missing CloudFormation stack as new", async () => {
 
   assert.equal(await subject.stackExists(), false);
 });
+
+test("fails closed when CloudFormation omits stack status", async () => {
+  const subject = deployer(async () => ({ stdout: JSON.stringify({ Stacks: [{}] }) }));
+  await assert.rejects(() => subject.stackExists(), /no stack status/);
+});

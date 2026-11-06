@@ -31,6 +31,35 @@ test("pins an approved merge request to the exact reviewed commit", async () => 
   assert.throws(() => github.mergePullRequest(19, "not-a-sha"), /exact commit SHA/);
 });
 
+test("reuses the exact official open PR after a handoff restart", async () => {
+  const sha = "a".repeat(40);
+  const pull = { number: 22, state: "open", base: { ref: "main" }, head: { ref: "agent/issue-15", sha, repo: { full_name: "demo-org/demo-repo" } } };
+  const calls = [];
+  const github = new GitHub(config, { fetchImpl: async (url, options) => {
+    calls.push({ url, options });
+    return response([pull]);
+  } });
+
+  assert.equal((await github.createPullRequest("agent/issue-15", "title", "body", sha)).number, 22);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].options.method, "GET");
+});
+
+test("reconciles a PR accepted remotely before a 422 response", async () => {
+  const sha = "b".repeat(40);
+  const pull = { number: 23, state: "open", base: { ref: "main" }, head: { ref: "agent/issue-16", sha, repo: { full_name: "demo-org/demo-repo" } } };
+  let reads = 0;
+  const calls = [];
+  const github = new GitHub(config, { fetchImpl: async (url, options) => {
+    calls.push({ url, options });
+    if (options.method === "GET") return response(reads++ === 0 ? [] : [pull]);
+    return response({ message: "already exists" }, 422);
+  } });
+
+  assert.equal((await github.createPullRequest("agent/issue-16", "title", "body", sha)).number, 23);
+  assert.deepEqual(calls.map((call) => call.options.method), ["GET", "POST", "GET"]);
+});
+
 test("upserts the one marked progress comment instead of appending", async () => {
   const calls = [];
   const github = new GitHub(config, { fetchImpl: async (url, options) => {
