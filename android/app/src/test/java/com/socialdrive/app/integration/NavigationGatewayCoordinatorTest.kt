@@ -214,6 +214,37 @@ class NavigationGatewayCoordinatorTest {
     }
 
     @Test
+    fun `listener registration exception fails closed without dispatching request`() {
+        val harness = Harness { port -> port.addFailure = true }
+        harness.coordinator.initialize()
+        val port = harness.ports.single()
+
+        assertIs<NavigationRequestResult.Rejected>(
+            harness.coordinator.requestRoute(request("listener", "등록 실패")),
+        )
+
+        assertIs<NavigationState.Failed>(harness.observer.states.last())
+        assertEquals(0, port.events.count { it == "requestRoute" })
+        assertTrue(NavigationRuntimeStage.REQUEST_DISPATCHED !in harness.evidence.stages())
+    }
+
+    @Test
+    fun `route started without terminal callback times out and removes listener`() {
+        val harness = Harness()
+        harness.coordinator.initialize()
+        val port = harness.ports.single()
+        harness.coordinator.requestRoute(request("started", "시작만 수신"))
+
+        requireNotNull(port.listener).onRouteStarted()
+        harness.scheduler.advanceBy(15_000)
+
+        assertIs<NavigationState.Failed>(harness.observer.states.last())
+        assertTrue(NavigationRuntimeStage.TIMED_OUT in harness.evidence.stages())
+        assertEquals(1, port.events.count { it == "removeListener" })
+        assertNull(port.listener)
+    }
+
+    @Test
     fun `reinitialize creates a new helper and active release removes listener before release`() {
         val harness = Harness()
         harness.coordinator.initialize()
@@ -279,12 +310,14 @@ class NavigationGatewayCoordinatorTest {
             callback.onConnected()
         }
         var requestAction: (NavigationVendorListener) -> Unit = {}
+        var addFailure = false
         var removeFailure = false
         var releaseFailure = false
 
         override fun initialize(callback: NavigationInitializationCallback) = initializeAction(callback)
         override fun addListener(listener: NavigationVendorListener) {
             events += "addListener"
+            if (addFailure) throw IllegalStateException("add failed")
             this.listener = listener
         }
         override fun requestRoute(request: NavigationRequest) {

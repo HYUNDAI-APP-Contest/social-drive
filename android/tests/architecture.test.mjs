@@ -426,6 +426,7 @@ test("navigation validates named coordinates and serializes requests without log
   const evidence = read("app/src/main/java/com/socialdrive/app/integration/NavigationRuntimeEvidence.kt");
   const pleos = read("app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
   const naviSmoke = read("app/src/androidTest/java/com/socialdrive/app/PleosNaviRuntimeSmokeTest.kt");
+  const pleosGatewayTest = read("app/src/testPleos/java/com/socialdrive/app/integration/PleosNavigationGatewayTest.kt");
   const detail = read("app/src/main/java/com/socialdrive/app/ui/screens/DetailScreen.kt");
   for (const marker of ["val name: String", "val latitude: Double", "val longitude: Double", "isFinite()", "-90.0..90.0", "-180.0..180.0", "MAX_WAYPOINTS"]) {
     assert.ok(contract.includes(marker), marker);
@@ -449,7 +450,7 @@ test("navigation validates named coordinates and serializes requests without log
   assert.match(coordinator, /if \(update !is ControllerUpdate\.Applied\) return[\s\S]*detachLocked\(session\)/);
   assert.match(coordinator, /cancelTimeout = session\.request\?\.timeoutTask[\s\S]*timeoutTask = null/);
   assert.match(pleos, /NavigationGatewayCoordinator\(/);
-  assert.match(pleos, /PleosNaviPort\(NaviHelper\(applicationContext\)\)/);
+  assert.match(pleos, /PleosNaviPort\(NaviHelper\(context\.applicationContext\)\)/);
   assert.match(pleos, /checkSelfPermission\(NAVI_ROUTE_SEARCH_PERMISSION\)/);
   assert.match(pleos, /NavigationRequestValidator\.validate\(request\)[\s\S]*coordinator\.requestRoute\(request\)/);
   assert.match(pleos, /NavigationRuntimeEvidenceSource/);
@@ -467,6 +468,10 @@ test("navigation validates named coordinates and serializes requests without log
   assert.match(naviSmoke, /NavigationRuntimeStage\.LISTENER_REMOVED/);
   assert.match(naviSmoke, /NavigationRuntimeStage\.RELEASED/);
   assert.doesNotMatch(naviSmoke, /Log\.[a-z]+\([^,]+,\s*(?:PRIVACY_REVIEWED_PUBLIC_FIXTURE|.*latitude|.*longitude|.*requestId)/i);
+  assert.match(pleosGatewayTest, /invalid production request never registers listener or calls vendor request/);
+  assert.match(pleosGatewayTest, /assertEquals\(0, port\.addListenerCalls\)/);
+  assert.match(pleosGatewayTest, /assertEquals\(0, port\.requestCalls\)/);
+  assert.match(pleosGatewayTest, /every unknown vendor error maps to the generic privacy safe message/);
   assert.match(detail, /drive\.navigationRequest == null/);
   assert.match(detail, /실제 좌표가 포함되지 않아/);
 });
@@ -500,7 +505,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 87/);
+  assert.match(coreRunner, /expectedTests = 90/);
   assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 

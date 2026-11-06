@@ -41,4 +41,13 @@ class IntegrationContractsTest {
             ),
         )
     }
+
+    @Test
+    fun `rejects a place name longer than the privacy boundary`() {
+        assertIs<NavigationValidation.Invalid>(
+            NavigationRequestValidator.validate(
+                NavigationRequest("request-1", destination.copy(name = "가".repeat(81))),
+            ),
+        )
+    }
 }
