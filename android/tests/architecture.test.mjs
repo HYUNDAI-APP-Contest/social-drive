@@ -411,6 +411,8 @@ test("actual adapters fail closed and never fall back to demo state", () => {
   assert.match(gearSmoke, /closeWithinDeadline\(host\)/);
   assert.match(gearSmoke, /isDaemon = true/);
   assert.match(gearSmoke, /completed\.await\(CLOSE_TIMEOUT_SECONDS, TimeUnit\.SECONDS\)/);
+  assert.match(gearSmoke, /AtomicReference<Throwable\?>/);
+  assert.match(gearSmoke, /CLOSE_TIMEOUT_SECONDS = 30L/);
   for (const stage of ["start", "host_launched", "source_acquired", "park_observed", "asserted", "close_start", "close_done"]) {
     assert.ok(gearSmoke.includes(`stage=${stage}`), stage);
   }

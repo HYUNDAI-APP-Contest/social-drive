@@ -18,7 +18,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
 
 /**
@@ -77,12 +77,12 @@ class PleosGearRuntimeSmokeTest {
 
     private fun closeWithinDeadline(host: PleosComposeHost) {
         val completed = CountDownLatch(1)
-        val failed = AtomicBoolean(false)
+        val failure = AtomicReference<Throwable?>(null)
         val cleanup = thread(name = "pleos-gear-smoke-cleanup", isDaemon = true) {
             try {
                 host.close()
-            } catch (_: Throwable) {
-                failed.set(true)
+            } catch (cause: Throwable) {
+                failure.set(cause)
             } finally {
                 completed.countDown()
             }
@@ -91,14 +91,17 @@ class PleosGearRuntimeSmokeTest {
             cleanup.interrupt()
             throw AssertionError("Pleos Gear smoke cleanup exceeded its deadline")
         }
-        if (failed.get()) throw AssertionError("Pleos Gear smoke cleanup failed")
+        failure.get()?.let { cause ->
+            throw AssertionError("Pleos Gear smoke cleanup failed").apply { initCause(cause) }
+        }
     }
 
     private companion object {
         const val REQUIRE_PLEOS_GEAR_ARGUMENT = "requirePleosGear"
         const val CAR_DRIVE_PERMISSION = "pleos.car.permission.CAR_DRIVE"
         const val PARK_CALLBACK_TIMEOUT_MILLIS = 10_000L
-        const val CLOSE_TIMEOUT_SECONDS = 10L
+        // Host cleanup includes lifecycle destruction plus pre/post PLEOS process and log audits.
+        const val CLOSE_TIMEOUT_SECONDS = 30L
         const val LOG_TAG = "PleosGearSmoke"
         const val STAGE_START = "stage=start"
         const val STAGE_HOST_LAUNCHED = "stage=host_launched"
