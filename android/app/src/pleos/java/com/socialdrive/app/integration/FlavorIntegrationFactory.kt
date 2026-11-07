@@ -339,19 +339,17 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             }
             stopSpeechRecognition()
         }
-        if (ttsGranted && mutableTts.value.capability == CapabilityState.PermissionDenied) {
-            if (ttsInitialized) mutableTts.value = available("실차 · 온디바이스")
-            else {
-                mutableTts.value = checking
-                initializeTts()
-            }
+        if (ttsGranted && ttsInitialized && mutableTts.value.capability == CapabilityState.PermissionDenied) {
+            mutableTts.value = available("실차 · 온디바이스")
+        } else if (shouldRetrySpeechInitialization(ttsGranted, ttsInitialized, mutableTts.value.capability)) {
+            mutableTts.value = checking
+            initializeTts()
         }
-        if (sttGranted && mutableStt.value.capability == CapabilityState.PermissionDenied) {
-            if (sttInitialized) mutableStt.value = available("실차 · 온디바이스")
-            else {
-                mutableStt.value = checking
-                initializeStt()
-            }
+        if (sttGranted && sttInitialized && mutableStt.value.capability == CapabilityState.PermissionDenied) {
+            mutableStt.value = available("실차 · 온디바이스")
+        } else if (shouldRetrySpeechInitialization(sttGranted, sttInitialized, mutableStt.value.capability)) {
+            mutableStt.value = checking
+            initializeStt()
         }
     }
 
@@ -627,6 +625,13 @@ internal fun speechResultAccepted(
     callbackInstalled: Boolean,
     permissionGranted: Boolean,
 ): Boolean = sessionMatches && callbackInstalled && permissionGranted
+
+internal fun shouldRetrySpeechInitialization(
+    permissionGranted: Boolean,
+    initialized: Boolean,
+    capability: CapabilityState,
+): Boolean = permissionGranted && !initialized &&
+    capability in setOf(CapabilityState.PermissionDenied, CapabilityState.Unavailable)
 
 private const val FUSED_LOCATION_PERMISSION = "pleos.car.permission.FUSED_LOCATION"
 private const val TTS_PERMISSION = "pleos.car.permission.TTS_SERVICE"
