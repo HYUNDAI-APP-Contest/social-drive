@@ -17,6 +17,22 @@ import com.socialdrive.app.domain.NormalizedRoutePoint
 
 class CloudDriveClientTest {
     @Test
+    fun `메모리에서 변경된 업로드 payload는 세션 요청 전에 거부한다`() = runBlocking {
+        val harness = Harness()
+        val commands = testDraft().assetUploads()
+        commands.first().content[0] = (commands.first().content[0].toInt() xor 0x01).toByte()
+
+        val failure = assertFailsWith<RemoteDriveException> {
+            CloudRemoteDriveApi(harness.client, "2026-11-01").uploadAssets("drive-remote-0001", commands)
+        }
+
+        assertEquals(RemoteFailureCode.REJECTED, failure.code)
+        assertFalse(failure.retryable)
+        assertTrue(harness.api.requests.isEmpty())
+        assertTrue(harness.objects.requests.isEmpty())
+    }
+
+    @Test
     fun `최종 bearer 공급자는 명시적 검증을 통과하지 못한 토큰을 전송하지 않는다`() = runBlocking {
         val api = FakeTransport()
         val client = CloudDriveClient(

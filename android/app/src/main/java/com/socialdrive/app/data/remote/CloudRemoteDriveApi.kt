@@ -38,6 +38,9 @@ class CloudRemoteDriveApi(
             throw CloudDriveException(CloudFailureKind.VALIDATION, "SYNTHETIC_ROUTE_NOT_PUBLISHABLE", false)
         }
         commands.forEach { command ->
+            if (!command.hasMatchingPayloadChecksum()) {
+                throw CloudDriveException(CloudFailureKind.CONTRACT, "UPLOAD_PAYLOAD_CHANGED", false)
+            }
             val expectedKey = "${command.clientRequestId}:${command.assetId}:${command.checksumSha256Hex}"
             if (command.idempotencyKey != expectedKey) {
                 throw CloudDriveException(CloudFailureKind.CONTRACT, "INVALID_UPLOAD_IDEMPOTENCY", false)

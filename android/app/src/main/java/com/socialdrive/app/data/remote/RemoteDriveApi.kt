@@ -41,6 +41,13 @@ data class AssetUploadCommand(
 data class RemoteDraftRef(val id: String, val version: Int)
 data class RemotePublishAck(val version: Int)
 
+internal fun AssetUploadCommand.hasMatchingPayloadChecksum(): Boolean {
+    val digest = MessageDigest.getInstance("SHA-256").digest(content)
+    val actualHex = digest.joinToString("") { "%02x".format(it) }
+    val actualBase64 = Base64.getEncoder().encodeToString(digest)
+    return checksumSha256Hex == actualHex && checksumSha256Base64 == actualBase64
+}
+
 fun DraftSnapshot.assetUploads(): List<AssetUploadCommand> {
     // Contest-safe placeholders contain no original local reference, coordinate, or raw vehicle field.
     val cover = PublicationCover.bytes()
