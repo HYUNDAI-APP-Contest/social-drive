@@ -1,9 +1,15 @@
 package com.socialdrive.app.data.remote
 
 object CloudAuthInputPolicy {
-    private const val MAX_USERNAME_CHARS = 256
-    private const val MAX_PASSWORD_CHARS = 256
-    private const val MAX_CHALLENGE_CHARS = 2_048
+    const val MAX_USERNAME_CHARS = 256
+    const val MAX_PASSWORD_CHARS = 256
+    const val MAX_CHALLENGE_CHARS = 2_048
+
+    fun limitUsername(value: String): String = value.take(MAX_USERNAME_CHARS)
+
+    fun limitPassword(value: String): String = value.take(MAX_PASSWORD_CHARS)
+
+    fun limitChallenge(value: String): String = value.take(MAX_CHALLENGE_CHARS)
 
     fun acceptsCredentials(username: String, password: CharArray): Boolean =
         username.isNotBlank() && username.length <= MAX_USERNAME_CHARS &&

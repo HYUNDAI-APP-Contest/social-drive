@@ -49,6 +49,7 @@ import com.socialdrive.app.domain.DeleteRequestState
 import com.socialdrive.app.domain.IntegrationSource
 import com.socialdrive.app.data.remote.CloudAuthPhase
 import com.socialdrive.app.data.remote.CloudAuthState
+import com.socialdrive.app.data.remote.CloudAuthInputPolicy
 import com.socialdrive.app.ui.components.IntegrationStatusChip
 import com.socialdrive.app.ui.components.RouteSourceBadge
 import com.socialdrive.app.ui.components.SafetyRestrictionBanner
@@ -184,7 +185,7 @@ private fun CloudAuthSection(
                 CloudAuthPhase.CHALLENGE -> {
                     OutlinedTextField(
                         value = secret,
-                        onValueChange = { secret = it },
+                        onValueChange = { secret = CloudAuthInputPolicy.limitChallenge(it) },
                         label = { Text(authState.challengeLabel ?: "인증 응답") },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
@@ -206,7 +207,7 @@ private fun CloudAuthSection(
                 else -> {
                     OutlinedTextField(
                         value = username,
-                        onValueChange = { username = it },
+                        onValueChange = { username = CloudAuthInputPolicy.limitUsername(it) },
                         label = { Text("Cognito 아이디") },
                         enabled = editable,
                         singleLine = true,
@@ -214,7 +215,7 @@ private fun CloudAuthSection(
                     )
                     OutlinedTextField(
                         value = secret,
-                        onValueChange = { secret = it },
+                        onValueChange = { secret = CloudAuthInputPolicy.limitPassword(it) },
                         label = { Text("비밀번호") },
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),

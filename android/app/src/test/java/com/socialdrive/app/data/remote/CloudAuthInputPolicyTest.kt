@@ -19,4 +19,11 @@ class CloudAuthInputPolicyTest {
         assertFalse(CloudAuthInputPolicy.acceptsChallenge(charArrayOf()))
         assertFalse(CloudAuthInputPolicy.acceptsChallenge(CharArray(2_049) { 'a' }))
     }
+
+    @Test
+    fun `UI 입력 제한도 인증 정책과 같은 상한을 사용한다`() {
+        assertTrue(CloudAuthInputPolicy.limitUsername("u".repeat(300)).length == 256)
+        assertTrue(CloudAuthInputPolicy.limitPassword("p".repeat(300)).length == 256)
+        assertTrue(CloudAuthInputPolicy.limitChallenge("c".repeat(3_000)).length == 2_048)
+    }
 }
