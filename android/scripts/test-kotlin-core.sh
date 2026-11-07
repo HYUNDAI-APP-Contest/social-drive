@@ -37,6 +37,7 @@ classpath="$kotlin_home/lib/kotlin-test.jar:$kotlin_home/lib/kotlin-test-junit.j
   "$android_root/app/src/demo/java/com/socialdrive/app/data/remote/FakeRemoteDeleteApi.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/integration/GearMotionController.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/integration/NavigationRequestController.kt" \
+  "$android_root/app/src/main/java/com/socialdrive/app/integration/NavigationRuntimeEvidence.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/integration/NavigationGatewayCoordinator.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/domain/IntegrationContractsTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/domain/RoutePrivacyTest.kt" \

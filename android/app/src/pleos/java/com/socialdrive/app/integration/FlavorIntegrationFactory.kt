@@ -163,19 +163,35 @@ private class CoroutineGearScheduleScope : GearScheduleScope {
     }
 }
 
-private class PleosNavigationGateway(context: Context) : NavigationGateway {
-    private val applicationContext = context.applicationContext
+internal class PleosNavigationGateway private constructor(
+    private val hasRoutePermission: () -> Boolean,
+    vendorSessionFactory: () -> NavigationVendorSession,
+) : NavigationGateway, NavigationRuntimeEvidenceSource {
+    constructor(context: Context) : this(
+        hasRoutePermission = {
+            context.applicationContext.checkSelfPermission(NAVI_ROUTE_SEARCH_PERMISSION) ==
+                PackageManager.PERMISSION_GRANTED
+        },
+        vendorSessionFactory = {
+            NavigationVendorSession(
+                port = PleosNaviPort(NaviHelper(context.applicationContext)),
+                scheduleScope = CoroutineNavigationScheduleScope(),
+            )
+        },
+    )
+
+    internal constructor(
+        permissionGranted: Boolean,
+        vendorSessionFactory: () -> NavigationVendorSession,
+    ) : this({ permissionGranted }, vendorSessionFactory)
+
+    private val runtimeEvidence = BoundedNavigationRuntimeEvidence()
     private val actualUnavailable = CapabilityStatus(CapabilityState.Unavailable, IntegrationSource.Actual, "실차 · 연결 안 됨")
     private val actualAvailable = CapabilityStatus(CapabilityState.Available, IntegrationSource.Actual, "실차")
     private val mutableCapability = MutableStateFlow(actualUnavailable)
     private val mutableState = MutableStateFlow<NavigationState>(NavigationState.Idle(actualUnavailable))
     private val coordinator = NavigationGatewayCoordinator(
-        vendorSessionFactory = {
-            NavigationVendorSession(
-                port = PleosNaviPort(NaviHelper(applicationContext)),
-                scheduleScope = CoroutineNavigationScheduleScope(),
-            )
-        },
+        vendorSessionFactory = vendorSessionFactory,
         observer = object : NavigationCoordinatorObserver {
             override fun onCapabilityChanged(available: Boolean) {
                 mutableCapability.value = if (available) actualAvailable else actualUnavailable
@@ -187,12 +203,13 @@ private class PleosNavigationGateway(context: Context) : NavigationGateway {
         },
         disconnectedState = NavigationState.Idle(actualUnavailable),
         connectedState = NavigationState.Idle(actualAvailable),
+        evidence = runtimeEvidence,
     )
 
     override val state: StateFlow<NavigationState> = mutableState.asStateFlow()
     override val capability: StateFlow<CapabilityStatus> = mutableCapability.asStateFlow()
 
-    override suspend fun initialize() = coordinator.initialize()
+    override suspend fun initialize() = coordinator.initialize(permissionGranted = hasRoutePermission())
 
     override suspend fun requestRoute(request: NavigationRequest): NavigationRequestResult {
         val validation = NavigationRequestValidator.validate(request)
@@ -204,6 +221,13 @@ private class PleosNavigationGateway(context: Context) : NavigationGateway {
     }
 
     override fun release() = coordinator.release()
+
+    override fun navigationRuntimeEvidence(): List<NavigationRuntimeEvidence> =
+        runtimeEvidence.navigationRuntimeEvidence()
+
+    private companion object {
+        const val NAVI_ROUTE_SEARCH_PERMISSION = "pleos.car.permission.NAVI_ROUTE_SEARCH"
+    }
 }
 
 private class PleosNaviPort(private val helper: NaviHelper) : NavigationVendorPort {
@@ -216,11 +240,20 @@ private class PleosNaviPort(private val helper: NaviHelper) : NavigationVendorPo
     override fun addListener(listener: NavigationVendorListener) {
         val sdkListener = object : NaviHelperEventListener {
             override fun onRouteStarted(routeStartInfo: RouteStartInfo) = listener.onRouteStarted()
+
+            // PLEOS Connect Emulator 2.1.0 still emits the legacy completion callback.
+            // NaviHelper 3.0.5 deprecates it in favor of onRoutingCompleted(), so normalize
+            // both SDK generations to the same application-owned terminal event.
+            @Suppress("DEPRECATION")
+            override fun onRouteEnded() = listener.onLegacyRoutingCompleted()
+
             override fun onRoutingCompleted() = listener.onRoutingCompleted()
             override fun onError(errorCode: NaviErrorCode) = listener.onError(errorCode.safeUserMessage())
         }
         listeners[listener] = sdkListener
-        helper.addListener(sdkListener)
+        runCatching { helper.addListener(sdkListener) }
+            .onFailure { listeners.remove(listener) }
+            .getOrThrow()
     }
 
     override fun requestRoute(request: NavigationRequest) {
@@ -261,7 +294,7 @@ private class CoroutineNavigationScheduleScope : NavigationScheduleScope {
     override fun cancelAll() = rootJob.cancel()
 }
 
-private fun NaviErrorCode.safeUserMessage(): String = when (this) {
+internal fun NaviErrorCode.safeUserMessage(): String = when (this) {
     NaviErrorCode.CAUSE_LOW_BATTERY -> "배터리 상태 때문에 경로를 시작할 수 없어요."
     NaviErrorCode.CAUSE_SEARCH_ROUTE_OVER_DISTANCE -> "탐색 가능한 거리를 초과했어요."
     NaviErrorCode.CAUSE_SEARCH_ROUTE_TOO_SHORT_DISTANCE -> "목적지가 현재 위치와 너무 가까워요."

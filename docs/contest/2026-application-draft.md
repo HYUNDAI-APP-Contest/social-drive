@@ -32,12 +32,12 @@
 
 좋은 드라이브 코스를 발견하는 곳과 실제로 주행하는 곳이 분리되어 있다. SNS에서 사진이나 후기를 발견해도 지도에서 장소를 다시 찾고, 차량 내비게이션에 목적지와 경유지를 다시 입력해야 한다. 반대로 운전 중 좋았던 순간을 메모하거나 자세히 기록하려는 행동은 주의 분산과 충돌한다.
 
-Social Drive는 다음 경험을 제출 목표로 한다. PR #2 병합 커밋 `dcffaad`를 포함한 현재 통합 소스에는 PLEOS·cloud·route-consent, Room v6 conflict review와 published-delete lifecycle이 있다. 기존 PLEOS Connect Android 14(user 10) UI 8/8과 비UI 43/43, Kotlin core 74/74, static 29/29 및 Gradle 179 tasks 증거가 있다. actual cloud·AWS E2E·제출용 signed release·실제 Vehicle/Navi callback은 미검증이다. PLEOS system Back 전달도 `UNRESOLVED`다.
+Social Drive는 다음 경험을 제출 목표로 한다. PR #2 병합 커밋 `dcffaad`를 포함한 현재 통합 소스에는 PLEOS·cloud·route-consent, Room v6 conflict review와 published-delete lifecycle이 있다. 기존 PLEOS Connect Android 14(user 10) UI 8/8과 비UI 43/43, Kotlin core 74/74, static 29/29 및 Gradle 179 tasks 증거가 있다. Issue #28에서는 production NaviHelper adapter의 공개 목적지 1건을 API 34 emulator application boundary에서 검증했다. actual cloud·AWS E2E·제출용 signed release·실제 Vehicle callback은 미검증이고, PLEOS system Back 전달도 `UNRESOLVED`다.
 
 1. 주행 중에는 기록 시작·종료와 `방금 좋았어` 한 번의 터치만 제공한다.
 2. recording session, `highlightCount`, draft, pending queue와 preset reference를 로컬 DB에 보존한다.
 3. 제목·설명·공개 범위 확인은 주차 후에만 허용한다.
-4. 통합된 NaviHelper adapter는 실제 route callback이 확인된 뒤에만 공개 코스의 목적지와 경유지를 차량 Navigation 앱으로 전달한다.
+4. 통합된 NaviHelper adapter는 검증된 공개 목적지 1건을 차량 Navigation 앱으로 전달하고 terminal callback·cleanup·release를 application boundary에서 확인했다. 경유지 실행과 UI 전체 여정은 별도 검증 대상이다.
 
 위치 동의·철회와 route source 안전 경계는 `앱 구현`이지만 실제 위치 샘플·경로점 수집은 미구현이다. preset 경로는 실제 위치가 아니라 `데모 데이터`다. 게시물 삭제는 Room v6 tombstone, network `DELETE`, bounded retry 계약까지 구현·계측됐지만 actual cloud 설정이 없어 demo transport 증거다.
 
@@ -55,7 +55,7 @@ Social Drive는 다음 경험을 제출 목표로 한다. PR #2 병합 커밋 `d
 
 | Before | Social Drive 이후 |
 |---|---|
-| SNS에서 본 코스를 지도와 차량 내비에 다시 입력 | NaviHelper 검증 완료 후 게시물의 목적지·경유지를 전달 |
+| SNS에서 본 코스를 지도와 차량 내비에 다시 입력 | 검증된 NaviHelper production 경계로 목적지를 전달. 경유지 실행·UI 전체 여정은 후속 검증 |
 | 운전 중 메모·검색으로 주의가 분산될 수 있음 | 큰 버튼 한 번으로 하이라이트만 로컬 기록 |
 | 차량 상태와 무관하게 편집 UI가 열릴 수 있음 | Driving과 Unknown에서 편집·게시를 fail-closed 차단 |
 | 연결이 끊기면 기록·업로드를 잃을 수 있음 | Room 초안과 WorkManager 큐로 재시작·오프라인 복구 |
@@ -73,7 +73,7 @@ Vehicle adapter의 목표는 Vehicle State와 공식 주행 제한 상태를 통
 
 ### 콘텐츠가 실제 주행으로 완결된다
 
-완성 목표에서는 사용자가 주차 상태에서 `이 코스 따라가기`를 누르면 NaviHelper에 목적지와 경유지를 전달하여 차량 Navigation 앱의 경로 안내로 이어진다. HEAD `4f2b559`의 NaviHelper coordinator와 lifecycle은 빌드·core 검증됐지만 실제 route/event callback 실기 증거는 미완료다.
+완성 목표에서는 사용자가 주차 상태에서 `이 코스 따라가기`를 누르면 NaviHelper에 목적지와 경유지를 전달하여 차량 Navigation 앱의 경로 안내로 이어진다. Issue #28은 production application gateway를 직접 호출해 Pleos Connect Emulator 2.1.0/API 34에서 공개 목적지 1건의 initialize/request/terminal callback/listener removal/release를 확인했다. 이는 실제 UI 전체 여정·경유지 실행·물리 차량 증거는 아니다.
 
 ### 주행과 정차의 역할을 분리한다
 
@@ -88,7 +88,7 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 
 - “이 카페가 좋다”에서 “이 길의 이 구간이 좋았다”로 공유 단위를 바꾼다.
 - 순간 표시와 설명 작성을 주행/주차로 분리하여 안전과 표현력을 함께 확보한다.
-- 통합 소스의 build/AVD를 재검증하고, 실제 NaviHelper callback이 확인되면 콘텐츠 소비를 실제 주행으로 연결한다.
+- 검증된 NaviHelper production 경계로 콘텐츠 소비를 내비 요청에 연결하되, 실제 UI 전체 여정과 물리 차량 동작은 별도로 검증한다.
 - 따라 달린 사용자가 새로운 하이라이트와 코스를 만들면서 콘텐츠가 순환한다.
 
 ## 7. 3개 핵심 사용자 여정
@@ -119,10 +119,10 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 1. 피드에서 드라이브를 선택한다.
 2. 목적지·경유지·하이라이트를 미리 본다.
 3. 주차 상태에서 `이 코스 따라가기`를 누른다.
-4. 통합 소스의 build/AVD를 재검증하고, 실제 NaviHelper callback이 확인되면 목적지와 경유지를 전달한다.
-5. 실제 callback이 확인된 경우에만 차량 Navigation 앱 안내 시작을 시연한다.
+4. production gateway로 검증된 공개 목적지 1건을 전달한다. 경유지 실행은 별도 검증 전 시연하지 않는다.
+5. API 34 emulator application-boundary callback 증거 범위 안에서만 차량 Navigation 앱 연동을 시연한다.
 
-현재 증거: UI와 fake 흐름은 PR #2 통합 소스의 `앱 구현`이며 preset 위치는 `데모 데이터`다. 기존 Gradle assemble·PLEOS UI 계측은 성공했지만 실제 NaviHelper route callback은 실행되지 않았다.
+현재 증거: UI와 fake 흐름은 PR #2 통합 소스의 `앱 구현`이며 preset 위치는 `데모 데이터`다. Issue #28 exact smoke는 fake가 아닌 production adapter로 공개 목적지 1건의 terminal callback·listener removal·release를 API 34 emulator application boundary에서 확인했다. UI 전체 여정과 경유지 실행은 확인하지 않았다.
 
 ## 8. 기술 활용성과 구현 상태
 
@@ -137,7 +137,7 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 | Cognito/DynamoDB/S3 API | 사용자·피드·비공개 업로드 | PR #2 통합. backend `ddbd61f` 계약 기반 코드 존재. concrete cloud 설정 부재로 actual cloud unavailable | `앱 구현` |
 | 409 conflict review | stale publish의 명시적 사용자 해결 | PR #2 통합. durable FAILED, explicit fetch/adopt, publish-only replay. 일반 worker 자동 claim·GET·overwrite 금지. Room 계측 통과 | `앱 구현` |
 | Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | PR #2 통합. Pleos build/AVD 안전 UI 실행, 실제 P/D/R/N callback 미검증 | `앱 구현` |
-| NaviHelper 3.0.5 | 목적지·경유지 전달 | PR #2 통합. lifecycle/coordinator build·core 검증, 실제 route callback 미검증 | `앱 구현` |
+| NaviHelper 3.0.5 | 목적지·경유지 전달 | Issue #28 production adapter로 API 34 emulator에서 공개 목적지 1건의 request·terminal callback·cleanup·release 확인. 경유지 실행·UI 전체 여정·물리 차량은 미검증 | `실제 SDK`(제한적) |
 | PLEOS system Back | 기록 중 종료 확인 | Activity dispatcher 이후 dialog 계약은 검증. TaskView의 실제 system Back 전달은 `UNRESOLVED` | `미구현` |
 | preset route/motion | 전체 흐름 시연 보조 | 데모 전용 | `데모 데이터` |
 | FusedLocation/STT/TTS/Vehicle Control | 향후 자연스러운 입력·안내 | 공식 Coming Soon | `향후 기능` |
@@ -151,7 +151,7 @@ Vehicle State와 NaviHelper는 현재 Ready to Use지만, FusedLocation·STT·TT
 ### 현재 확인된 코드 증거
 
 - PR #2 통합 Android 소스에 recording session, `highlightCount`, draft, pending queue와 preset reference 코드가 존재한다.
-- 병합 커밋 `dcffaad`를 포함한 소스에는 motion gate, cloud, consent/withdraw, Room v6 conflict review와 published-delete lifecycle이 있다. 기존 PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29, Gradle build/lint 증거가 있으며 actual cloud·AWS E2E·signed release·실 SDK callback은 미완료다.
+- 병합 커밋 `dcffaad`를 포함한 소스에는 motion gate, cloud, consent/withdraw, Room v6 conflict review와 published-delete lifecycle이 있다. Issue #28은 NaviHelper 공개 목적지 1건의 emulator application-boundary callback·cleanup·release를 확인했다. 실제 Vehicle callback·UI 전체 여정·actual cloud·AWS E2E·signed release는 미완료다.
 - 실제 경로점·위치 샘플 수집은 미구현이며 published delete는 actual cloud에서 검증되지 않았다.
 
 ### 구현·검증해야 할 요구사항
