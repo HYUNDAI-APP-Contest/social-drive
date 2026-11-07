@@ -33,6 +33,26 @@ class CloudDriveClientTest {
     }
 
     @Test
+    fun `토큰 갱신 시간 초과는 게시 작업 어댑터까지 재시도 가능 상태를 유지한다`() = runBlocking {
+        val api = FakeTransport()
+        val client = CloudDriveClient(
+            config = CloudDriveClientConfig(URI("https://api.example.test/dev"), setOf("upload.example.test")),
+            auth = AuthSessionProvider { throw AuthSessionTemporarilyUnavailableException() },
+            apiTransport = api,
+            objectTransport = FakeObjectTransport(),
+        )
+        val draft = testDraft()
+
+        val failure = assertFailsWith<RemoteDriveException> {
+            CloudRemoteDriveApi(client, "2026-11-01").createDrive(draft.clientRequestId, draft)
+        }
+
+        assertEquals(RemoteFailureCode.SERVER_BUSY, failure.code)
+        assertTrue(failure.retryable)
+        assertTrue(api.requests.isEmpty())
+    }
+
+    @Test
     fun `SigV4 contract rejects malformed scope expiry signature and unsigned required headers`() = runBlocking {
         val mutations = listOf<(String) -> String>(
             { it.replace("AWS4-HMAC-SHA256", "AWS4-ECDSA-P256-SHA256") },
