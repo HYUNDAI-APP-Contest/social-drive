@@ -10,6 +10,7 @@ import com.socialdrive.app.data.local.NormalizedRoutePointEntity
 import com.socialdrive.app.domain.FutureRouteCollector
 import com.socialdrive.app.domain.NormalizedRoutePoint
 import com.socialdrive.app.domain.MotionState
+import com.socialdrive.app.domain.RouteConsentState
 import com.socialdrive.app.domain.UploadState
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
@@ -81,14 +82,20 @@ class RecordingRepository(
             )
         }
         val collectedRoute = routeCollector?.snapshotAndClear() ?: com.socialdrive.app.domain.CollectedRoute.Empty
-        val normalizedPoints = collectedRoute.points
         return database.withTransaction {
             val recording = database.recordingDao().find(id) ?: return@withTransaction null
+            val privacy = database.routePrivacyDao().find()
+            val mayRetainRoute = effectiveRouteConsentState(
+                privacy?.consentState,
+                privacy?.consentPolicyVersion,
+            ) == RouteConsentState.Granted
+            val normalizedPoints = collectedRoute.points.takeIf { mayRetainRoute }.orEmpty()
+            val retainedDistanceMeters = collectedRoute.distanceMeters.takeIf { mayRetainRoute } ?: 0
             val now = clock()
             val finishedRecording = recording.copy(
                 state = LocalState.DRAFTED,
                 endedAtEpochMs = now,
-                distanceMeters = collectedRoute.distanceMeters,
+                distanceMeters = retainedDistanceMeters,
             )
             database.recordingDao().update(finishedRecording)
             val draft = DraftEntity(

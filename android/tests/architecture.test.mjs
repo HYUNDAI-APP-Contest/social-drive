@@ -753,6 +753,7 @@ test("unknown vehicle motion fails closed for parked-only actions", () => {
 test("route source consent withdrawal and delete pending stay privacy safe", () => {
   const domain = read("app/src/main/java/com/socialdrive/app/domain/RoutePrivacy.kt");
   const repository = read("app/src/main/java/com/socialdrive/app/data/RoutePrivacyRepository.kt");
+  const offline = read("app/src/main/java/com/socialdrive/app/data/OfflineRepositories.kt");
   const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
   const routeFake = read("app/src/main/java/com/socialdrive/app/data/fake/FakeDriveRepository.kt");
   const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
@@ -774,6 +775,7 @@ test("route source consent withdrawal and delete pending stay privacy safe", () 
   assert.match(domain, /class BoundedRouteBuffer[\s\S]*if \(points\.size >= maximumSize\) compact\(\)/);
   assert.match(domain, /if \(compacted\.last\(\) != latest\) compacted \+= latest/);
   assert.match(domain, /stopAndAwait\(\)[\s\S]*withdrawAndPurge\(\)[\s\S]*pendingUploads\.cancel/);
+  assert.match(offline, /database\.withTransaction[\s\S]*effectiveRouteConsentState\([\s\S]*RouteConsentState\.Granted[\s\S]*collectedRoute\.points\.takeIf/);
   assert.match(repository, /RoomRoutePrivacyMutationStore/);
   assert.match(repository, /currentMotion = currentMotion/);
   assert.match(application, /currentMotion = \{ vehicleMotionSource\.status\.value\.motion \}/);

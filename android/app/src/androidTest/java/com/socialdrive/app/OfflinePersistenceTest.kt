@@ -10,11 +10,13 @@ import com.socialdrive.app.data.RecordingRepository
 import com.socialdrive.app.data.RoutePrivacyRepository
 import com.socialdrive.app.data.local.LocalState
 import com.socialdrive.app.data.local.NormalizedRoutePointEntity
+import com.socialdrive.app.data.local.RoutePrivacyEntity
 import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.PendingRouteUploadCanceller
 import com.socialdrive.app.domain.PublishedDeleteDecision
 import com.socialdrive.app.domain.RouteConsentState
+import com.socialdrive.app.domain.RouteLocationConsentPolicy
 import com.socialdrive.app.domain.FutureRouteCollector
 import com.socialdrive.app.domain.CollectedRoute
 import com.socialdrive.app.domain.NormalizedRoutePoint
@@ -106,6 +108,7 @@ class OfflinePersistenceTest {
 
     @Test
     fun recordingPersistsOnlyNormalizedCollectorOutput() = runTest {
+        database.routePrivacyDao().upsert(grantedRoutePrivacy())
         val values = ArrayDeque(listOf("recording-route", "draft-route", "request-route"))
         val collector = object : FutureRouteCollector {
             var began = false
@@ -140,6 +143,35 @@ class OfflinePersistenceTest {
         assertEquals(listOf(0f, .5f, 1f), stored.map { it.horizontal })
         assertEquals(listOf(1f, .4f, 0f), stored.map { it.vertical })
         assertTrue(stored.all { it.publicationState == "UNPUBLISHED" })
+    }
+
+    @Test
+    fun withdrawnConsentDiscardsSnapshotTakenBeforeDraftTransaction() = runTest {
+        database.routePrivacyDao().upsert(
+            grantedRoutePrivacy().copy(consentState = RouteConsentState.Withdrawn.name, consentPolicyVersion = null),
+        )
+        val values = ArrayDeque(listOf("recording-withdrawn", "draft-withdrawn", "request-withdrawn"))
+        val collector = object : FutureRouteCollector {
+            override suspend fun start() = Unit
+            override suspend fun beginRecording() = Unit
+            override suspend fun snapshotAndClear() = CollectedRoute(
+                points = listOf(NormalizedRoutePoint(0, .2f, .4f)),
+                distanceMeters = 999,
+            )
+            override suspend fun stopAndAwait() = Unit
+        }
+        val recordings = RecordingRepository(
+            database,
+            IdFactory { values.removeFirst() },
+            clock = { 300L },
+            routeCollector = collector,
+        )
+
+        val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
+
+        assertTrue(draft.routePoints.isEmpty())
+        assertEquals(0, draft.distanceMeters)
+        assertEquals(0, database.routePrivacyDao().pointCount())
     }
 
     @Test
@@ -293,4 +325,12 @@ class OfflinePersistenceTest {
         assertEquals(0, request.attempts)
         assertEquals(LocalState.PUBLISHED, database.draftDao().find(draft.id)?.state)
     }
+
+    private fun grantedRoutePrivacy() = RoutePrivacyEntity(
+        consentState = RouteConsentState.Granted.name,
+        consentPolicyVersion = RouteLocationConsentPolicy.VERSION,
+        routeSource = "LiveAvailable",
+        unavailableReason = null,
+        updatedAtEpochMs = 1L,
+    )
 }
