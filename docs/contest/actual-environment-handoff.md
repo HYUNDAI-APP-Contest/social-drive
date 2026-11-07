@@ -6,12 +6,12 @@
 
 ## 확인된 실행 스냅샷
 
-아래 결과는 앱 코드 커밋 `1969b2f`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
+아래 결과는 앱 코드 커밋 `e362b44`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
 
 - 대상: `emulator-5554`, Android user 10, PLEOS 가로 화면 `2560×1440`
 - 패키지: `com.socialdrive.app`
 - APK: `android/app/build/outputs/apk/pleos/debug/app-pleos-debug.apk`
-- SHA-256: `5b6f2e10ac968abd73903c155905090ab0c8b5dbccecf93322ffac5b7cbc236d`
+- SHA-256: `c2a360aa449eda45376ef35140cfcb99a9e00b9710535d325d657d56cf011671`
 - 설치 결과: `adb install -r` 성공
 - 시작 결과: `com.socialdrive.app/.MainActivity`가 현재 포커스이며 시작 직후 FATAL/ANR 없음
 - 설정 화면: 차량 상태, 차량 내비게이션, 위치 연동, 음성 안내, 음성 인식이 모두 `PLEOS 연결됨`
@@ -59,7 +59,11 @@ Cognito 초기화 실패는 잘못된 로그인 정보와 별도 상태로 표�
 
 Cognito access token은 SDK lease 검증뿐 아니라 최종 `BearerToken` 공급자에서도 명시적인 issuer·client ID·token use·발급/만료 정책을 다시 통과해야 한다. 무검증 기본 validator는 제거했으며, 실패한 토큰이 API transport 호출 전에 인증 오류로 차단되는 것은 회귀 테스트로 확인했다. 서명 자체의 신뢰 검증은 API Gateway Cognito authorizer 책임이며 실제 authorizer 통신은 AWS E2E 범위다.
 
-API와 presigned object 요청은 리디렉션·암묵적 연결 재시도를 끄고 2 MiB 응답 상한과 30초 전체 호출 제한을 적용한 동일 `OkHttpClient` 연결 풀을 프로세스 동안 재사용한다. 반복 작업마다 새 소켓 풀을 만들지 않는 것은 양쪽 flavor 단위 테스트로 확인했지만, 실제 API Gateway/S3 연결 재사용 관찰은 AWS E2E 범위다.
+API와 presigned object 요청은 리디렉션·암묵적 연결 재시도를 끄고 요청별 응답 상한과 30초 전체 호출 제한을 적용한 동일 `OkHttpClient` 연결 풀을 프로세스 동안 재사용한다. 반복 작업마다 새 소켓 풀을 만들지 않는 것은 양쪽 flavor 단위 테스트로 확인했지만, 실제 API Gateway/S3 연결 재사용 관찰은 AWS E2E 범위다.
+
+응답 메모리 상한은 요청별로 강제한다. API JSON과 공개 경로는 2 MiB를 유지하고, 백엔드 업로드 계약이 최대 10 MiB를 허용하는 공개 커버만 10 MiB까지 읽을 수 있다. 모든 요청의 절대 상한은 10 MiB이며 이를 넘는 구성은 생성 단계에서 거부한다. 요청별 상한 전달과 기본값은 양쪽 flavor 단위 테스트로 확인했다.
+
+AWS API 및 업로드 호스트는 런타임 구성 파서뿐 아니라 하위 `CloudDriveClientConfig` 생성자에서도 공개 DNS 형식을 강제한다. localhost, IP 리터럴, 스킴·경로가 섞인 업로드 호스트는 transport 생성 전에 거부한다.
 
 서버가 반환한 읽기·업로드 URL은 HTTPS, 허용 호스트, 기본 HTTPS 포트, userinfo·fragment 부재뿐 아니라 8 KiB 길이 상한과 비어 있지 않은 object 경로를 만족해야 한다. 공백·역슬래시·과대 URL과 호스트 루트 URL은 transport 전에 계약 오류로 거부하며 경계 사례는 코어 테스트로 확인했다.
 
