@@ -105,9 +105,21 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private var recognitionListener: ResultListener? = null
     private fun createRecognitionListener(session: Long): ResultListener = object : ResultListener {
         override fun onUpdated(text: String, isFinal: Boolean) {
+            val permissionGranted = hasPermission(STT_PERMISSION)
             val callback = synchronized(recognitionLock) {
-                recognitionCallback.takeIf { recognitionSession == session }
-            } ?: return
+                recognitionCallback.takeIf {
+                    speechResultAccepted(
+                        sessionMatches = recognitionSession == session,
+                        callbackInstalled = true,
+                        permissionGranted = permissionGranted,
+                    )
+                }
+            }
+            if (!permissionGranted) {
+                rejectRecognitionAfterPermissionLoss(session)
+                return
+            }
+            callback ?: return
             if (isFinal) {
                 val completed = finishRecognition(
                     if (text.isBlank()) SpeechRecognitionState.NoResult else SpeechRecognitionState.Applied,
@@ -140,6 +152,15 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             }
         }
         override fun onUpdatedRms(rms: Double) = Unit
+    }
+
+    private fun rejectRecognitionAfterPermissionLoss(session: Long) {
+        mutableStt.value = permissionDenied("실차 · STT 권한 필요")
+        if (finishRecognition(SpeechRecognitionState.Cancelled, session)) {
+            lifecycleScope.launch {
+                synchronized(speechOperationLock) { runCatching { stt.stop() } }
+            }
+        }
     }
     override val location: StateFlow<CapabilityStatus> = mutableLocation.asStateFlow()
     override val textToSpeech: StateFlow<CapabilityStatus> = mutableTts.asStateFlow()
@@ -600,6 +621,12 @@ internal fun locationSampleAccepted(
     recording: Boolean,
     permissionGranted: Boolean,
 ): Boolean = listenerMatches && collecting && authorized && recording && permissionGranted
+
+internal fun speechResultAccepted(
+    sessionMatches: Boolean,
+    callbackInstalled: Boolean,
+    permissionGranted: Boolean,
+): Boolean = sessionMatches && callbackInstalled && permissionGranted
 
 private const val FUSED_LOCATION_PERMISSION = "pleos.car.permission.FUSED_LOCATION"
 private const val TTS_PERMISSION = "pleos.car.permission.TTS_SERVICE"
