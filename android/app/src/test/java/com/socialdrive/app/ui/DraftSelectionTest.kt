@@ -39,6 +39,7 @@ class DraftSelectionTest {
             }
             persisted += update.title
             if (update.title == "최신 입력") latestPersisted.complete(Unit)
+            true
         }
 
         assertTrue(writer.submit(DraftCopyUpdate("draft-1", "첫 입력", "")))
@@ -64,6 +65,7 @@ class DraftSelectionTest {
             }
             persisted += update.draftId to update.title
             if (persisted.size == 3) allPersisted.complete(Unit)
+            true
         }
 
         writer.submit(DraftCopyUpdate("draft-1", "첫 저장", ""))
@@ -91,6 +93,7 @@ class DraftSelectionTest {
             attempts += update.title
             if (update.title == "실패 입력") error("simulated Room failure")
             latestPersisted.complete(Unit)
+            true
         }
 
         writer.submit(DraftCopyUpdate("draft-1", "실패 입력", ""))
@@ -107,17 +110,28 @@ class DraftSelectionTest {
         val writer = ConflatedDraftCopyWriter(backgroundScope) {
             writeStarted.complete(Unit)
             releaseWrite.await()
+            true
         }
 
         writer.submit(DraftCopyUpdate("draft-1", "게시할 최신 제목", ""))
         writeStarted.await()
-        val flush = async { writer.awaitIdle() }
+        val flush = async { writer.awaitIdle("draft-1") }
         testScheduler.runCurrent()
         assertEquals(false, flush.isCompleted)
 
         releaseWrite.complete(Unit)
         flush.await()
         assertEquals(true, flush.isCompleted)
+        assertEquals(true, flush.await())
+    }
+
+    @Test
+    fun `최신 편집 저장 실패는 게시 장벽에서 거부한다`() = runTest {
+        val writer = ConflatedDraftCopyWriter(backgroundScope) { false }
+
+        writer.submit(DraftCopyUpdate("draft-1", "저장 실패 제목", ""))
+
+        assertEquals(false, writer.awaitIdle("draft-1"))
     }
 
     private fun draft(id: String) = DraftSnapshot(

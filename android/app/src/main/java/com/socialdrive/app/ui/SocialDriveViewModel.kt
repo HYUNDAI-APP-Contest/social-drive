@@ -48,10 +48,11 @@ internal data class DraftCopyUpdate(val draftId: String, val title: String, val 
 
 internal class ConflatedDraftCopyWriter(
     scope: CoroutineScope,
-    persist: suspend (DraftCopyUpdate) -> Unit,
+    persist: suspend (DraftCopyUpdate) -> Boolean,
 ) {
     private val lock = Any()
     private val pendingByDraftId = linkedMapOf<String, DraftCopyUpdate>()
+    private val failedDraftIds = mutableSetOf<String>()
     private val idleWaiters = mutableListOf<CompletableDeferred<Unit>>()
     private var persisting = false
     private val wakeups = Channel<Unit>(Channel.CONFLATED)
@@ -66,12 +67,17 @@ internal class ConflatedDraftCopyWriter(
                             pendingByDraftId.remove(entry.key)
                         }
                     } ?: break
-                    try {
+                    val saved = try {
                         persist(update)
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (_: Throwable) {
                         // Keep the writer alive so a later user edit can still be persisted.
+                        false
+                    }
+                    synchronized(lock) {
+                        if (saved) failedDraftIds.remove(update.draftId)
+                        else failedDraftIds.add(update.draftId)
                     }
                 }
                 val completedWaiters = synchronized(lock) {
@@ -85,20 +91,26 @@ internal class ConflatedDraftCopyWriter(
     }
 
     fun submit(update: DraftCopyUpdate): Boolean {
-        synchronized(lock) { pendingByDraftId[update.draftId] = update }
+        synchronized(lock) {
+            failedDraftIds.remove(update.draftId)
+            pendingByDraftId[update.draftId] = update
+        }
         return wakeups.trySend(Unit).isSuccess
     }
 
-    suspend fun awaitIdle() {
+    suspend fun awaitIdle(draftId: String): Boolean {
         val waiter = synchronized(lock) {
             if (pendingByDraftId.isEmpty() && !persisting) null
             else CompletableDeferred<Unit>().also(idleWaiters::add)
-        } ?: return
-        try {
-            waiter.await()
-        } finally {
-            synchronized(lock) { idleWaiters.remove(waiter) }
         }
+        if (waiter != null) {
+            try {
+                waiter.await()
+            } finally {
+                synchronized(lock) { idleWaiters.remove(waiter) }
+            }
+        }
+        return synchronized(lock) { draftId !in failedDraftIds }
     }
 }
 
@@ -256,8 +268,11 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     suspend fun enqueuePublish(motionState: MotionState): EnqueueResult {
-        draftCopyWriter.awaitIdle()
-        return selectedDraft.value?.let { app.publishScheduler.enqueue(it.id, motionState) } ?: EnqueueResult.MissingDraft
+        val draft = selectedDraft.value ?: return EnqueueResult.MissingDraft
+        if (!draftCopyWriter.awaitIdle(draft.id)) {
+            return EnqueueResult.Rejected("최신 편집을 저장하지 못해 게시하지 않았어요. 내용을 다시 수정한 뒤 시도해 주세요.")
+        }
+        return app.publishScheduler.enqueue(draft.id, motionState)
     }
 
     suspend fun fetchConflictLatest(): ConflictReviewDecision =
