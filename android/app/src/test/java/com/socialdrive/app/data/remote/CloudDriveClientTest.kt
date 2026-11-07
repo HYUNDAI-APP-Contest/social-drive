@@ -254,7 +254,7 @@ class CloudDriveClientTest {
         val opaque = "opaque_cursor_123456789012345678901234"
         harness.api.responses += jsonResponse(
             200,
-            """{"items":[${driveJson(status = "PUBLISHED", extra = ",\"coverUrl\":\"https://read.example.test/cover?sig=secret\"")}],"nextCursor":"$opaque"}""",
+            """{"items":[${driveJson(status = "PUBLISHED", extra = ",\"coverUrl\":\"https://upload.example.test/cover?sig=secret\"")}],"nextCursor":"$opaque"}""",
         )
         val first = harness.client.feed(limit = 1)
         assertEquals(DriveStatus.PUBLISHED, first.items.single().drive.status)
@@ -268,11 +268,18 @@ class CloudDriveClientTest {
 
         harness.api.responses += jsonResponse(
             200,
-            """{"drive":${driveJson(extra = ",\"coverUrl\":\"https://read.example.test/c\",\"routeUrl\":\"https://read.example.test/r\",\"routeSchemaVersion\":1")}}""",
+            """{"drive":${driveJson(extra = ",\"coverUrl\":\"https://upload.example.test/c\",\"routeUrl\":\"https://upload.example.test/r\",\"routeSchemaVersion\":1")}}""",
         )
         val detail = harness.client.getDrive("drive-remote-0001")
         assertEquals(DriveStatus.DRAFT, detail.drive.status)
         assertEquals(1, detail.routeSchemaVersion)
+
+        harness.api.responses += jsonResponse(
+            200,
+            """{"items":[${driveJson(status = "PUBLISHED", extra = ",\"coverUrl\":\"https://evil.example.test/cover\"")}],"nextCursor":null}""",
+        )
+        val foreignAsset = assertFailsWith<CloudDriveException> { harness.client.feed(limit = 1) }
+        assertEquals("ASSET_HOST_NOT_ALLOWED", foreignAsset.code)
     }
 
     @Test
@@ -401,11 +408,11 @@ class CloudDriveClientTest {
         val harness = Harness()
         harness.api.responses += HttpResponse(
             200,
-            body = """{"drive":${driveJson(extra = ",\"coverUrl\":\"https://read.example.test/private-cover\",\"routeUrl\":\"https://read.example.test/private-route\",\"routeSchemaVersion\":1")}}""".toByteArray(),
+            body = """{"drive":${driveJson(extra = ",\"coverUrl\":\"https://upload.example.test/private-cover\",\"routeUrl\":\"https://upload.example.test/private-route\",\"routeSchemaVersion\":1")}}""".toByteArray(),
         )
         val snapshot = CloudRemoteConflictReviewApi(harness.client).getOwnedDrive("drive-remote-0001")
         assertEquals("drive-remote-0001", snapshot.remoteDriveId)
-        assertFalse(snapshot.toString().contains("read.example"))
+        assertFalse(snapshot.toString().contains("upload.example"))
 
         harness.api.responses += errorResponse(404, "NOT_FOUND", retryable = false)
         val missing = assertFailsWith<RemoteDriveException> {

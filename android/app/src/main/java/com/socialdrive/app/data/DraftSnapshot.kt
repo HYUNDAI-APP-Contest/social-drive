@@ -1,6 +1,5 @@
 package com.socialdrive.app.data
 
-import com.socialdrive.app.data.local.RecordingEntity
 import com.socialdrive.app.domain.NormalizedRoutePoint
 
 /**
@@ -25,14 +24,6 @@ data class DraftSnapshot(
     val routePoints: List<NormalizedRoutePoint> = emptyList(),
     val createdAtEpochMs: Long = 0L,
 )
-
-internal fun RecordingEntity?.recordedDurationSeconds(): Int {
-    val recording = this ?: return 0
-    val endedAt = recording.endedAtEpochMs ?: return 0
-    return ((endedAt - recording.startedAtEpochMs).coerceAtLeast(0L) / 1_000L)
-        .coerceAtMost(259_200L)
-        .toInt()
-}
 
 /**
  * Rejects legacy/stale-fix distance aggregates that imply physically impossible road travel.

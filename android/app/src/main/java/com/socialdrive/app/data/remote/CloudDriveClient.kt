@@ -111,7 +111,7 @@ class CloudDriveClient(
             if (drive.status != DriveStatus.PUBLISHED) throw CloudContractException("INVALID_FEED_STATUS")
             FeedItem(
                 drive = drive,
-                links = EphemeralAssetLinks(secureEphemeralUri(item.string("coverUrl")), routeUri = null),
+                links = EphemeralAssetLinks(secureAssetUri(item.string("coverUrl")), routeUri = null),
             )
         }
         val cursorValue = root.optionalString("nextCursor")
@@ -125,8 +125,8 @@ class CloudDriveClient(
         return DriveDetail(
             drive = parseDrive(drive),
             links = EphemeralAssetLinks(
-                coverUri = secureEphemeralUri(drive.string("coverUrl")),
-                routeUri = secureEphemeralUri(drive.string("routeUrl")),
+                coverUri = secureAssetUri(drive.string("coverUrl")),
+                routeUri = secureAssetUri(drive.string("routeUrl")),
             ),
             routeSchemaVersion = drive.integer("routeSchemaVersion").also {
                 if (it != 1) throw CloudContractException("INVALID_ROUTE_SCHEMA")
@@ -413,7 +413,11 @@ class CloudDriveClient(
         return uri
     }
 
-    private fun secureEphemeralUri(value: String): URI = secureUri(value)
+    private fun secureAssetUri(value: String): URI {
+        val uri = secureUri(value)
+        if (uri.host.lowercase() !in config.allowedUploadHosts) throw CloudContractException("ASSET_HOST_NOT_ALLOWED")
+        return uri
+    }
 
     private fun secureUri(value: String): URI {
         val uri = runCatching { URI(value) }.getOrElse { throw CloudContractException("INVALID_URL") }

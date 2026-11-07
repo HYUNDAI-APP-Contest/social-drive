@@ -265,7 +265,10 @@ class AndroidBackendContractHarnessTest {
     }
 
     private fun client(bridge: LocalBackendContractBridge, token: String = "contract-user-a") = CloudDriveClient(
-        config = CloudDriveClientConfig(URI("https://api.contract.invalid/contract"), setOf("upload.contract.invalid")),
+        config = CloudDriveClientConfig(
+            URI("https://api.contract.invalid/contract"),
+            setOf("upload.contract.invalid", "read.contract.invalid"),
+        ),
         auth = AuthSessionProvider { BearerToken.inMemory(token) },
         apiTransport = bridge,
         objectTransport = bridge,
