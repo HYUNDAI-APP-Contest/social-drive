@@ -50,11 +50,11 @@ private val unavailableNavigation = CapabilityStatus(CapabilityState.Unavailable
 fun VisualScenarioFixture(
     scenario: VisualScenario,
     theme: ThemeMode,
-    modifier: Modifier = Modifier.fillMaxSize(),
+    modifier: Modifier = Modifier,
 ) {
     SocialDriveTheme(theme) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Box(modifier.testTag(VISUAL_FIXTURE_TAG)) {
+            Box(modifier.fillMaxSize().testTag(VISUAL_FIXTURE_TAG)) {
                 when (scenario) {
                     VisualScenario.HomeContent -> FixtureHome(ContentState.Content(fixtureRepository.drives()))
                     VisualScenario.HomeLoading -> FixtureHome(ContentState.Loading)

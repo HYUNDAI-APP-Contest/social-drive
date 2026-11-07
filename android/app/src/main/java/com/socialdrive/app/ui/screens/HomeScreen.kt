@@ -85,7 +85,7 @@ fun HomeScreen(
                 Text("오늘의 드라이브", style = MaterialTheme.typography.headlineLarge)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("좋았던 길과 순간을 안전하게 남겨요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    DemoDataBadge(if (hasLocalDrive) "기기 기록 · 데모 데이터" else "데모 데이터")
+                    DemoDataBadge(label = if (hasLocalDrive) "기기 기록 · 데모 데이터" else "데모 데이터")
                 }
             }
             Button(
@@ -220,9 +220,9 @@ private fun DrivingHome(
 private fun DriveGrid(
     drives: List<DriveSummary>,
     onDetail: (String) -> Unit,
-    modifier: Modifier = Modifier.fillMaxSize(),
+    modifier: Modifier = Modifier,
 ) {
-    BoxWithConstraints(modifier) {
+    BoxWithConstraints(modifier.fillMaxSize()) {
         val roomyAutomotiveViewport = maxHeight >= 760.dp
         val featuredHeight = if (roomyAutomotiveViewport) 440.dp else 344.dp
         val supportingHeight = if (roomyAutomotiveViewport) 340.dp else 276.dp

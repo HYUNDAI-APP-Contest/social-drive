@@ -308,7 +308,7 @@ private fun Metric(icon: androidx.compose.ui.graphics.vector.ImageVector, text: 
 }
 
 @Composable
-fun DemoDataBadge(label: String = "데모 데이터", modifier: Modifier = Modifier) {
+fun DemoDataBadge(modifier: Modifier = Modifier, label: String = "데모 데이터") {
     Surface(modifier, shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = .86f)) {
         Text(label, Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
     }

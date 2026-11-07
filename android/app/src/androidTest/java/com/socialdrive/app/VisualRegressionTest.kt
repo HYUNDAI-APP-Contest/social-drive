@@ -224,7 +224,7 @@ class VisualRegressionTest {
     private fun show(scenario: VisualScenario, theme: ThemeMode = ThemeMode.Day) {
         compose.activity.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 1f)) {
-                VisualScenarioFixture(scenario, theme, judgeViewportModifier())
+                VisualScenarioFixture(scenario, theme, Modifier.judgeViewport())
             }
         }
         compose.waitForIdle()
@@ -234,7 +234,7 @@ class VisualRegressionTest {
     private fun showLargeText(scenario: VisualScenario) {
         compose.activity.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 1.3f)) {
-                VisualScenarioFixture(scenario, ThemeMode.Day, judgeViewportModifier())
+                VisualScenarioFixture(scenario, ThemeMode.Day, Modifier.judgeViewport())
             }
         }
         compose.waitForIdle()
@@ -266,7 +266,7 @@ class VisualRegressionTest {
         compose.activity.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 1f)) {
                 SocialDriveTheme(ThemeMode.Day) {
-                    Box(judgeViewportModifier().testTag(VISUAL_FIXTURE_TAG)) { content() }
+                    Box(Modifier.judgeViewport().testTag(VISUAL_FIXTURE_TAG)) { content() }
                 }
             }
         }
@@ -274,7 +274,7 @@ class VisualRegressionTest {
         assertJudgeViewport()
     }
 
-    private fun judgeViewportModifier() = Modifier.requiredSize(
+    private fun Modifier.judgeViewport() = requiredSize(
         JUDGE_VIEWPORT_WIDTH_PX.dp,
         JUDGE_VIEWPORT_HEIGHT_PX.dp,
     )

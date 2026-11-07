@@ -7,7 +7,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="false"
         android:icon="@drawable/ic_social_drive_launcher"
-        android:label="소셜 드라이브"
+        android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.SocialDrive">
         <activity
