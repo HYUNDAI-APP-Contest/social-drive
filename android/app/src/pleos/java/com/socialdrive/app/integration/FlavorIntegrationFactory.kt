@@ -431,12 +431,14 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     }
 
     private fun registerLocationCallback() {
+        var attemptedListener: FusedLocationListener? = null
         val result = synchronized(locationOperationLock) {
             if (released) return
             val listener = synchronized(locationLock) {
                 if (!locationCollecting || released) return@synchronized null
                 createLocationListener().also { registeredLocationListener = it }
             } ?: return
+            attemptedListener = listener
             runCatching {
                 fusedLocation.registerFusedLocationCallback(listener)
                 val stillOwned = synchronized(locationLock) {
@@ -452,7 +454,9 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         }
         result
             .onFailure {
-                deactivateLocationCollection("실차 · 위치 연결 실패")
+                attemptedListener?.let { listener ->
+                    deactivateLocationCollection("실차 · 위치 연결 실패", expectedListener = listener)
+                }
             }
     }
 
@@ -478,15 +482,19 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             }
 
             override fun onError(error: Exception) {
-                val current = synchronized(locationLock) { registeredLocationListener === listener }
-                if (current) deactivateLocationCollection("실차 · 위치 수신 오류")
+                deactivateLocationCollection("실차 · 위치 수신 오류", expectedListener = listener)
             }
         }
         return listener
     }
 
-    private fun deactivateLocationCollection(label: String, unregister: Boolean = true) {
+    private fun deactivateLocationCollection(
+        label: String,
+        unregister: Boolean = true,
+        expectedListener: FusedLocationListener? = null,
+    ) {
         val listener = synchronized(locationLock) {
+            if (expectedListener != null && registeredLocationListener !== expectedListener) return
             locationCollecting = false
             rawLocations.clear()
             detachLocationListenerLocked()

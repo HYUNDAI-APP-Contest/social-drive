@@ -435,7 +435,8 @@ test("PLEOS TTS and STT permissions fail closed and remain recoverable", () => {
   assert.match(pleos, /locationOperationLock[\s\S]*registerLocationCallback\([\s\S]*synchronized\(locationOperationLock\)/);
   assert.match(pleos, /createLocationListener\(\)\.also \{ registeredLocationListener = it \}[\s\S]*registerFusedLocationCallback\(listener\)[\s\S]*registeredLocationListener === listener && locationCollecting && !released[\s\S]*unregisterFusedLocationCallback\(listener\)/);
   assert.match(pleos, /if \(registeredLocationListener === listener && locationCollecting\) rawLocations\.offer\(coordinate\)/);
-  assert.match(pleos, /registeredLocationListener === listener[\s\S]*if \(current\) deactivateLocationCollection/);
+  assert.match(pleos, /deactivateLocationCollection\("실차 · 위치 수신 오류", expectedListener = listener\)/);
+  assert.match(pleos, /expectedListener != null && registeredLocationListener !== expectedListener\) return/);
   assert.match(pleos, /val shouldRelease = synchronized\(speechOperationLock\)[\s\S]*if \(!shouldRelease\) return/);
   assert.match(pleos, /RawRouteCoordinate\.fromOrNull\(location\.longitude, location\.latitude\) \?: return/);
   assert.match(pleos, /BoundedRouteBuffer\(MAX_ROUTE_POINTS\)/);
