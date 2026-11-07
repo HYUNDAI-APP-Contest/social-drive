@@ -127,6 +127,17 @@ interface UploadQueueDao {
     """)
     suspend fun recoverable(): List<UploadQueueEntity>
 
+    @Query("""
+        UPDATE upload_queue SET status = 'QUEUED', nextAttemptAtEpochMs = :now,
+            lastErrorCode = NULL, updatedAtEpochMs = :now
+        WHERE status = 'FAILED' AND lastErrorCode = 'AUTHENTICATION'
+          AND NOT EXISTS (
+              SELECT 1 FROM published_delete_requests d
+              WHERE d.draftId = upload_queue.draftId
+          )
+    """)
+    suspend fun resumeAuthenticationFailures(now: Long): Int
+
     @Upsert
     suspend fun upsert(item: UploadQueueEntity)
 

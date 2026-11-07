@@ -203,6 +203,9 @@ class PublishQueueRepository(
 
     suspend fun recoverable(): List<UploadQueueEntity> = database.uploadQueueDao().recoverable()
 
+    suspend fun resumeAuthenticationFailures(): Int =
+        database.uploadQueueDao().resumeAuthenticationFailures(clock())
+
     suspend fun isPublishOnlyConflictReplay(draftId: String): Boolean =
         database.publishConflictDao().find(draftId)?.state == com.socialdrive.app.data.local.ConflictState.REPLAY_QUEUED
 

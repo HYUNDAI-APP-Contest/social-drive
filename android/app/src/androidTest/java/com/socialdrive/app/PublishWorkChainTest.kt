@@ -322,6 +322,34 @@ class PublishWorkChainTest {
         assertEquals("PUBLISHED", database.routePrivacyDao().pointsForRecording(draft.recordingId).single().publicationState)
     }
 
+    @Test
+    fun authenticationFailureResumesOnlyAfterSuccessfulLogin() = runTest {
+        val values = ArrayDeque(listOf("recording-auth", "draft-auth", "request-auth"))
+        val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 1_400L })
+        val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
+        val queueRepository = PublishQueueRepository(database, clock = { 1_400L })
+        queueRepository.enqueue(draft.id, MotionState.Parked)
+        database.uploadQueueDao().updateStage(
+            draft.id,
+            LocalState.CREATE,
+            LocalState.FAILED,
+            1,
+            1_401L,
+            RemoteFailureCode.AUTHENTICATION.name,
+            1_401L,
+        )
+        val scheduler = PublishScheduler(WorkManager.getInstance(context), queueRepository, motion)
+
+        scheduler.recoverAfterProcessRestart()
+        assertEquals(LocalState.FAILED, database.uploadQueueDao().find(draft.id)?.status)
+
+        scheduler.resumeAfterAuthentication()
+        assertEquals(LocalState.QUEUED, database.uploadQueueDao().find(draft.id)?.status)
+        val work = WorkManager.getInstance(context)
+            .getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id)).get(5, TimeUnit.SECONDS)
+        assertEquals(3, work.count { !it.state.isFinished })
+    }
+
     private suspend fun awaitUniqueWorkFinished(draftId: String) = withContext(Dispatchers.IO) {
         withTimeout(5_000) {
             while (true) {

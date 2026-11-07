@@ -107,7 +107,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
             cloudAuth.state.collect { auth ->
                 if (auth.phase == CloudAuthPhase.SIGNED_IN) {
                     deleteWorkScheduler.resumeAfterAuthentication()
-                    publishScheduler.recoverAfterProcessRestart()
+                    publishScheduler.resumeAfterAuthentication()
                 }
                 driveFeedRepository.refresh()
             }
