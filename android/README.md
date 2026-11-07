@@ -38,10 +38,15 @@ An offline-first visual foundation for the Hyundai app contest with isolated `de
 Requirements: JDK 17+, Android SDK 35, and an emulator or device. From this directory:
 
 ```bash
-./gradlew testDemoDebugUnitTest
-./gradlew assembleDemoDebug
-./gradlew connectedDemoDebugAndroidTest
+bash scripts/gradle-local.sh testDemoDebugUnitTest
+bash scripts/gradle-local.sh assembleDemoDebug
+bash scripts/gradle-local.sh connectedDemoDebugAndroidTest
 ```
+
+Use the repository launcher consistently for installable debug APKs. It keeps `ANDROID_USER_HOME`
+stable, so repeated builds use the same isolated debug certificate and can update an installed app
+without deleting its local drafts. A direct `./gradlew` build can use the host Android debug
+certificate instead and Android will correctly reject that APK as an incompatible update.
 
 `connectedPleosDebugAndroidTest` can uninstall the target package when it finishes. To prevent
 accidental loss of local drafts, the task refuses to start when `com.socialdrive.app` is already
@@ -68,7 +73,7 @@ bash scripts/gradle-local.sh --offline assembleDemoDebug
 bash scripts/gradle-local.sh --offline assemblePleosDebug
 ```
 
-`assembleDemoDebug` validates the public demo boundary. `assemblePleosDebug` additionally requires the approved Pleos Maven artifacts to already exist in the local Gradle cache when offline; neither command signs, deploys, or accesses cloud credentials.
+`assembleDemoDebug` validates the public demo boundary. `assemblePleosDebug` additionally requires the approved Pleos Maven artifacts to already exist in the local Gradle cache when offline. Debug artifacts use only the isolated local debug certificate; neither command performs release signing, deploys, or accesses cloud credentials.
 
 PLEOS release builds additionally fail closed through `verifyPleosCloudConfiguration`. They require
 the six validated public API/Cognito Gradle properties documented in
