@@ -6,12 +6,12 @@
 
 ## 확인된 실행 스냅샷
 
-아래 결과는 앱 코드 커밋 `89a6f6e`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
+아래 결과는 앱 코드 커밋 `049b133`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
 
 - 대상: `emulator-5554`, Android user 10, PLEOS 가로 화면 `2560×1440`
 - 패키지: `com.socialdrive.app`
 - APK: `android/app/build/outputs/apk/pleos/debug/app-pleos-debug.apk`
-- SHA-256: `b7505bc01d5a337b8f69f0d3cd5d3a1dc7ce4ca2ffcd20b0408756a92e13e125`
+- SHA-256: `23b58cc6e4090578467d1fd86d3f9c2b6dd460cd1934cf196a1179bd466f1832`
 - 설치 결과: `adb install -r` 성공
 - 시작 결과: `com.socialdrive.app/.MainActivity`가 현재 포커스이며 시작 직후 FATAL/ANR 없음
 - 설정 화면: 차량 상태, 차량 내비게이션, 위치 연동, 음성 안내, 음성 인식이 모두 `PLEOS 연결됨`
@@ -54,6 +54,8 @@ Cognito SDK 콜백에는 20초 내부 제한을 유지하되, 더 짧은 상위 
 Cognito access token은 SDK lease 검증뿐 아니라 최종 `BearerToken` 공급자에서도 명시적인 issuer·client ID·token use·발급/만료 정책을 다시 통과해야 한다. 무검증 기본 validator는 제거했으며, 실패한 토큰이 API transport 호출 전에 인증 오류로 차단되는 것은 회귀 테스트로 확인했다. 서명 자체의 신뢰 검증은 API Gateway Cognito authorizer 책임이며 실제 authorizer 통신은 AWS E2E 범위다.
 
 API와 presigned object 요청은 리디렉션·암묵적 연결 재시도를 끄고 2 MiB 응답 상한과 30초 전체 호출 제한을 적용한 동일 `OkHttpClient` 연결 풀을 프로세스 동안 재사용한다. 반복 작업마다 새 소켓 풀을 만들지 않는 것은 양쪽 flavor 단위 테스트로 확인했지만, 실제 API Gateway/S3 연결 재사용 관찰은 AWS E2E 범위다.
+
+서버가 반환한 읽기·업로드 URL은 HTTPS, 허용 호스트, 기본 HTTPS 포트, userinfo·fragment 부재뿐 아니라 8 KiB 길이 상한과 비어 있지 않은 object 경로를 만족해야 한다. 공백·역슬래시·과대 URL과 호스트 루트 URL은 transport 전에 계약 오류로 거부하며 경계 사례는 코어 테스트로 확인했다.
 
 Worker 메모리의 업로드 payload는 upload session 요청 직전에 SHA-256 hex와 base64를 다시 계산해 동결된 명령 메타데이터와 모두 비교한다. payload가 생성 뒤 변경되면 `/uploads` API와 object transport를 호출하지 않고 영구 거부한다. 변조와 무통신 경계는 코어 회귀 테스트로 확인했다.
 
