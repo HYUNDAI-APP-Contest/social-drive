@@ -234,6 +234,12 @@ class CloudDriveClient(
             auth.freshBearerToken()
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (_: AuthSessionTemporarilyUnavailableException) {
+            throw CloudDriveException(
+                CloudFailureKind.RETRYABLE,
+                "AUTH_SESSION_TEMPORARILY_UNAVAILABLE",
+                retryable = true,
+            )
         } catch (_: Throwable) {
             throw CloudDriveException(CloudFailureKind.AUTHENTICATION, "AUTH_SESSION_UNAVAILABLE", retryable = false)
         }

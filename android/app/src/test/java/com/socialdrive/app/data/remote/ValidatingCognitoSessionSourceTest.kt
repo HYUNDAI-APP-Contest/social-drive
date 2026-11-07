@@ -44,6 +44,26 @@ class ValidatingCognitoSessionSourceTest {
     }
 
     @Test
+    fun `일시적인 토큰 갱신 장애는 유효한 세션을 무효화하지 않는다`() = kotlinx.coroutines.test.runTest {
+        val states = mutableListOf<Boolean>()
+        var invalidated = false
+        val source = ValidatingCognitoSessionSource(
+            delegate = object : CognitoSessionSource {
+                override suspend fun freshAccessToken(): String =
+                    throw AuthSessionTemporarilyUnavailableException()
+
+                override fun onSessionInvalidated() { invalidated = true }
+            },
+            validator = AccessTokenValidator { true },
+            onValidation = states::add,
+        )
+
+        assertFailsWith<AuthSessionTemporarilyUnavailableException> { source.freshAccessToken() }
+        assertEquals(emptyList(), states)
+        assertEquals(false, invalidated)
+    }
+
+    @Test
     fun `거부된 토큰은 SDK 인증 상태도 재인증 필요로 무효화한다`() = kotlinx.coroutines.test.runTest {
         var invalidated = false
         val source = ValidatingCognitoSessionSource(

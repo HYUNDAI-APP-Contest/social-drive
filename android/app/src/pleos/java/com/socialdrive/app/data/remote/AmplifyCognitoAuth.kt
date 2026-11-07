@@ -168,7 +168,11 @@ internal class AmplifyCognitoAuth(
     override suspend fun freshAccessToken(): String {
         operationGate.enter()
         try {
-            val session = withCognitoOperationTimeout { fetchCognitoSession() }
+            val session = try {
+                withCognitoOperationTimeout { fetchCognitoSession() }
+            } catch (timeout: CognitoOperationTimeoutException) {
+                throw AuthSessionTemporarilyUnavailableException(timeout)
+            }
             val token = session.takeIf { it.isSignedIn }
                 ?.userPoolTokensResult?.value?.accessToken
             return token?.takeIf(String::isNotBlank)

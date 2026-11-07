@@ -16,6 +16,23 @@ import com.socialdrive.app.domain.DeleteFailureCode
 
 class CloudDriveClientTest {
     @Test
+    fun `토큰 갱신 시간 초과는 로그인 해제가 아닌 재시도 가능한 장애다`() = runBlocking {
+        val api = FakeTransport()
+        val client = CloudDriveClient(
+            config = CloudDriveClientConfig(URI("https://api.example.test/dev"), setOf("upload.example.test")),
+            auth = AuthSessionProvider { throw AuthSessionTemporarilyUnavailableException() },
+            apiTransport = api,
+            objectTransport = FakeObjectTransport(),
+        )
+
+        val failure = assertFailsWith<CloudDriveException> { client.feed() }
+        assertEquals(CloudFailureKind.RETRYABLE, failure.kind)
+        assertEquals("AUTH_SESSION_TEMPORARILY_UNAVAILABLE", failure.code)
+        assertTrue(failure.retryable)
+        assertTrue(api.requests.isEmpty())
+    }
+
+    @Test
     fun `SigV4 contract rejects malformed scope expiry signature and unsigned required headers`() = runBlocking {
         val mutations = listOf<(String) -> String>(
             { it.replace("AWS4-HMAC-SHA256", "AWS4-ECDSA-P256-SHA256") },

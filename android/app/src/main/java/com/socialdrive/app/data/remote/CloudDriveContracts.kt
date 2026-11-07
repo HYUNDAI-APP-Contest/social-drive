@@ -58,6 +58,10 @@ fun interface AuthSessionProvider {
     fun onAuthenticationRejected() = Unit
 }
 
+/** A network/service interruption while refreshing an otherwise installed authentication session. */
+class AuthSessionTemporarilyUnavailableException(cause: Throwable? = null) :
+    RuntimeException("Authentication session is temporarily unavailable", cause)
+
 /** SDK boundary for a future configured Cognito client. No Cognito SDK or client secret is embedded here. */
 fun interface CognitoSessionSource {
     suspend fun freshAccessToken(): String
@@ -76,6 +80,10 @@ internal class ValidatingCognitoSessionSource(
             delegate.freshAccessToken()
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (temporary: AuthSessionTemporarilyUnavailableException) {
+            // Keep the installed lease: a later worker attempt may refresh it after connectivity returns.
+            requireCurrentSession()
+            throw temporary
         } catch (error: Throwable) {
             // A replaced/logged-out lease must not invalidate the newly installed SDK session.
             requireCurrentSession()
