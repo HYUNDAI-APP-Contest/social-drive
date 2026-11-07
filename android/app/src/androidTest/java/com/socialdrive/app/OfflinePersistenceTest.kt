@@ -16,6 +16,7 @@ import com.socialdrive.app.domain.PendingRouteUploadCanceller
 import com.socialdrive.app.domain.PublishedDeleteDecision
 import com.socialdrive.app.domain.RouteConsentState
 import com.socialdrive.app.domain.FutureRouteCollector
+import com.socialdrive.app.domain.CollectedRoute
 import com.socialdrive.app.domain.NormalizedRoutePoint
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -65,7 +66,7 @@ class OfflinePersistenceTest {
         val collector = object : FutureRouteCollector {
             override suspend fun start() = Unit
             override suspend fun beginRecording() { beginCount++ }
-            override suspend fun snapshotAndClear() = emptyList<NormalizedRoutePoint>()
+            override suspend fun snapshotAndClear() = CollectedRoute.Empty
             override suspend fun stopAndAwait() = Unit
         }
         val first = RecordingRepository(database, IdFactory { "recording-restart" }, routeCollector = collector)
@@ -110,10 +111,13 @@ class OfflinePersistenceTest {
             var began = false
             override suspend fun start() = Unit
             override suspend fun beginRecording() { began = true }
-            override suspend fun snapshotAndClear() = listOf(
-                NormalizedRoutePoint(0, 0f, 1f),
-                NormalizedRoutePoint(1, .5f, .4f),
-                NormalizedRoutePoint(2, 1f, 0f),
+            override suspend fun snapshotAndClear() = CollectedRoute(
+                points = listOf(
+                    NormalizedRoutePoint(0, 0f, 1f),
+                    NormalizedRoutePoint(1, .5f, .4f),
+                    NormalizedRoutePoint(2, 1f, 0f),
+                ),
+                distanceMeters = 12_345,
             )
             override suspend fun stopAndAwait() = Unit
         }
@@ -127,6 +131,8 @@ class OfflinePersistenceTest {
         val recording = recordings.start()
         val draft = requireNotNull(recordings.finishAsDraft(recording.id))
         val stored = database.routePrivacyDao().pointsForRecording(draft.recordingId)
+        assertEquals(12_345, draft.distanceMeters)
+        assertEquals(12_345, database.recordingDao().find(recording.id)?.distanceMeters)
 
         assertTrue(collector.began)
         assertEquals(listOf(0f, .5f, 1f), draft.routePoints.map { it.horizontal })

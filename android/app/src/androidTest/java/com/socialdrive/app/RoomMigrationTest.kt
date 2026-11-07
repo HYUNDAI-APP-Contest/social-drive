@@ -230,11 +230,36 @@ class RoomMigrationTest {
         }
     }
 
+    @Test
+    fun migrateSixToSevenAddsPrivacySafeAggregateDistance() {
+        helper.createDatabase(DISTANCE_DATABASE, 6).apply {
+            execSQL("INSERT INTO recording_sessions VALUES ('recording-distance','DRAFTED',100,200,3)")
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            DISTANCE_DATABASE,
+            7,
+            true,
+            RoomMigrations.MIGRATION_6_7,
+        ).use { database ->
+            database.query(
+                "SELECT state, highlightCount, distanceMeters FROM recording_sessions WHERE id='recording-distance'",
+            ).use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("DRAFTED", cursor.getString(0))
+                assertEquals(3, cursor.getInt(1))
+                assertEquals(0, cursor.getInt(2))
+            }
+        }
+    }
+
     companion object {
         private const val DATABASE = "migration-test"
         private const val FAILED_DATABASE = "migration-failed-repair-test"
         private const val PRIVACY_DATABASE = "migration-route-privacy-test"
         private const val CONFLICT_DATABASE = "migration-conflict-review-test"
         private const val DELETE_DATABASE = "migration-delete-lifecycle-test"
+        private const val DISTANCE_DATABASE = "migration-distance-test"
     }
 }

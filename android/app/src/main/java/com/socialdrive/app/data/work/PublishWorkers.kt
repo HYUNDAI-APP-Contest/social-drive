@@ -108,6 +108,7 @@ abstract class StagedPublishWorker(
             state = state,
             highlightCount = recording?.highlightCount?.coerceIn(0, 100) ?: 0,
             durationSeconds = durationSeconds,
+            distanceMeters = recording?.distanceMeters?.coerceIn(0, 2_000_000) ?: 0,
             createdAtEpochMs = createdAtEpochMs,
             routePoints = dependencies.database.routePrivacyDao().pointsForRecording(recordingId).map { point ->
                 NormalizedRoutePoint(point.sequence, point.horizontal, point.vertical)

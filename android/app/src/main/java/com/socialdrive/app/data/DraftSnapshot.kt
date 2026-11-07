@@ -20,6 +20,7 @@ data class DraftSnapshot(
     val state: String,
     val highlightCount: Int = 0,
     val durationSeconds: Int = 0,
+    val distanceMeters: Int = 0,
     val storyId: String = "demo-coast",
     val routePoints: List<NormalizedRoutePoint> = emptyList(),
     val createdAtEpochMs: Long = 0L,

@@ -85,7 +85,7 @@ class RoutePrivacyRepository(
 private object UnavailableRouteCollector : FutureRouteCollector {
     override suspend fun start() = Unit
     override suspend fun beginRecording() = Unit
-    override suspend fun snapshotAndClear() = emptyList<com.socialdrive.app.domain.NormalizedRoutePoint>()
+    override suspend fun snapshotAndClear() = com.socialdrive.app.domain.CollectedRoute.Empty
     override suspend fun stopAndAwait() = Unit
 }
 

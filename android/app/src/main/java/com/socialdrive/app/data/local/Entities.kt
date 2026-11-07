@@ -12,6 +12,7 @@ data class RecordingEntity(
     val startedAtEpochMs: Long,
     val endedAtEpochMs: Long?,
     val highlightCount: Int,
+    @ColumnInfo(defaultValue = "0") val distanceMeters: Int = 0,
 )
 
 @Entity(

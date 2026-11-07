@@ -157,7 +157,7 @@ internal fun recordingRouteTitle(source: com.socialdrive.app.domain.RouteSource)
     else "데모 경로를 기록하고 있어요"
 
 internal fun recordingRoutePrivacyLabel(source: com.socialdrive.app.domain.RouteSource): String =
-    if (source == com.socialdrive.app.domain.RouteSource.LiveAvailable) "원본 위치는 저장하지 않고 경로 형태만 보존합니다."
+    if (source == com.socialdrive.app.domain.RouteSource.LiveAvailable) "원본 위치는 저장하지 않고 경로 형태와 총 거리만 보존합니다."
     else "정밀 위치는 수집하지 않습니다."
 
 @Composable

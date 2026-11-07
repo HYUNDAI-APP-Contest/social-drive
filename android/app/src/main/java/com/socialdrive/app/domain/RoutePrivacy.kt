@@ -2,6 +2,11 @@ package com.socialdrive.app.domain
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 enum class LiveUnavailableReason { SDK_COMING_SOON, PERMISSION_DENIED, CAPABILITY_MISSING }
 
@@ -58,7 +63,59 @@ data class NormalizedRoutePoint(
 }
 
 data class RawRouteCoordinate(val longitude: Double, val latitude: Double) {
-    init { require(longitude.isFinite() && latitude.isFinite()) }
+    init {
+        require(longitude.isFinite() && longitude in -180.0..180.0)
+        require(latitude.isFinite() && latitude in -90.0..90.0)
+    }
+}
+
+data class CollectedRoute(
+    val points: List<NormalizedRoutePoint>,
+    val distanceMeters: Int,
+) {
+    init { require(distanceMeters in 0..2_000_000) }
+
+    companion object {
+        val Empty = CollectedRoute(emptyList(), 0)
+    }
+}
+
+object RouteDistance {
+    fun plausibleTrack(points: List<RawRouteCoordinate>): List<RawRouteCoordinate> {
+        if (points.size < 2) return points
+        val tracks = mutableListOf<MutableList<RawRouteCoordinate>>()
+        points.forEach { point ->
+            val current = tracks.lastOrNull()
+            if (current == null || segmentMeters(current.last(), point) > MAX_PLAUSIBLE_SEGMENT_METERS) {
+                tracks += mutableListOf(point)
+            } else {
+                current += point
+            }
+        }
+        return tracks.withIndex()
+            .maxWithOrNull(compareBy<IndexedValue<MutableList<RawRouteCoordinate>>> { it.value.size }.thenBy { it.index })
+            ?.value
+            .orEmpty()
+    }
+
+    fun meters(points: List<RawRouteCoordinate>): Int {
+        if (points.size < 2) return 0
+        val total = points.zipWithNext().sumOf { (start, end) -> segmentMeters(start, end) }
+        return total.coerceIn(0.0, 2_000_000.0).roundToInt()
+    }
+
+    private fun segmentMeters(start: RawRouteCoordinate, end: RawRouteCoordinate): Double {
+        val latitudeDelta = Math.toRadians(end.latitude - start.latitude)
+        val longitudeDelta = Math.toRadians(end.longitude - start.longitude)
+        val startLatitude = Math.toRadians(start.latitude)
+        val endLatitude = Math.toRadians(end.latitude)
+        val haversine = sin(latitudeDelta / 2).let { it * it } +
+            cos(startLatitude) * cos(endLatitude) * sin(longitudeDelta / 2).let { it * it }
+        return 2 * EARTH_RADIUS_METERS * atan2(sqrt(haversine), sqrt((1 - haversine).coerceAtLeast(0.0)))
+    }
+
+    private const val EARTH_RADIUS_METERS = 6_371_008.8
+    private const val MAX_PLAUSIBLE_SEGMENT_METERS = 5_000.0
 }
 
 object RouteNormalizer {
@@ -85,7 +142,7 @@ object RouteNormalizer {
 interface FutureRouteCollector {
     suspend fun start()
     suspend fun beginRecording()
-    suspend fun snapshotAndClear(): List<NormalizedRoutePoint>
+    suspend fun snapshotAndClear(): CollectedRoute
     suspend fun stopAndAwait()
 }
 

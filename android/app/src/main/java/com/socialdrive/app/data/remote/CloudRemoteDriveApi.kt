@@ -16,7 +16,7 @@ class CloudRemoteDriveApi(
                 clientRequestId = clientRequestId,
                 title = draft.title,
                 summary = draft.description,
-                distanceMeters = 0,
+                distanceMeters = draft.distanceMeters.coerceIn(0, 2_000_000),
                 durationSeconds = draft.durationSeconds.coerceIn(0, 259_200),
                 highlightCount = draft.highlightCount.coerceIn(0, 100),
                 consentPolicyVersion = consentPolicyVersion,

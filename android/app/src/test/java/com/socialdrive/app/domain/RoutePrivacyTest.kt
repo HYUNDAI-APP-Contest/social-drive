@@ -67,6 +67,40 @@ class RoutePrivacyTest {
     }
 
     @Test
+    fun `원시 위치는 저장하지 않고 실제 이동 거리만 미터로 집계한다`() {
+        val distance = RouteDistance.meters(
+            listOf(
+                RawRouteCoordinate(126.9780, 37.5665),
+                RawRouteCoordinate(126.9790, 37.5665),
+            ),
+        )
+
+        assertEquals(true, distance in 87..90)
+        assertEquals(0, RouteDistance.meters(emptyList()))
+    }
+
+    @Test
+    fun `위경도 범위를 벗어난 원시 위치는 거부한다`() {
+        assertFailsWith<IllegalArgumentException> { RawRouteCoordinate(181.0, 37.0) }
+        assertFailsWith<IllegalArgumentException> { RawRouteCoordinate(127.0, 91.0) }
+    }
+
+    @Test
+    fun `오래된 첫 위치의 비현실적인 점프는 실제 연속 경로에서 제외한다`() {
+        val stale = RawRouteCoordinate(127.20, 37.40)
+        val current = listOf(
+            RawRouteCoordinate(126.9780, 37.5665),
+            RawRouteCoordinate(126.9790, 37.5665),
+            RawRouteCoordinate(126.9800, 37.5665),
+        )
+
+        val track = RouteDistance.plausibleTrack(listOf(stale) + current)
+
+        assertEquals(current, track)
+        assertEquals(true, RouteDistance.meters(track) in 175..178)
+    }
+
+    @Test
     fun `future fake collector receives zero points before explicit consent`() = runBlocking {
         val harness = Harness()
         harness.collector.offer(NormalizedRoutePoint(0, .2f, .3f))
@@ -171,7 +205,8 @@ class RoutePrivacyTest {
         val points = mutableListOf<NormalizedRoutePoint>()
         override suspend fun start() { active = true; events += "collector:start" }
         override suspend fun beginRecording() { points.clear() }
-        override suspend fun snapshotAndClear(): List<NormalizedRoutePoint> = points.toList().also { points.clear() }
+        override suspend fun snapshotAndClear(): CollectedRoute =
+            CollectedRoute(points.toList().also { points.clear() }, 0)
         override suspend fun stopAndAwait() { active = false; events += "collector:stop" }
         fun offer(point: NormalizedRoutePoint) { if (active) points += point }
     }

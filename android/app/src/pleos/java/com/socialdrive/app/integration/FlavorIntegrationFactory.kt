@@ -25,11 +25,13 @@ import ai.pleos.playground.stt.constant.Mode as SttMode
 import ai.pleos.playground.stt.listener.OnInitializeListener as SttInitializeListener
 import ai.pleos.playground.stt.listener.ResultListener
 import com.socialdrive.app.domain.AuxiliaryCapabilitySource
+import com.socialdrive.app.domain.CollectedRoute
 import com.socialdrive.app.domain.SpeechRecognitionState
 import com.socialdrive.app.domain.FutureRouteCollector
 import com.socialdrive.app.domain.NormalizedRoutePoint
 import com.socialdrive.app.domain.RawRouteCoordinate
 import com.socialdrive.app.domain.RouteNormalizer
+import com.socialdrive.app.domain.RouteDistance
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.IntegrationBundle
@@ -243,7 +245,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         if (shouldRegister) registerLocationCallback()
     }
 
-    override suspend fun snapshotAndClear(): List<NormalizedRoutePoint> {
+    override suspend fun snapshotAndClear(): CollectedRoute {
         val (snapshot, wasCollecting) = synchronized(locationLock) {
             val points = rawLocations.toList()
             rawLocations.clear()
@@ -253,7 +255,11 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             points to active
         }
         if (wasCollecting) runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
-        return RouteNormalizer.normalize(snapshot)
+        val plausibleTrack = RouteDistance.plausibleTrack(snapshot)
+        return CollectedRoute(
+            points = RouteNormalizer.normalize(plausibleTrack),
+            distanceMeters = RouteDistance.meters(plausibleTrack),
+        )
     }
 
     override suspend fun stopAndAwait() {

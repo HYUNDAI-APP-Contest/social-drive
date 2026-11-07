@@ -3,6 +3,7 @@ package com.socialdrive.app.integration
 import android.content.Context
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.CapabilityStatus
+import com.socialdrive.app.domain.CollectedRoute
 import com.socialdrive.app.domain.AuxiliaryCapabilitySource
 import com.socialdrive.app.domain.FutureRouteCollector
 import com.socialdrive.app.domain.NormalizedRoutePoint
@@ -53,7 +54,7 @@ private class DemoAuxiliaryCapabilitySource : AuxiliaryCapabilitySource {
 private object DemoRouteCollector : FutureRouteCollector {
     override suspend fun start() = Unit
     override suspend fun beginRecording() = Unit
-    override suspend fun snapshotAndClear(): List<NormalizedRoutePoint> = emptyList()
+    override suspend fun snapshotAndClear(): CollectedRoute = CollectedRoute.Empty
     override suspend fun stopAndAwait() = Unit
 }
 

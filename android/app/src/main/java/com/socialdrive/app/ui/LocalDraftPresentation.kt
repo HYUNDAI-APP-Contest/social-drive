@@ -8,6 +8,7 @@ import com.socialdrive.app.domain.RouteSource
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 private val localDraftDateFormatter = DateTimeFormatter.ofPattern("M월 d일 HH:mm")
 
@@ -32,12 +33,27 @@ internal fun DraftSnapshot.toLocalDriveSummary(fallback: DriveSummary): DriveSum
         date = localDraftDateLabel(createdAtEpochMs, published),
         title = title,
         summary = description,
-        distance = liveRoute?.let { "${it.size}개 경로점" } ?: "데모 아트워크",
-        duration = "기기에 보존",
+        distance = when {
+            distanceMeters > 0 -> localDistanceLabel(distanceMeters)
+            liveRoute != null -> "${liveRoute.size}개 경로점"
+            else -> "데모 아트워크"
+        },
+        duration = if (durationSeconds > 0) localDurationLabel(durationSeconds) else "기기에 보존",
         highlights = highlightCount,
         route = liveRoute ?: fallback.route,
         moments = emptyList(),
         routeSource = if (liveRoute == null) RouteSource.DemoPreset else RouteSource.LiveAvailable,
         navigationRequest = null,
     )
+}
+
+internal fun localDistanceLabel(distanceMeters: Int): String = when {
+    distanceMeters < 1_000 -> "$distanceMeters m"
+    else -> String.format(Locale.KOREA, "%.1f km", distanceMeters / 1_000.0)
+}
+
+internal fun localDurationLabel(durationSeconds: Int): String = when {
+    durationSeconds < 60 -> "${durationSeconds}초"
+    durationSeconds < 3_600 -> "${durationSeconds / 60}분"
+    else -> "${durationSeconds / 3_600}시간 ${(durationSeconds % 3_600) / 60}분"
 }

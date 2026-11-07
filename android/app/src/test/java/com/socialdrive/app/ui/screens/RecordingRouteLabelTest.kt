@@ -10,7 +10,7 @@ class RecordingRouteLabelTest {
     fun `실시간 경로는 데모나 정밀 위치 미수집으로 표시하지 않는다`() {
         assertEquals("실시간 경로를 안전하게 기록하고 있어요", recordingRouteTitle(RouteSource.LiveAvailable))
         assertEquals(
-            "원본 위치는 저장하지 않고 경로 형태만 보존합니다.",
+            "원본 위치는 저장하지 않고 경로 형태와 총 거리만 보존합니다.",
             recordingRoutePrivacyLabel(RouteSource.LiveAvailable),
         )
         assertEquals(

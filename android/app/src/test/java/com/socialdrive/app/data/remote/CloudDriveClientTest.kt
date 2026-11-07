@@ -92,6 +92,7 @@ class CloudDriveClientTest {
             state = "QUEUED",
             highlightCount = 3,
             durationSeconds = 3_661,
+            distanceMeters = 128_400,
         )
         val adapter = CloudRemoteDriveApi(harness.client, "2026-11-01")
         val assets = draft.assetUploads()
@@ -100,7 +101,7 @@ class CloudDriveClientTest {
         val createBody = JsonCodec.parse(harness.api.requests.last().body!!).objectValue()
         assertEquals(3, createBody.integer("highlightCount"))
         assertEquals(3_661, createBody.integer("durationSeconds"))
-        assertEquals(0, createBody.integer("distanceMeters"))
+        assertEquals(128_400, createBody.integer("distanceMeters"))
 
         harness.api.responses += jsonResponse(200, uploadSessionResponse(assets.map(AssetUploadCommand::testManifest)))
         harness.objects.responses += HttpResponse(200)

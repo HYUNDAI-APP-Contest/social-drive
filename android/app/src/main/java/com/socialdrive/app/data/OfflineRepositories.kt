@@ -77,13 +77,20 @@ class RecordingRepository(
                 recording?.highlightCount ?: 0,
                 database.routePrivacyDao().pointsForRecording(id).map { it.toDomain() },
                 recording.recordedDurationSeconds(),
+                recording?.distanceMeters ?: 0,
             )
         }
-        val normalizedPoints = routeCollector?.snapshotAndClear().orEmpty()
+        val collectedRoute = routeCollector?.snapshotAndClear() ?: com.socialdrive.app.domain.CollectedRoute.Empty
+        val normalizedPoints = collectedRoute.points
         return database.withTransaction {
             val recording = database.recordingDao().find(id) ?: return@withTransaction null
             val now = clock()
-            database.recordingDao().update(recording.copy(state = LocalState.DRAFTED, endedAtEpochMs = now))
+            val finishedRecording = recording.copy(
+                state = LocalState.DRAFTED,
+                endedAtEpochMs = now,
+                distanceMeters = collectedRoute.distanceMeters,
+            )
+            database.recordingDao().update(finishedRecording)
             val draft = DraftEntity(
             id = ids.create(),
             recordingId = recording.id,
@@ -108,7 +115,8 @@ class RecordingRepository(
             draft.toSnapshot(
                 recording.highlightCount,
                 normalizedPoints,
-                recording.copy(endedAtEpochMs = now).recordedDurationSeconds(),
+                finishedRecording.recordedDurationSeconds(),
+                finishedRecording.distanceMeters,
             )
         }
     }
@@ -128,6 +136,7 @@ class DraftRepository(
                 recording?.highlightCount ?: 0,
                 database.routePrivacyDao().pointsForRecording(entity.recordingId).map { it.toDomain() },
                 recording.recordedDurationSeconds(),
+                recording?.distanceMeters ?: 0,
             )
         }
     }
@@ -138,6 +147,7 @@ class DraftRepository(
             recording?.highlightCount ?: 0,
             database.routePrivacyDao().pointsForRecording(entity.recordingId).map { it.toDomain() },
             recording.recordedDurationSeconds(),
+            recording?.distanceMeters ?: 0,
         )
     }
 
@@ -219,6 +229,7 @@ private fun DraftEntity.toSnapshot(
     highlightCount: Int,
     routePoints: List<NormalizedRoutePoint> = emptyList(),
     durationSeconds: Int = 0,
+    distanceMeters: Int = 0,
 ) = DraftSnapshot(
     id = id,
     recordingId = recordingId,
@@ -230,6 +241,7 @@ private fun DraftEntity.toSnapshot(
     state = state,
     highlightCount = highlightCount.coerceIn(0, 100),
     durationSeconds = durationSeconds,
+    distanceMeters = distanceMeters.coerceIn(0, 2_000_000),
     storyId = coverPreset.removePrefix("route-memory-").takeIf { it.startsWith("demo-") } ?: "demo-coast",
     routePoints = routePoints,
     createdAtEpochMs = createdAtEpochMs,
