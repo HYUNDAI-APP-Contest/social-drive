@@ -436,6 +436,8 @@ test("PLEOS TTS and STT permissions fail closed and remain recoverable", () => {
   assert.match(pleos, /callback\.invoke\(text, false\)[\s\S]*finishRecognition\(SpeechRecognitionState\.Failed, session\)/);
   assert.match(pleos, /stt\.addListener\(listener\)[\s\S]*stt\.request\(\)/);
   assert.match(pleos, /recognitionListener\.also \{ recognitionListener = null \}[\s\S]*stt\.removeListener\(it\)/);
+  assert.match(pleos, /override fun stopSpeechRecognition\(\) \{[\s\S]*synchronized\(speechOperationLock\)[\s\S]*stt\.stop\(\)/);
+  assert.match(pleos, /finishRecognitionAndStop[\s\S]*synchronized\(speechOperationLock\)[\s\S]*finishRecognition\(state, expectedSession\)[\s\S]*stt\.stop\(\)/);
   assert.match(pleos, /locationOperationLock[\s\S]*registerLocationCallback\([\s\S]*synchronized\(locationOperationLock\)/);
   assert.match(pleos, /createLocationListener\(\)\.also \{ registeredLocationListener = it \}[\s\S]*registerFusedLocationCallback\(listener\)[\s\S]*registeredLocationListener === listener && locationCollecting && !released[\s\S]*unregisterFusedLocationCallback\(listener\)/);
   assert.match(pleos, /if \(registeredLocationListener === listener && locationCollecting\) rawLocations\.offer\(coordinate\)/);

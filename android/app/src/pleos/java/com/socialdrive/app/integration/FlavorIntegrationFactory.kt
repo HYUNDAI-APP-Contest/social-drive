@@ -120,9 +120,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
                     if (stillFinished) mutableRecognitionState.value = SpeechRecognitionState.Failed
                 }
             } else if (runCatching { callback.invoke(text, false) }.isFailure) {
-                if (finishRecognition(SpeechRecognitionState.Failed, session)) {
-                    runCatching { stt.stop() }
-                }
+                finishRecognitionAndStop(SpeechRecognitionState.Failed, session)
             }
         }
         override fun onUpdatedEpdData(start: Long, end: Long) = Unit
@@ -220,9 +218,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             }
             val timeout = lifecycleScope.launch {
                 delay(SPEECH_RECOGNITION_TIMEOUT_MILLIS)
-                if (finishRecognition(SpeechRecognitionState.NoResult, session)) {
-                    runCatching { stt.stop() }
-                }
+                finishRecognitionAndStop(SpeechRecognitionState.NoResult, session)
             }
             synchronized(recognitionLock) {
                 if (recognitionSession == session && recognitionCallback != null) {
@@ -236,9 +232,12 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     }
 
     override fun stopSpeechRecognition() {
-        val wasActive = synchronized(recognitionLock) { recognitionCallback != null } || mutableRecognitionActive.value
-        if (wasActive) finishRecognition(SpeechRecognitionState.Cancelled) else mutableRecognitionState.value = SpeechRecognitionState.Idle
-        runCatching { stt.stop() }
+        synchronized(speechOperationLock) {
+            val wasActive = synchronized(recognitionLock) { recognitionCallback != null } || mutableRecognitionActive.value
+            if (wasActive) finishRecognition(SpeechRecognitionState.Cancelled)
+            else mutableRecognitionState.value = SpeechRecognitionState.Idle
+            runCatching { stt.stop() }
+        }
     }
 
     override fun resetSpeechRecognitionState() {
@@ -260,6 +259,12 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         mutableRecognitionActive.value = false
         mutableRecognitionState.value = state
         return true
+    }
+
+    private fun finishRecognitionAndStop(state: SpeechRecognitionState, expectedSession: Long) {
+        synchronized(speechOperationLock) {
+            if (finishRecognition(state, expectedSession)) runCatching { stt.stop() }
+        }
     }
 
     override fun refreshLocationPermission() {
