@@ -38,3 +38,23 @@ test("rejects incomplete, multiline, and secret-like stack outputs", () => {
   secret.Stacks[0].Outputs.push({ OutputKey: "ClientSecret", OutputValue: "must-not-exist" });
   assert.throws(() => renderAndroidCloudProperties(secret), /Secret-like/);
 });
+
+test("rejects malformed or internally inconsistent public cloud outputs", () => {
+  for (const [outputKey, outputValue, expected] of [
+    ["ApiUrl", "http://api.example.com/dev", /ApiUrl/],
+    ["ApiUrl", " https://api.example.com/dev", /ApiUrl/],
+    ["UploadHost", "https://uploads.example.com/path", /UploadHost/],
+    ["ConsentPolicyVersion", "policy version", /ConsentPolicyVersion/],
+    ["CloudRegion", "ap-northeast-1", /Cognito/],
+    ["UserPoolId", "ap-northeast-2_too-short", /Cognito/],
+    ["UserPoolClientId", "too-short", /Cognito/],
+  ]) {
+    const invalid = structuredClone(outputs);
+    invalid.Stacks[0].Outputs.find(({ OutputKey }) => OutputKey === outputKey).OutputValue = outputValue;
+    assert.throws(() => renderAndroidCloudProperties(invalid), expected);
+  }
+
+  const duplicate = structuredClone(outputs);
+  duplicate.Stacks[0].Outputs.push({ OutputKey: "ApiUrl", OutputValue: "https://other.example.com" });
+  assert.throws(() => renderAndroidCloudProperties(duplicate), /Duplicate/);
+});

@@ -10,6 +10,50 @@ const mappings = Object.freeze([
   ["UserPoolClientId", "socialDrive.cloud.cognitoClientId"],
 ]);
 
+const regionPattern = /^[a-z]{2}(?:-gov)?-[a-z]+-\d$/;
+
+function isValidCloudHost(value) {
+  if (typeof value !== "string" || value.length < 4 || value.length > 253 ||
+      value.startsWith(".") || value.endsWith(".")) return false;
+  const labels = value.split(".");
+  if (labels.length < 2 || !/[a-z]/.test(labels.at(-1))) return false;
+  return labels.every((label) => label.length >= 1 && label.length <= 63 &&
+    /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label));
+}
+
+function validatePublicConfiguration(values) {
+  const apiValue = values.get("ApiUrl");
+  if (apiValue !== apiValue.trim() || apiValue.includes("\\")) {
+    throw new Error("Invalid public output: ApiUrl");
+  }
+  let api;
+  try {
+    api = new URL(apiValue);
+  } catch {
+    throw new Error("Invalid public output: ApiUrl");
+  }
+  if (api.protocol !== "https:" || api.username || api.password || api.search || api.hash ||
+      (api.port && api.port !== "443") || !isValidCloudHost(api.hostname.toLowerCase())) {
+    throw new Error("Invalid public output: ApiUrl");
+  }
+
+  const uploadHosts = values.get("UploadHost").split(",").map((value) => value.trim()).filter(Boolean);
+  if (uploadHosts.length === 0 || uploadHosts.some((host) => host !== host.toLowerCase() || !isValidCloudHost(host))) {
+    throw new Error("Invalid public output: UploadHost");
+  }
+  if (!/^[A-Za-z0-9._-]{1,32}$/.test(values.get("ConsentPolicyVersion"))) {
+    throw new Error("Invalid public output: ConsentPolicyVersion");
+  }
+
+  const region = values.get("CloudRegion").trim().toLowerCase();
+  const pool = values.get("UserPoolId").trim();
+  const client = values.get("UserPoolClientId").trim().toLowerCase();
+  const poolMatch = /^([a-z]{2}(?:-gov)?-[a-z]+-\d)_[A-Za-z0-9]{9}$/.exec(pool);
+  if (!regionPattern.test(region) || poolMatch?.[1] !== region || !/^[a-z0-9]{26}$/.test(client)) {
+    throw new Error("Invalid public Cognito outputs");
+  }
+}
+
 export function renderAndroidCloudProperties(document) {
   const stacks = document?.Stacks;
   if (!Array.isArray(stacks) || stacks.length !== 1) throw new Error("Expected exactly one CloudFormation stack");
@@ -18,14 +62,18 @@ export function renderAndroidCloudProperties(document) {
   if (outputs.some(({ OutputKey }) => /secret|password|credential|token/i.test(String(OutputKey)))) {
     throw new Error("Secret-like CloudFormation output is not allowed");
   }
+  const outputKeys = outputs.map(({ OutputKey }) => OutputKey);
+  if (new Set(outputKeys).size !== outputKeys.length) throw new Error("Duplicate CloudFormation output key");
   const values = new Map(outputs.map(({ OutputKey, OutputValue }) => [OutputKey, OutputValue]));
-  return mappings.map(([outputKey, property]) => {
+  const rendered = mappings.map(([outputKey, property]) => {
     const value = values.get(outputKey);
     if (typeof value !== "string" || value.length === 0 || value.length > 2048 || /[\r\n\0]/.test(value)) {
       throw new Error(`Missing or invalid non-secret output: ${outputKey}`);
     }
     return `${property}=${value}`;
-  }).join("\n") + "\n";
+  });
+  validatePublicConfiguration(values);
+  return rendered.join("\n") + "\n";
 }
 
 function main(argv) {
