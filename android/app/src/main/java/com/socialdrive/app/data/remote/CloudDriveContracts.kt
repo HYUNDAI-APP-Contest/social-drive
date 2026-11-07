@@ -87,6 +87,17 @@ fun interface AccessTokenValidator {
     fun isValid(token: String): Boolean
 }
 
+internal suspend fun validateCognitoSession(
+    source: CognitoSessionSource,
+    validator: AccessTokenValidator,
+): Boolean = try {
+    validator.isValid(source.freshAccessToken())
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (_: Throwable) {
+    false
+}
+
 class InMemoryCognitoAuthSessionProvider(
     private val source: CognitoSessionSource,
     private val validator: AccessTokenValidator = AccessTokenValidator { true },

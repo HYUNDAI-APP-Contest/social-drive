@@ -46,4 +46,25 @@ class ValidatingCognitoSessionSourceTest {
         assertFailsWith<CancellationException> { source.freshAccessToken() }
         assertEquals(emptyList(), states)
     }
+
+    @Test
+    fun `최초 세션 검증도 코루틴 취소를 삼키지 않는다`() = kotlinx.coroutines.test.runTest {
+        val cancelled = CognitoSessionSource { throw CancellationException("login closed") }
+
+        assertFailsWith<CancellationException> {
+            validateCognitoSession(cancelled, AccessTokenValidator { true })
+        }
+    }
+
+    @Test
+    fun `최초 세션 검증은 토큰 오류와 공급자 오류를 안전하게 거부한다`() = kotlinx.coroutines.test.runTest {
+        assertEquals(
+            false,
+            validateCognitoSession(CognitoSessionSource { "invalid" }, AccessTokenValidator { false }),
+        )
+        assertEquals(
+            false,
+            validateCognitoSession(CognitoSessionSource { error("signed out") }, AccessTokenValidator { true }),
+        )
+    }
 }

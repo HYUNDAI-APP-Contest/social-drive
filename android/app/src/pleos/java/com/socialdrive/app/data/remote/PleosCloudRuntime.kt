@@ -39,9 +39,7 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
             mutableStatus.value = configurationStatus()
             return@withLock false
         }
-        val valid = runCatching {
-            CognitoAccessTokenPolicy(configured.cognito).isValid(source.freshAccessToken())
-        }.getOrDefault(false)
+        val valid = validateCognitoSession(source, CognitoAccessTokenPolicy(configured.cognito))
         sessionSource = source.takeIf { valid }
         mutableStatus.value = if (valid) {
             signedInStatus()
