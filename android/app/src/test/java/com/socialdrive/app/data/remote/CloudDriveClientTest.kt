@@ -442,6 +442,29 @@ class CloudDriveClientTest {
     }
 
     @Test
+    fun `과대하거나 손상된 401 본문도 Cognito 세션 무효화를 우회하지 못한다`() = runBlocking {
+        var invalidated = false
+        val session = object : CognitoSessionSource {
+            override suspend fun freshAccessToken() = "valid-looking-token"
+            override fun onSessionInvalidated() { invalidated = true }
+        }
+        val api = FakeTransport().also {
+            it.responses += HttpResponse(401, body = ByteArray(2 * 1024 * 1024 + 1))
+        }
+        val client = CloudDriveClient(
+            config = CloudDriveClientConfig(URI("https://api.example.test/dev"), setOf("upload.example.test")),
+            auth = InMemoryCognitoAuthSessionProvider(session),
+            apiTransport = api,
+            objectTransport = FakeObjectTransport(),
+        )
+
+        val failure = assertFailsWith<CloudDriveException> { client.feed() }
+
+        assertEquals("RESPONSE_TOO_LARGE", failure.code)
+        assertTrue(invalidated)
+    }
+
+    @Test
     fun `동의 갱신 요구는 작업 대기열까지 전용 실패로 전달한다`() = runBlocking {
         val harness = Harness()
         harness.api.responses += errorResponse(422, "CONSENT_RENEWAL_REQUIRED", retryable = false)
