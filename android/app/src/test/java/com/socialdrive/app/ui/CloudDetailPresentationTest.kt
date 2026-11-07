@@ -22,4 +22,20 @@ class CloudDetailPresentationTest {
             selectStoryBase(summary.id, detailed.copy(id = "cloud-other"), null, summary, fallback).route,
         )
     }
+
+    @Test
+    fun `only latest request generation may update the selected cloud detail`() {
+        assertEquals(
+            true,
+            ownsCloudDetailRequest(3, 3, "cloud-drive-1", "cloud-drive-1"),
+        )
+        assertEquals(
+            false,
+            ownsCloudDetailRequest(2, 3, "cloud-drive-1", "cloud-drive-1"),
+        )
+        assertEquals(
+            false,
+            ownsCloudDetailRequest(3, 3, "cloud-drive-1", "cloud-drive-2"),
+        )
+    }
 }

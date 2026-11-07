@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -68,6 +69,13 @@ internal fun selectStoryBase(
     ?: repositoryDrive?.takeIf { it.id == selectedId }
     ?: fallback
 
+internal fun ownsCloudDetailRequest(
+    requestGeneration: Int,
+    currentGeneration: Int,
+    requestedId: String,
+    selectedId: String,
+): Boolean = requestGeneration == currentGeneration && requestedId == selectedId
+
 @Composable
 fun SocialDriveApp(
     repository: FakeDriveRepository = remember { FakeDriveRepository() },
@@ -106,6 +114,7 @@ fun SocialDriveApp(
     var ephemeralCloudDetail by remember { mutableStateOf<DriveSummary?>(null) }
     var cloudDetailLoading by remember { mutableStateOf(false) }
     var cloudDetailMessage by remember { mutableStateOf<String?>(null) }
+    var cloudDetailRequestGeneration by remember { mutableIntStateOf(0) }
     var demoUploadState by rememberSaveable { mutableStateOf<UploadState?>(null) }
     var stopConfirmationRequested by rememberSaveable { mutableStateOf(false) }
     var privacyMessage by rememberSaveable { mutableStateOf<String?>(null) }
@@ -195,11 +204,19 @@ fun SocialDriveApp(
 
     fun requestCloudDetail(id: String) {
         if (!id.startsWith("cloud-")) return
+        cloudDetailRequestGeneration += 1
+        val requestGeneration = cloudDetailRequestGeneration
         cloudDetailLoading = true
         cloudDetailMessage = null
         scope.launch {
             val detailed = offlineViewModel.loadDriveDetail(id)
-            if (memoryStory.driveId != id) return@launch
+            if (!ownsCloudDetailRequest(
+                    requestGeneration = requestGeneration,
+                    currentGeneration = cloudDetailRequestGeneration,
+                    requestedId = id,
+                    selectedId = memoryStory.driveId,
+                )
+            ) return@launch
             cloudDetailLoading = false
             if (detailed == null) {
                 cloudDetailMessage = "최신 상세 정보를 불러오지 못했어요. 저장된 요약을 표시합니다."
@@ -299,6 +316,7 @@ fun SocialDriveApp(
                         onDetail = { id ->
                             homeDrives.firstOrNull { it.id == id }?.let { drive ->
                                 ephemeralCloudDetail = null
+                                cloudDetailRequestGeneration += 1
                                 cloudDetailLoading = false
                                 cloudDetailMessage = null
                                 if (id.startsWith("local-")) {
