@@ -53,6 +53,14 @@ import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.ui.theme.LocalRouteMemoryColors
+import com.socialdrive.app.ui.theme.MemoryArtworkTopScrim
+import com.socialdrive.app.ui.theme.MemoryArtworkMiddleScrim
+import com.socialdrive.app.ui.theme.MemoryArtworkBottomScrim
+import com.socialdrive.app.ui.theme.MemoryCardMiddleScrim
+import com.socialdrive.app.ui.theme.MemoryCardBottomScrim
+import com.socialdrive.app.ui.theme.MemoryCardDate
+import com.socialdrive.app.ui.theme.MemoryCardSummary
+import com.socialdrive.app.ui.theme.MemoryCardMetric
 
 enum class MemoryPalette { Coast, Mountain, City }
 
@@ -101,7 +109,7 @@ fun RouteMemoryArtwork(
                 .fillMaxSize()
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0x24000B18), Color(0x52000B18), Color(0xB8000812)),
+                        listOf(MemoryArtworkTopScrim, MemoryArtworkMiddleScrim, MemoryArtworkBottomScrim),
                     ),
                 ),
         )
@@ -257,14 +265,14 @@ fun DriveSummaryCard(
                         Brush.verticalGradient(
                             listOf(
                                 Color.Transparent,
-                                Color(0xD9000812),
-                                Color(0xF5000812),
+                                MemoryCardMiddleScrim,
+                                MemoryCardBottomScrim,
                             ),
                         ),
                     )
                     .padding(horizontal = 24.dp, vertical = 22.dp),
             ) {
-                Text(drive.date, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB9C8DB))
+                Text(drive.date, style = MaterialTheme.typography.bodyMedium, color = MemoryCardDate)
                 Text(
                     drive.title,
                     style = if (featured) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,
@@ -272,7 +280,7 @@ fun DriveSummaryCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(drive.summary, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFD5E0EC), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(drive.summary, style = MaterialTheme.typography.bodyMedium, color = MemoryCardSummary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(12.dp))
                 if (largeText) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -295,7 +303,7 @@ fun DriveSummaryCard(
 private fun Metric(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.tertiary)
-        Text(text, style = MaterialTheme.typography.labelLarge, color = Color(0xFFE8F0F8))
+        Text(text, style = MaterialTheme.typography.labelLarge, color = MemoryCardMetric)
     }
 }
 

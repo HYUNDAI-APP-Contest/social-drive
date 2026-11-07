@@ -206,7 +206,7 @@ test("recording stop is confirmed and non-parked drafts cannot auto-publish", ()
   assert.match(app, /BackHandler[\s\S]*destination == AppDestination\.Recording\) stopConfirmationRequested = true/);
   assert.match(app, /onRequestStop = \{ stopConfirmationRequested = true \}/);
   assert.match(app, /onConfirm = ::completeRecording/);
-  assert.match(app, /memoryStory = memoryStory\.finishDraft\(draft\.highlightCount\)/);
+  assert.match(app, /memoryStory = MemoryStoryPresentation\.browsing\(draft\.toLocalDriveSummary\(fallback\)\)[\s\S]*\.finishDraft\(draft\.highlightCount\)/);
   assert.match(app, /if \(motion == MotionState\.Parked\)[\s\S]*AppDestination\.Publish[\s\S]*초안으로 안전하게 보존/);
 });
 
@@ -248,7 +248,7 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.match(contract, /BackHandler\(destination != AppDestination\.Home\)[\s\S]*destination == AppDestination\.Recording\) stopConfirmationRequested = true/);
   assert.match(ui, /host\.setContent \{ NavigationContractContent\(\) \}[\s\S]*compose\.waitForIdle\(\)/);
   assert.doesNotMatch(ui, /(?:Thread|SystemClock)\.sleep|waitUntil|@Ignore/);
-  assert.match(app, /onDetail = \{ id ->[\s\S]*memoryStory = memoryStory\.select\(it\)[\s\S]*navigate\(AppDestination\.Detail\)/);
+  assert.match(app, /onDetail = \{ id ->[\s\S]*memoryStory = memoryStory\.select\(drive\)[\s\S]*navigate\(AppDestination\.Detail\)/);
   assert.match(app, /onRecord = \{[\s\S]*?navigate\(AppDestination\.Recording\)/);
   assert.match(app, /AppDestination\.Detail -> DetailScreen\([\s\S]*?onPublish = \{ navigate\(AppDestination\.Publish\) \}/);
   assert.match(app, /BackHandler\(destination != AppDestination\.Home\)[\s\S]*destination == AppDestination\.Recording\) stopConfirmationRequested = true/);
@@ -464,7 +464,7 @@ test("Kotlin controller tests cover callback order timeout release reinitialize 
   assert.equal(fs.existsSync(path.join(root, relative)), true);
   const suite = read(relative);
   for (const marker of [
-    "route started then completed", "double callbacks", "timeout", "late callback",
+    "route started is successful terminal evidence", "double callbacks", "timeout", "late callback",
     "release", "old initialize callback", "invocation exception", "new lifecycle can recover",
   ]) assert.ok(suite.includes(marker), marker);
   assert.match(suite, /controller\.routingCompleted\(old\)[\s\S]*ControllerUpdate\.Ignored/);
@@ -544,7 +544,8 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   assert.match(demoFake, /class FakeRemoteDriveApi/);
   assert.doesNotMatch(remote, /class FakeRemoteDriveApi/);
   assert.doesNotMatch(actualFactory, /FakeRemoteDriveApi/);
-  assert.match(actualFactory, /UnavailableRemoteDriveApi/);
+  assert.match(actualFactory, /SessionAwareRemoteDriveApi/);
+  assert.match(remote, /current\(\) \?: UnavailableRemoteDriveApi\(\)/);
   assert.doesNotMatch(entities, /bearer|token|presigned|uploadUrl|authorization/i);
   assert.doesNotMatch(client + contracts + adapter, /android\.util\.Log|println\(|printStackTrace/);
   assert.match(readme, /highlightCount = 0/);
@@ -609,14 +610,13 @@ test("integration UI is explicit about actual demo and unavailable features", ()
   for (const marker of ["IntegrationSource.Actual", "IntegrationSource.Demo", "IntegrationSource.Unavailable"]) {
     assert.ok(components.includes(marker), marker);
   }
-  for (const marker of ["위치 연동", "음성 안내·인식", "차량 제어", "준비 중 · 사용 불가", "Icons.Rounded.Schedule"]) {
+  for (const marker of ["위치 연동", "음성 안내", "음성 인식", "차량 제어", "안전 정책 · 읽기 전용"]) {
     assert.ok(settings.includes(marker), marker);
   }
   assert.ok(!settings.includes("Icons.Rounded.CheckCircle"), "unavailable rows must not use a success icon");
   assert.match(components, /"데모 \$contextLabel"/);
   assert.match(home, /"차량 상태"/);
-  assert.match(settings, /실시간 경로 SDK 준비 중/);
-  assert.match(settings, /향후 제공 예정/);
+  assert.match(settings, /IntegrationRow\("AWS 클라우드"/);
   assert.doesNotMatch(settings, /Coming Soon/);
   assert.doesNotMatch(settings, /차량 상태 시뮬레이션/);
   assert.doesNotMatch(contentState, /progress\s*=/, "loading must not invent a determinate percentage");
@@ -674,19 +674,15 @@ test("route source consent withdrawal and delete pending stay privacy safe", () 
   const suite = read("app/src/test/java/com/socialdrive/app/domain/RoutePrivacyTest.kt");
   const mainManifest = read("app/src/main/AndroidManifest.xml");
   const build = read("app/build.gradle.kts");
+  const pleos = read("app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
 
   for (const marker of [
     "RouteSource", "DemoPreset", "LiveUnavailable", "SDK_COMING_SOON", "PERMISSION_DENIED",
-    "CAPABILITY_MISSING", "TestOnlyLiveRouteCapability", "RouteConsentState", "NotAsked", "Granted", "Withdrawn",
+    "CAPABILITY_MISSING", "LiveAvailable", "RouteConsentState", "NotAsked", "Granted", "Withdrawn",
   ]) assert.ok(domain.includes(marker), marker);
-  assert.match(
-    domain,
-    /@RequiresOptIn\([\s\S]*?@Retention\(AnnotationRetention\.BINARY\)\s*annotation class TestOnlyLiveRouteCapability/,
-  );
-  assert.match(domain, /class LiveAvailable internal constructor/);
-  const productionKotlin = kotlinFiles(path.join(root, "app/src/main"))
-    .map((file) => fs.readFileSync(file, "utf8")).join("\n");
-  assert.doesNotMatch(productionKotlin, /LiveAvailable\s*\(/);
+  assert.match(domain, /data object LiveAvailable : RouteSource/);
+  assert.match(pleos, /collectionAuthorized && recordingRequested && !locationCollecting/);
+  assert.match(pleos, /if \(locationCollecting && rawLocations\.size < MAX_ROUTE_POINTS\)/);
   assert.match(domain, /stopAndAwait\(\)[\s\S]*withdrawAndPurge\(\)[\s\S]*pendingUploads\.cancel/);
   assert.match(repository, /RoomRoutePrivacyMutationStore/);
   assert.match(repository, /currentMotion = currentMotion/);
@@ -699,8 +695,7 @@ test("route source consent withdrawal and delete pending stay privacy safe", () 
   assert.match(daos, /status = 'PRIVACY_WITHDRAWN'/);
   assert.match(daos, /stage NOT IN \('COMPLETE', 'CANCELLED'\)/);
   assert.match(scheduler, /ROUTE_UPLOAD_TAG/);
-  assert.match(remote, /\{"schemaVersion":1,"path":\[/);
-  assert.match(remote, /"highlights":\[\]\}/);
+  assert.ok(remote.includes('return "{\\"schemaVersion\\":1,\\"path\\":[$path],\\"highlights\\":[]}"'));
   assert.doesNotMatch(remote, /latitude|longitude/);
   assert.doesNotMatch(build, /play-services-location|FusedLocationProvider|androidx\.core\.location/);
   assert.doesNotMatch(mainManifest, /ACCESS_(?:FINE|COARSE|BACKGROUND)_LOCATION/);
@@ -783,11 +778,12 @@ test("published delete is parked durable idempotent bounded and fail closed", ()
   ]) assert.ok(androidTest.includes(marker), marker);
 });
 
-test("fake data fixtures contain no precise geographic coordinates or credentials", () => {
+test("fake data fixtures contain no credentials and navigation uses an explicit public destination", () => {
   const sourceRoot = path.join(root, "app/src/main/java/com/socialdrive/app/data/fake");
   const source = kotlinFiles(sourceRoot).map((file) => fs.readFileSync(file, "utf8")).join("\n");
-  assert.doesNotMatch(source, /\b(?:latitude|longitude|access[_-]?key|secret[_-]?key)\b/i);
+  assert.doesNotMatch(source, /\b(?:access[_-]?key|secret[_-]?key)\b/i);
   assert.doesNotMatch(source, /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/);
+  assert.match(source, /name = "공개 데모 목적지"/);
 });
 
 test("hex colors stay inside the theme color source", () => {
@@ -811,11 +807,11 @@ test("memory story reuses privacy-safe artwork from recording through publish", 
 
   assert.match(components, /fun RouteMemoryArtwork/);
   assert.match(components, /MemoryPalette\.Coast[\s\S]*MemoryPalette\.Mountain[\s\S]*MemoryPalette\.City/);
-  assert.match(components, /개인 위치가 제거된 데모 경로와 하이라이트/);
+  assert.match(components, /개인 위치가 제거된 데모 경로/);
   assert.doesNotMatch(components, /latitude|longitude/i);
   assert.match(repository, /coastRoute[\s\S]*mountainRoute[\s\S]*cityRoute/);
   assert.doesNotMatch(home, /카드 태그 · 바다 · 산 · 도심/);
-  assert.match(home, /OfflineCacheBanner[\s\S]*DriveGrid\(state\.cached, onDetail, Modifier\.weight\(1f\)\)/);
+  assert.match(home, /OfflineCacheBanner[\s\S]*DriveGrid\(filterDrives\(state\.cached, selectedFilter\), onDetail, Modifier\.weight\(1f\)\)/);
   assert.match(recording, /순간 \$count 저장됨 · 주차 후 이야기에서 확인/);
   assert.match(recording, /points = snapshot\.route/);
   assert.doesNotMatch(recording, /val demoRoute/);
@@ -823,8 +819,8 @@ test("memory story reuses privacy-safe artwork from recording through publish", 
   assert.match(publish, /RouteMemoryArtwork/);
   assert.doesNotMatch(publish, /ROUTE ARTWORK/);
   assert.match(presentation, /fun beginRecording[\s\S]*fun recordingProgress[\s\S]*fun finishDraft[\s\S]*fun present/);
-  assert.match(app, /RecordingSnapshot\([\s\S]*storyId = presentedStory\.id[\s\S]*route = presentedStory\.route[\s\S]*highlights = presentedStory\.highlights/);
-  assert.match(app, /AppDestination\.Publish[\s\S]*route = presentedStory\.route[\s\S]*highlightCount = presentedStory\.highlights/);
+  assert.match(app, /RecordingSnapshot\([\s\S]*storyId = presentedStory\.id[\s\S]*route = recordingArtworkRoute\(routePrivacy\.displayedSource, displayedRoute\)[\s\S]*highlights = presentedStory\.highlights/);
+  assert.match(app, /AppDestination\.Publish[\s\S]*route = localDraftDrive\?\.route \?: displayedRoute[\s\S]*highlightCount = displayedDraft\?\.highlightCount \?: presentedStory\.highlights/);
   assert.match(app, /AppDestination\.Detail -> DetailScreen\([\s\S]*drive = presentedStory/);
   for (const marker of ["PublishDraftDay", "PublishDraftNight", "PublishDraftLargeText"]) {
     assert.ok(screenshots.includes(marker), marker);
