@@ -26,7 +26,7 @@ TTS/STT 초기화 콜백이 누락될 때 설정이 무기한정 `확인 중`에
 
 ### 제출 보안 보강 이후 재확인
 
-커밋 `32b5ab4`까지 포함한 PLEOS debug APK(`SHA-256 80502c1c97120fa4b71f3d1bbf29e8fc3917811c3cf59b1e9d5f6b1ca3f8466d`)를 기존 데이터를 유지한 채 다시 설치하고 user 10에서 실행했다. 콜드 스타트는 687 ms에 완료됐고 앱은 홈 화면에 `PLEOS 연결됨 · 차량 상태`와 기존 실시간 경로 기록을 표시했다. 실행 직후 FATAL, ANR, 앱 대상 `SecurityException`은 관찰되지 않았다.
+커밋 `f86f467`까지 포함한 PLEOS debug APK(`SHA-256 8541572ee35d200c3ab52b6e434af24a8496db41ec2ff7dc5eb718f5216d50a7`)를 기존 데이터를 유지한 채 다시 설치하고 user 10에서 실행했다. 콜드 스타트는 721 ms에 완료됐고 앱은 홈 화면에 `PLEOS 연결됨 · 차량 상태`와 기존 실시간 경로 기록을 표시했다. 실행 직후 FATAL, ANR, 앱 대상 `SecurityException`은 관찰되지 않았다.
 
 활성 사용자인 user 10의 패키지 권한을 다시 조회한 결과 `CAR_DRIVE`, `NAVI_ROUTE_SEARCH`, `FUSED_LOCATION`, `TTS_SERVICE`, `STT_SERVICE`가 모두 허용돼 있었다. 이 가운데 `FUSED_LOCATION`은 `granted=true, USER_SET`인 위험 권한이고 나머지 네 권한은 설치 시 허용되는 일반 권한이다. 비활성 user 0에는 위치 권한이 거부돼 있지만 실행 중인 user 10의 권한·SDK 연결 상태에는 영향을 주지 않는다.
 
