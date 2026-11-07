@@ -126,4 +126,58 @@ class ValidatingCognitoSessionSourceTest {
             assertFailsWith<IllegalStateException> { request.await() }
         }
     }
+
+    @Test
+    fun `검증 중 교체된 세션은 토큰과 상태를 게시하지 않는다`() = kotlinx.coroutines.test.runTest {
+        var current = true
+        val states = mutableListOf<Boolean>()
+        var invalidated = false
+        val source = ValidatingCognitoSessionSource(
+            delegate = object : CognitoSessionSource {
+                override suspend fun freshAccessToken() = "token"
+                override fun onSessionInvalidated() { invalidated = true }
+            },
+            validator = AccessTokenValidator {
+                current = false
+                true
+            },
+            onValidation = states::add,
+            isCurrent = { current },
+        )
+
+        assertFailsWith<IllegalStateException> { source.freshAccessToken() }
+        assertEquals(emptyList(), states)
+        assertEquals(false, invalidated)
+    }
+
+    @Test
+    fun `토큰 조회 실패 전에 교체된 세션은 새 인증 상태를 무효화하지 않는다`() = kotlinx.coroutines.test.runTest {
+        var current = true
+        var invalidated = false
+        val requestStarted = CompletableDeferred<Unit>()
+        val failRequest = CompletableDeferred<Unit>()
+        val source = ValidatingCognitoSessionSource(
+            delegate = object : CognitoSessionSource {
+                override suspend fun freshAccessToken(): String {
+                    requestStarted.complete(Unit)
+                    failRequest.await()
+                    error("old session failed")
+                }
+
+                override fun onSessionInvalidated() { invalidated = true }
+            },
+            validator = AccessTokenValidator { true },
+            onValidation = {},
+            isCurrent = { current },
+        )
+
+        supervisorScope {
+            val request = async { source.freshAccessToken() }
+            requestStarted.await()
+            current = false
+            failRequest.complete(Unit)
+            assertFailsWith<IllegalStateException> { request.await() }
+        }
+        assertEquals(false, invalidated)
+    }
 }

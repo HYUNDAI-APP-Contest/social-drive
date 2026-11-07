@@ -76,21 +76,25 @@ internal class ValidatingCognitoSessionSource(
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Throwable) {
+            // A replaced/logged-out lease must not invalidate the newly installed SDK session.
+            requireCurrentSession()
             onValidation(false)
             runCatching { delegate.onSessionInvalidated() }
             throw error
         }
         requireCurrentSession()
         val valid = runCatching { validator.isValid(token) }.getOrDefault(false)
+        // Validation may be non-trivial; close the replacement/logout race before publishing state.
+        requireCurrentSession()
         onValidation(valid)
         if (!valid) runCatching { delegate.onSessionInvalidated() }
         require(valid) { "Invalid Cognito access token" }
+        requireCurrentSession()
         return token
     }
 
     private fun requireCurrentSession() {
         if (!isCurrent()) {
-            onValidation(false)
             throw IllegalStateException("Cognito session lease expired")
         }
     }
