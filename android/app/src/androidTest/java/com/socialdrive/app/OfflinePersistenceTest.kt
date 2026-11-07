@@ -15,6 +15,8 @@ import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.PendingRouteUploadCanceller
 import com.socialdrive.app.domain.PublishedDeleteDecision
 import com.socialdrive.app.domain.RouteConsentState
+import com.socialdrive.app.domain.FutureRouteCollector
+import com.socialdrive.app.domain.NormalizedRoutePoint
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -82,6 +84,37 @@ class OfflinePersistenceTest {
         val published = requireNotNull(database.draftDao().find(draft.id))
         assertEquals(draft.originalContentRef, published.originalContentRef)
         assertEquals(LocalState.PUBLISHED, published.state)
+    }
+
+    @Test
+    fun recordingPersistsOnlyNormalizedCollectorOutput() = runTest {
+        val values = ArrayDeque(listOf("recording-route", "draft-route", "request-route"))
+        val collector = object : FutureRouteCollector {
+            var began = false
+            override suspend fun start() = Unit
+            override suspend fun beginRecording() { began = true }
+            override suspend fun snapshotAndClear() = listOf(
+                NormalizedRoutePoint(0, 0f, 1f),
+                NormalizedRoutePoint(1, .5f, .4f),
+                NormalizedRoutePoint(2, 1f, 0f),
+            )
+            override suspend fun stopAndAwait() = Unit
+        }
+        val recordings = RecordingRepository(
+            database,
+            IdFactory { values.removeFirst() },
+            clock = { 250L },
+            routeCollector = collector,
+        )
+
+        val recording = recordings.start()
+        val draft = requireNotNull(recordings.finishAsDraft(recording.id))
+        val stored = database.routePrivacyDao().pointsForRecording(draft.recordingId)
+
+        assertTrue(collector.began)
+        assertEquals(listOf(0f, .5f, 1f), stored.map { it.horizontal })
+        assertEquals(listOf(1f, .4f, 0f), stored.map { it.vertical })
+        assertTrue(stored.all { it.publicationState == "UNPUBLISHED" })
     }
 
     @Test
