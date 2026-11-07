@@ -32,6 +32,7 @@ internal class AmplifyCognitoAuth(
 ) : CloudAuthBootstrap, CognitoSessionSource {
     private val mutableState = MutableStateFlow(initialState())
     private val operationGate = CognitoOperationGate()
+    private val sdkInitialization = CognitoSdkInitializationLease()
     override val state = mutableState.asStateFlow()
 
     override suspend fun initialize() {
@@ -39,8 +40,10 @@ internal class AmplifyCognitoAuth(
         if (!operationGate.tryEnter()) return
         try {
             try {
-                Amplify.addPlugin(AWSCognitoAuthPlugin())
-                Amplify.configure(amplifyConfiguration(configuration.cognito), context)
+                sdkInitialization.ensureConfigured(
+                    addPlugin = { Amplify.addPlugin(AWSCognitoAuthPlugin()) },
+                    configure = { Amplify.configure(amplifyConfiguration(configuration.cognito), context) },
+                )
                 val session = withCognitoOperationTimeout { fetchCognitoSession() }
                 val restored = session.isSignedIn && PleosCloudRuntime.installSessionSource(this)
                 if (!session.isSignedIn) {
@@ -341,6 +344,22 @@ internal class CognitoOperationGate {
     suspend fun enter() = mutex.lock()
 
     fun leave() = mutex.unlock()
+}
+
+internal class CognitoSdkInitializationLease {
+    private var pluginAdded = false
+    private var configured = false
+
+    fun ensureConfigured(addPlugin: () -> Unit, configure: () -> Unit) {
+        if (!pluginAdded) {
+            addPlugin()
+            pluginAdded = true
+        }
+        if (!configured) {
+            configure()
+            configured = true
+        }
+    }
 }
 
 internal fun AuthSignInStep.challengeLabel(): String? = when (this) {

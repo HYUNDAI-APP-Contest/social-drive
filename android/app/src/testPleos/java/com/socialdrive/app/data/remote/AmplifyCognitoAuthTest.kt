@@ -22,6 +22,47 @@ import org.junit.Test
 
 class AmplifyCognitoAuthTest {
     @Test
+    fun `세션 조회 재시도는 Amplify plugin과 구성을 중복 등록하지 않는다`() {
+        val lease = CognitoSdkInitializationLease()
+        var pluginAdds = 0
+        var configurations = 0
+
+        repeat(2) {
+            lease.ensureConfigured(
+                addPlugin = { pluginAdds += 1 },
+                configure = { configurations += 1 },
+            )
+        }
+
+        assertEquals(1, pluginAdds)
+        assertEquals(1, configurations)
+    }
+
+    @Test
+    fun `Amplify 구성 실패 재시도는 이미 추가한 plugin을 보존한다`() {
+        val lease = CognitoSdkInitializationLease()
+        var pluginAdds = 0
+        var configurations = 0
+
+        runCatching {
+            lease.ensureConfigured(
+                addPlugin = { pluginAdds += 1 },
+                configure = {
+                    configurations += 1
+                    error("configure failed")
+                },
+            )
+        }
+        lease.ensureConfigured(
+            addPlugin = { pluginAdds += 1 },
+            configure = { configurations += 1 },
+        )
+
+        assertEquals(1, pluginAdds)
+        assertEquals(2, configurations)
+    }
+
+    @Test
     fun `Cognito SDK 작업은 동시에 하나만 진행한다`() {
         val gate = CognitoOperationGate()
 
