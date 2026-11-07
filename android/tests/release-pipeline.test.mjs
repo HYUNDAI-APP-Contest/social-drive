@@ -64,7 +64,15 @@ set -euo pipefail
 if [[ "$1" == "-Z1" ]]; then
   if [[ -n "${"${MOCK_SENSITIVE_ENTRY:-}"}" ]]; then printf '.env\n'; else printf 'AndroidManifest.xml\nclasses.dex\n'; fi
 else
-  if [[ -n "${"${MOCK_SENSITIVE_CONTENT:-}"}" ]]; then printf 'http://127.0.0.1/debug\n'; else printf 'safe fixture content\n'; fi
+  if [[ -n "${"${MOCK_SENSITIVE_CONTENT:-}"}" ]]; then
+    printf 'http://127.0.0.1/debug\n'
+  elif [[ -n "${"${MOCK_AWS_SECRET_VALUE:-}"}" ]]; then
+    printf 'aws_secret_access_key=0123456789012345678901234567890123456789\n'
+  elif [[ -n "${"${MOCK_AWS_KEY_NAME:-}"}" ]]; then
+    printf 'missing aws_secret_access_key\nAWS_SECRET_ACCESS_KEY\n'
+  else
+    printf 'safe fixture content\n'
+  fi
 fi
 `);
   writeExecutable(path.join(bin, "aapt2"), `#!/usr/bin/env bash
@@ -308,13 +316,20 @@ test("release rejects identical artifacts and APKs from the wrong product flavor
 });
 
 test("credential-like APK entries and content are rejected", (t) => {
-  for (const marker of ["MOCK_SENSITIVE_ENTRY", "MOCK_SENSITIVE_CONTENT"]) {
+  for (const marker of ["MOCK_SENSITIVE_ENTRY", "MOCK_SENSITIVE_CONTENT", "MOCK_AWS_SECRET_VALUE"]) {
     const fixture = makeFixture();
     t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
     const result = run(fixture, { ...fixture.env, [marker]: "1" });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /APK contains/);
   }
+});
+
+test("AWS SDK의 자격 증명 키 이름만으로 APK를 거짓 양성 처리하지 않는다", (t) => {
+  const fixture = makeFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  const result = run(fixture, { ...fixture.env, MOCK_AWS_KEY_NAME: "1" });
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test("successful dual release writes ordered metadata with final APK checksums", (t) => {

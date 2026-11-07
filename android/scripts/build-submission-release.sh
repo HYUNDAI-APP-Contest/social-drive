@@ -37,7 +37,7 @@ inspect_apk_for_sensitive_material() {
     fail 'APK contains a forbidden credential or environment file.'
   fi
   if unzip -p "$apk_path" | strings | grep -Ei \
-    'AKIA[0-9A-Z]{16}|aws_secret_access_key|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|https?://[^[:space:]]*(webhook|/hooks/)|https?://(localhost|127\.0\.0\.1|10\.0\.2\.2)([:/]|$)' >/dev/null; then
+    'AKIA[0-9A-Z]{16}|aws_secret_access_key[[:space:]]*[=:][[:space:]]*[A-Za-z0-9/+=]{40}([^A-Za-z0-9/+=]|$)|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|https?://[^[:space:]]*(webhook|/hooks/)|https?://(localhost|127\.0\.0\.1|10\.0\.2\.2)([:/]|$)' >/dev/null; then
     fail 'APK contains a credential, webhook, private key, or debug endpoint marker.'
   fi
 }
