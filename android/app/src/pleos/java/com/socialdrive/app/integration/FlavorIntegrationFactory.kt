@@ -209,7 +209,9 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
                 return false
             }
             if (mutableTts.value.capability != CapabilityState.Available || message.isBlank()) return false
-            return runCatching { tts.speak(message, false) }.isSuccess
+            return runCatching { tts.speak(message, false) }
+                .onFailure { markTtsOperationFailure() }
+                .isSuccess
         }
     }
 
@@ -238,6 +240,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
                 }.isFailure
             ) {
                 finishRecognition(SpeechRecognitionState.Failed, session)
+                markSttOperationFailure()
                 return false
             }
             val timeout = lifecycleScope.launch {
@@ -398,6 +401,18 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
                 ) mutableTts.value = unavailable("실차 · 초기화 시간 초과")
             }
         }
+    }
+
+    private fun markTtsOperationFailure() {
+        ttsInitialized = false
+        ttsInitializationGeneration += 1
+        mutableTts.value = speechCapabilityAfterOperationFailure(hasPermission(TTS_PERMISSION))
+    }
+
+    private fun markSttOperationFailure() {
+        sttInitialized = false
+        sttInitializationGeneration += 1
+        mutableStt.value = speechCapabilityAfterOperationFailure(hasPermission(STT_PERMISSION))
     }
 
     private fun initializeStt() {
@@ -645,6 +660,13 @@ internal fun shouldRetrySpeechInitialization(
     capability: CapabilityState,
 ): Boolean = permissionGranted && !initialized && !initializationPending &&
     capability in setOf(CapabilityState.PermissionDenied, CapabilityState.Unavailable)
+
+internal fun speechCapabilityAfterOperationFailure(permissionGranted: Boolean): CapabilityStatus =
+    if (permissionGranted) {
+        CapabilityStatus(CapabilityState.Unavailable, IntegrationSource.Actual, "실차 · 서비스 연결 끊김")
+    } else {
+        CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, "실차 · 권한 필요")
+    }
 
 private const val FUSED_LOCATION_PERMISSION = "pleos.car.permission.FUSED_LOCATION"
 private const val TTS_PERMISSION = "pleos.car.permission.TTS_SERVICE"

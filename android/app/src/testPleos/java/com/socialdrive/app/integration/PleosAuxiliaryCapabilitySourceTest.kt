@@ -1,8 +1,9 @@
 package com.socialdrive.app.integration
 
 import com.socialdrive.app.domain.CapabilityState
-import org.junit.Assert.assertFalse
+import com.socialdrive.app.domain.IntegrationSource
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -31,5 +32,17 @@ class PleosAuxiliaryCapabilitySourceTest {
         assertFalse(shouldRetrySpeechInitialization(true, true, false, CapabilityState.Unavailable))
         assertFalse(shouldRetrySpeechInitialization(true, false, true, CapabilityState.Unavailable))
         assertFalse(shouldRetrySpeechInitialization(true, false, false, CapabilityState.Available))
+    }
+
+    @Test
+    fun `음성 서비스 호출 실패는 권한과 서비스 장애를 구분한다`() {
+        val disconnected = speechCapabilityAfterOperationFailure(permissionGranted = true)
+        assertEquals(CapabilityState.Unavailable, disconnected.capability)
+        assertEquals(IntegrationSource.Actual, disconnected.source)
+        assertEquals("실차 · 서비스 연결 끊김", disconnected.label)
+
+        val denied = speechCapabilityAfterOperationFailure(permissionGranted = false)
+        assertEquals(CapabilityState.PermissionDenied, denied.capability)
+        assertEquals("실차 · 권한 필요", denied.label)
     }
 }
