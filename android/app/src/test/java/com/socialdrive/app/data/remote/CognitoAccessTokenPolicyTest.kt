@@ -37,6 +37,17 @@ class CognitoAccessTokenPolicyTest {
         assertFalse(policy.isValid(rawPayload("{\"iss\":\"x\",\"iss\":\"x\"}")))
     }
 
+    @Test
+    fun `JWT 세 구간은 패딩 없는 base64url 형식과 제한된 서명을 요구한다`() {
+        val valid = token()
+        val parts = valid.split('.')
+
+        assertFalse(policy.isValid("${parts[0]}=.${parts[1]}.${parts[2]}"))
+        assertFalse(policy.isValid("${parts[0]}.${parts[1]}=.${parts[2]}"))
+        assertFalse(policy.isValid("${parts[0]}.${parts[1]}.bad+signature"))
+        assertFalse(policy.isValid("${parts[0]}.${parts[1]}.${encodeBytes(ByteArray(1_025))}"))
+    }
+
     private fun token(
         issuer: String = "https://cognito-idp.ap-northeast-2.amazonaws.com/ap-northeast-2_AbCdEf123",
         clientId: String = configuration.clientId,
@@ -51,12 +62,15 @@ class CognitoAccessTokenPolicyTest {
         val payload = encode(
             "{$extra\"iss\":\"$issuer\",\"client_id\":\"$clientId\",\"token_use\":\"$tokenUse\",\"iat\":$issuedAt,\"exp\":$expiresAt}",
         )
-        return "$header.$payload.signature"
+        return "$header.$payload.${encodeBytes(ByteArray(256) { it.toByte() })}"
     }
 
     private fun encode(value: String): String = Base64.getUrlEncoder().withoutPadding()
         .encodeToString(value.toByteArray())
 
+    private fun encodeBytes(value: ByteArray): String = Base64.getUrlEncoder().withoutPadding()
+        .encodeToString(value)
+
     private fun rawPayload(payload: String): String =
-        "${encode("{\"alg\":\"RS256\",\"kid\":\"1234example=\"}")}.${encode(payload)}.signature"
+        "${encode("{\"alg\":\"RS256\",\"kid\":\"1234example=\"}")}.${encode(payload)}.${encodeBytes(ByteArray(256) { it.toByte() })}"
 }
