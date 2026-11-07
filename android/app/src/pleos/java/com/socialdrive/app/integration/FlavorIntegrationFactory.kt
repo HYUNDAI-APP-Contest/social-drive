@@ -102,18 +102,25 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private var recognitionCallback: ((String, Boolean) -> Unit)? = null
     private var recognitionTimeoutJob: Job? = null
     private var recognitionSession = 0L
-    private val recognitionListener = object : ResultListener {
+    private var recognitionListener: ResultListener? = null
+    private fun createRecognitionListener(session: Long): ResultListener = object : ResultListener {
         override fun onUpdated(text: String, isFinal: Boolean) {
-            val callback = synchronized(recognitionLock) { recognitionCallback }
+            val callback = synchronized(recognitionLock) {
+                recognitionCallback.takeIf { recognitionSession == session }
+            } ?: return
             if (isFinal) {
                 val completed = finishRecognition(
                     if (text.isBlank()) SpeechRecognitionState.NoResult else SpeechRecognitionState.Applied,
+                    session,
                 )
-                if (completed && runCatching { callback?.invoke(text, true) }.isFailure) {
-                    mutableRecognitionState.value = SpeechRecognitionState.Failed
+                if (completed && runCatching { callback.invoke(text, true) }.isFailure) {
+                    val stillFinished = synchronized(recognitionLock) {
+                        recognitionSession == session + 1 && recognitionCallback == null
+                    }
+                    if (stillFinished) mutableRecognitionState.value = SpeechRecognitionState.Failed
                 }
-            } else if (runCatching { callback?.invoke(text, false) }.isFailure) {
-                if (finishRecognition(SpeechRecognitionState.Failed)) {
+            } else if (runCatching { callback.invoke(text, false) }.isFailure) {
+                if (finishRecognition(SpeechRecognitionState.Failed, session)) {
                     runCatching { stt.stop() }
                 }
             }
@@ -121,14 +128,13 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         override fun onUpdatedEpdData(start: Long, end: Long) = Unit
         override fun onStartedRecognition() = Unit
         override fun onEndedRecognition() {
-            val hadPendingCallback = synchronized(recognitionLock) { recognitionCallback != null }
-            if (hadPendingCallback) finishRecognition(SpeechRecognitionState.NoResult)
+            finishRecognition(SpeechRecognitionState.NoResult, session)
         }
         override fun onError(error: ai.pleos.playground.stt.constant.ErrorType) {
-            finishRecognition(SpeechRecognitionState.Failed)
+            finishRecognition(SpeechRecognitionState.Failed, session)
         }
         override fun onReady() {
-            if (synchronized(recognitionLock) { recognitionCallback != null }) {
+            if (synchronized(recognitionLock) { recognitionSession == session && recognitionCallback != null }) {
                 mutableRecognitionState.value = SpeechRecognitionState.Listening
             }
         }
@@ -197,11 +203,18 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
                 if (recognitionCallback != null) return false
                 recognitionSession += 1
                 recognitionCallback = onText
+                recognitionListener = createRecognitionListener(recognitionSession)
                 recognitionSession
             }
             mutableRecognitionActive.value = true
             mutableRecognitionState.value = SpeechRecognitionState.Listening
-            if (runCatching { stt.request() }.isFailure) {
+            val listener = synchronized(recognitionLock) { recognitionListener }
+                ?: return false
+            if (runCatching {
+                    stt.addListener(listener)
+                    stt.request()
+                }.isFailure
+            ) {
                 finishRecognition(SpeechRecognitionState.Failed, session)
                 return false
             }
@@ -233,14 +246,17 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     }
 
     private fun finishRecognition(state: SpeechRecognitionState, expectedSession: Long? = null): Boolean {
-        val timeout = synchronized(recognitionLock) {
+        val (timeout, listener) = synchronized(recognitionLock) {
             if (expectedSession != null && recognitionSession != expectedSession) return false
             if (recognitionCallback == null) return false
             recognitionCallback = null
             recognitionSession += 1
-            recognitionTimeoutJob.also { recognitionTimeoutJob = null }
+            val timeout = recognitionTimeoutJob.also { recognitionTimeoutJob = null }
+            val listener = recognitionListener.also { recognitionListener = null }
+            timeout to listener
         }
         timeout?.cancel()
+        listener?.let { runCatching { stt.removeListener(it) } }
         mutableRecognitionActive.value = false
         mutableRecognitionState.value = state
         return true
@@ -349,7 +365,6 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
                     synchronized(speechOperationLock) {
                         if (released || generation != sttInitializationGeneration || !hasPermission(STT_PERMISSION)) return
                         sttInitialized = true
-                        stt.addListener(recognitionListener)
                         mutableStt.value = available("실차 · 온디바이스")
                     }
                 }
@@ -535,7 +550,6 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         unregisterLocationCallback(listener)
         synchronized(speechOperationLock) {
             stopSpeechRecognition()
-            runCatching { stt.removeListener(recognitionListener) }
             runCatching { tts.release() }
             runCatching { stt.release() }
         }
