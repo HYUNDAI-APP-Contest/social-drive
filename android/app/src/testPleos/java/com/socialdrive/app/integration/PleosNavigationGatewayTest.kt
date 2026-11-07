@@ -20,14 +20,23 @@ class PleosNavigationGatewayTest {
         )
         gateway.initialize()
 
-        val result = gateway.requestRoute(
-            NavigationRequest(
-                requestId = "invalid",
-                destination = NavigationPlace("", Double.NaN, Double.POSITIVE_INFINITY),
-            ),
+        val validPlace = NavigationPlace("검증용 목적지", 0.0, 0.0)
+        val invalidRequests = listOf(
+            NavigationRequest("", validPlace),
+            NavigationRequest("r".repeat(81), validPlace),
+            NavigationRequest("blank-name", validPlace.copy(name = "")),
+            NavigationRequest("long-name", validPlace.copy(name = "가".repeat(81))),
+            NavigationRequest("nan-latitude", validPlace.copy(latitude = Double.NaN)),
+            NavigationRequest("infinite-latitude", validPlace.copy(latitude = Double.NEGATIVE_INFINITY)),
+            NavigationRequest("high-latitude", validPlace.copy(latitude = 90.1)),
+            NavigationRequest("infinite-longitude", validPlace.copy(longitude = Double.POSITIVE_INFINITY)),
+            NavigationRequest("low-longitude", validPlace.copy(longitude = -180.1)),
+            NavigationRequest("too-many-waypoints", validPlace, listOf(validPlace, validPlace)),
         )
 
-        assertIs<NavigationRequestResult.Rejected>(result)
+        invalidRequests.forEach { request ->
+            assertIs<NavigationRequestResult.Rejected>(gateway.requestRoute(request))
+        }
         assertEquals(0, port.addListenerCalls)
         assertEquals(0, port.requestCalls)
         assertTrue(
