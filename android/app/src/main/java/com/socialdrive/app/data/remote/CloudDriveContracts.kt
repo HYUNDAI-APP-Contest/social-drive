@@ -272,3 +272,15 @@ data class CloudDriveClientConfig(
 
 internal const val DEFAULT_CLOUD_RESPONSE_BYTES = 2 * 1024 * 1024
 internal const val MAX_CLOUD_RESPONSE_BYTES = 10 * 1024 * 1024
+
+internal fun String.isValidCloudHost(): Boolean {
+    if (length !in 4..253 || startsWith('.') || endsWith('.')) return false
+    val labels = split('.')
+    if (labels.size < 2 || labels.last().none(Char::isLetter)) return false
+    return labels.all { label ->
+        label.length in 1..63 &&
+            label.first().isLetterOrDigit() &&
+            label.last().isLetterOrDigit() &&
+            label.all { it in 'a'..'z' || it in '0'..'9' || it == '-' }
+    }
+}

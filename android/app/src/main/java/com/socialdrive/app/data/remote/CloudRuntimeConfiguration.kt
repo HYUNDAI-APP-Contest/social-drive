@@ -53,18 +53,6 @@ data class CloudRuntimeConfiguration(
     }
 }
 
-internal fun String.isValidCloudHost(): Boolean {
-    if (length !in 4..253 || startsWith('.') || endsWith('.')) return false
-    val labels = split('.')
-    if (labels.size < 2 || labels.last().none(Char::isLetter)) return false
-    return labels.all { label ->
-        label.length in 1..63 &&
-            label.first().isLetterOrDigit() &&
-            label.last().isLetterOrDigit() &&
-            label.all { it in 'a'..'z' || it in '0'..'9' || it == '-' }
-    }
-}
-
 /** Public Cognito mobile-app identifiers only. This value must never contain a client secret. */
 data class CognitoRuntimeConfiguration(
     val region: String,
