@@ -332,6 +332,21 @@ class CloudDriveClientTest {
     }
 
     @Test
+    fun `server error identifiers are bounded before crossing the client boundary`() = runBlocking {
+        val harness = Harness()
+        harness.api.responses += jsonResponse(
+            400,
+            """{"error":{"code":"${"X".repeat(65)}","retryable":false,"requestId":"bad request id"}}""",
+        )
+
+        val failure = assertFailsWith<CloudDriveException> { harness.client.createDrive(harness.input) }
+
+        assertEquals(CloudFailureKind.VALIDATION, failure.kind)
+        assertEquals("HTTP_400", failure.code)
+        assertEquals(null, failure.requestId)
+    }
+
+    @Test
     fun `delete auth conflict and server responses preserve bounded retry policy inputs`() = runBlocking {
         val harness = Harness()
         val key = "f".repeat(64)

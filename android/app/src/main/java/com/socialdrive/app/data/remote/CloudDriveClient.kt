@@ -206,9 +206,14 @@ class CloudDriveClient(
     private fun parseApiError(response: HttpResponse, terminalDeleteConflict: Boolean): CloudDriveException {
         val fallbackRetry = response.status == 408 || response.status == 429 || response.status >= 500
         val envelope = runCatching { JsonCodec.parse(response.body).objectValue().requiredObject("error") }.getOrNull()
-        val code = envelope?.get("code")?.let { (it as? JsonValue.StringValue)?.value } ?: "HTTP_${response.status}"
+        val code = envelope?.get("code")
+            ?.let { (it as? JsonValue.StringValue)?.value }
+            ?.takeIf(ERROR_CODE_PATTERN::matches)
+            ?: "HTTP_${response.status}"
         val retryable = envelope?.get("retryable")?.let { (it as? JsonValue.BooleanValue)?.value } ?: fallbackRetry
-        val requestId = envelope?.get("requestId")?.let { (it as? JsonValue.StringValue)?.value }
+        val requestId = envelope?.get("requestId")
+            ?.let { (it as? JsonValue.StringValue)?.value }
+            ?.takeIf(REQUEST_ID_PATTERN::matches)
         if (terminalDeleteConflict && response.status == 409) {
             val kind = if (code == "IDEMPOTENCY_CONFLICT") {
                 CloudFailureKind.IDEMPOTENCY_CONFLICT
@@ -491,6 +496,8 @@ class CloudDriveClient(
         private const val MAX_PRESIGNED_SECONDS = 900L
         private const val CLOCK_SKEW_SECONDS = 30L
         private const val HEX = "0123456789ABCDEF"
+        private val ERROR_CODE_PATTERN = Regex("[A-Z][A-Z0-9_]{0,63}")
+        private val REQUEST_ID_PATTERN = Regex("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
         private val REQUIRED_UPLOAD_HEADERS = setOf("content-type", "x-amz-checksum-sha256")
         private val SIGNED_UPLOAD_HEADER_ORDER = listOf("content-type", "host", "x-amz-checksum-sha256")
         private val SIGV4_DATE: DateTimeFormatter = DateTimeFormatter
