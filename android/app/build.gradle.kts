@@ -171,6 +171,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -205,6 +206,7 @@ ksp {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -227,6 +229,11 @@ dependencies {
     "pleosImplementation"("ai.pleos.playground:FusedLocation:1.1.3")
     "pleosImplementation"("ai.pleos.playground:TextToSpeech:3.3.1")
     "pleosImplementation"("ai.pleos.playground:SpeechToText:3.3.1")
+    "pleosImplementation"("com.amplifyframework:aws-auth-cognito:2.27.4")
+    "pleosImplementation"("androidx.browser:browser:1.8.0") {
+        version { strictly("1.8.0") }
+        because("PLEOS toolchain is pinned to compileSdk 35; Hosted UI is not used by the SRP adapter")
+    }
     ksp("androidx.room:room-compiler:2.6.1")
 
     testImplementation("junit:junit:4.13.2")

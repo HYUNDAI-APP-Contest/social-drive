@@ -54,6 +54,11 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
         mutableStatus.value = configurationStatus()
     }
 
+    internal suspend fun reportAuthenticationFailure(label: String) = sessionMutex.withLock {
+        sessionSource = null
+        mutableStatus.value = if (configuration == null) configurationStatus() else signedOutStatus(label)
+    }
+
     internal fun clientOrNull(): CloudDriveClient? {
         val configured = configuration ?: return null
         val session = sessionSource ?: return null

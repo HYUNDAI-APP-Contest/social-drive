@@ -15,6 +15,7 @@ import com.socialdrive.app.data.remote.FlavorRemoteDeleteApiFactory
 import com.socialdrive.app.data.remote.RemoteDriveApi
 import com.socialdrive.app.data.remote.FlavorRemoteConflictReviewApiFactory
 import com.socialdrive.app.data.remote.FlavorCloudConnectionStatusFactory
+import com.socialdrive.app.data.remote.FlavorCloudAuthBootstrapFactory
 import com.socialdrive.app.data.work.PublishScheduler
 import com.socialdrive.app.data.work.DeleteWorkScheduler
 import com.socialdrive.app.data.work.DeleteWorkerDependencies
@@ -40,6 +41,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
     val remoteDeleteApi by lazy { FlavorRemoteDeleteApiFactory.create() }
     val integrationBundle by lazy { FlavorIntegrationFactory.create(this) }
     val cloudConnectionStatusSource by lazy { FlavorCloudConnectionStatusFactory.create() }
+    private val cloudAuthBootstrap by lazy { FlavorCloudAuthBootstrapFactory.create(this) }
     val vehicleMotionSource get() = integrationBundle.vehicleMotionSource
     val navigationGateway get() = integrationBundle.navigationGateway
     val auxiliaryCapabilitySource get() = integrationBundle.auxiliaryCapabilitySource
@@ -96,6 +98,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        applicationScope.launch { cloudAuthBootstrap.initialize() }
         applicationScope.launch {
             vehicleMotionSource.initialize()
             navigationGateway.initialize()
