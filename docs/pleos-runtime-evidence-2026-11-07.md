@@ -41,10 +41,20 @@ Room v7 거리 집계 구현 뒤에는 오래된 초기 위치와 현재 위치 
 
 같은 종단 흐름에서 초안 저장 직후 Room과 Compose 상태가 한 프레임 어긋나 `memory story identity mismatch`로 종료되는 크래시도 재현했다. 다른 기록에 임시 상태를 투영하지 않고 해당 프레임의 원본 기록을 그대로 표시하도록 수정한 뒤, 크래시 당시 생성된 3개 경로점 초안을 데이터 유지 설치로 다시 열어 정상 복구됨을 확인했다.
 
+## 플랫폼 위치 로그 개인정보 게이트
+
+FusedLocation 1.1.3 콜백을 재검증하는 동안 앱 프로세스가 아닌 별도 PLEOS 위치 서비스 프로세스가 디버그 logcat에 `LocationData` 전체를 출력하는 것을 관찰했다. Social Drive는 이 값을 로그에 쓰지 않고 정규화 전 메모리에서만 처리하지만, 앱 R8 규칙으로 다른 프로세스의 로그를 제거할 수는 없다. 공식 가이드의 공개 API는 지원 확인·초기화·위치 조회/콜백·해제·차단 안내로 구성되며 로깅 제어 API는 문서화돼 있지 않다. 현재 사용 중인 1.1.3이 최신 릴리즈임도 릴리즈 노트와 일치한다.
+
+- [FusedLocation 1.1.3 API 개요](https://document.pleos.ai/api-reference/connect-sdk-pleos/FusedLocation/intro)
+- [PLEOS SDK 릴리즈 노트](https://document.pleos.ai/docs/pleos-only/release-note/sdk-release-note)
+
+따라서 상용 승인 전 PLEOS 공급자에게 production 이미지에서 원본 위치 로그가 비활성화되거나 앱/제3자가 접근할 수 없음을 확인해야 한다. 확인 전에는 “원본 좌표를 앱이 저장·업로드·기록하지 않는다”까지만 주장하며 “플랫폼 전체에서 로그가 없다”고 주장하지 않는다. release 빌드는 별도로 앱 프로세스의 `android.util.Log` 호출을 R8에서 제거한다.
+
 ## 아직 증명하지 않은 범위
 
 - 실제 차량에서의 GNSS 품질, 장시간 주행, 오디오 입력·출력 품질
 - 실제 AWS 계정의 Cognito 로그인, API Gateway authorizer, S3 업로드 E2E
+- PLEOS production 이미지의 위치 서비스 원본 좌표 로그 비활성화 또는 접근 통제 확인
 - 제출용 승인 인증서로 서명한 release APK
 - 물리 PLEOS 장치의 system Back 및 멀티윈도우 수용 시험(AVD system Back은 통과)
 
