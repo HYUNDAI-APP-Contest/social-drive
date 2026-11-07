@@ -71,6 +71,14 @@ data class RawRouteCoordinate(val longitude: Double, val latitude: Double) {
         require(longitude.isFinite() && longitude in -180.0..180.0)
         require(latitude.isFinite() && latitude in -90.0..90.0)
     }
+
+    companion object {
+        fun fromOrNull(longitude: Double, latitude: Double): RawRouteCoordinate? =
+            if (
+                longitude.isFinite() && longitude in -180.0..180.0 &&
+                latitude.isFinite() && latitude in -90.0..90.0
+            ) RawRouteCoordinate(longitude, latitude) else null
+    }
 }
 
 data class CollectedRoute(

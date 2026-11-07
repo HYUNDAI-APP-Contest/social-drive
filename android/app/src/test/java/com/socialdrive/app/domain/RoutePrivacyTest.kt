@@ -83,6 +83,10 @@ class RoutePrivacyTest {
     fun `위경도 범위를 벗어난 원시 위치는 거부한다`() {
         assertFailsWith<IllegalArgumentException> { RawRouteCoordinate(181.0, 37.0) }
         assertFailsWith<IllegalArgumentException> { RawRouteCoordinate(127.0, 91.0) }
+        assertEquals(null, RawRouteCoordinate.fromOrNull(Double.NaN, 37.0))
+        assertEquals(null, RawRouteCoordinate.fromOrNull(181.0, 37.0))
+        assertEquals(null, RawRouteCoordinate.fromOrNull(127.0, -91.0))
+        assertEquals(RawRouteCoordinate(127.0, 37.0), RawRouteCoordinate.fromOrNull(127.0, 37.0))
     }
 
     @Test

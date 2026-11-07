@@ -417,6 +417,7 @@ test("PLEOS TTS and STT permissions fail closed and remain recoverable", () => {
   assert.match(pleos, /if \(!hasPermission\(TTS_PERMISSION\)\)[\s\S]*permissionDenied/);
   assert.match(pleos, /if \(!hasPermission\(STT_PERMISSION\)\)[\s\S]*permissionDenied/);
   assert.match(pleos, /ttsInitialized[\s\S]*sttInitialized/);
+  assert.match(pleos, /RawRouteCoordinate\.fromOrNull\(location\.longitude, location\.latitude\) \?: return/);
 });
 
 test("actual adapters fail closed and never fall back to demo state", () => {

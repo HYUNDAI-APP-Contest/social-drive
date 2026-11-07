@@ -96,10 +96,10 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private val locationListener = object : FusedLocationListener {
         override fun onChanged(location: LocationData?) {
             location ?: return
-            if (!location.latitude.isFinite() || !location.longitude.isFinite()) return
+            val coordinate = RawRouteCoordinate.fromOrNull(location.longitude, location.latitude) ?: return
             synchronized(locationLock) {
                 if (locationCollecting && rawLocations.size < MAX_ROUTE_POINTS) {
-                    rawLocations += RawRouteCoordinate(location.longitude, location.latitude)
+                    rawLocations += coordinate
                 }
             }
         }
