@@ -647,6 +647,15 @@ test("Cognito sign-out distinguishes complete partial and failed SDK results", (
   assert.match(auth, /CloudAuthPhase\.SIGNED_OUT[\s\S]*전체 로그아웃 상태/);
 });
 
+test("cloud auth secrets are cleared at both UI and ViewModel ownership boundaries", () => {
+  const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
+  const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");
+  assert.match(settings, /val password = secret\.toCharArray\(\)[\s\S]*secret = ""[\s\S]*onSignIn\(username, password\)/);
+  assert.match(settings, /val response = secret\.toCharArray\(\)[\s\S]*secret = ""[\s\S]*onConfirm\(response\)/);
+  assert.match(viewModel, /signInToCloud[\s\S]*CoroutineStart\.UNDISPATCHED[\s\S]*finally[\s\S]*password\.fill\('\\u0000'\)/);
+  assert.match(viewModel, /confirmCloudSignIn[\s\S]*CoroutineStart\.UNDISPATCHED[\s\S]*finally[\s\S]*response\.fill\('\\u0000'\)/);
+});
+
 test("publish concurrency and upload recovery retain frozen versions and bounded durable rewinds", () => {
   const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
   const daos = read("app/src/main/java/com/socialdrive/app/data/local/Daos.kt");

@@ -26,6 +26,7 @@ import com.socialdrive.app.domain.DeleteRequestState
 import com.socialdrive.app.domain.VehicleMotionStatus
 import com.socialdrive.app.domain.SpeechRecognitionPolicy
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -86,12 +87,20 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     fun refreshLocationPermission() = app.auxiliaryCapabilitySource.refreshLocationPermission()
     fun refreshSpeechPermissions() = app.auxiliaryCapabilitySource.refreshSpeechPermissions()
 
-    fun signInToCloud(username: String, password: CharArray) = viewModelScope.launch {
-        app.cloudAuth.signIn(username, password)
+    fun signInToCloud(username: String, password: CharArray) = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        try {
+            app.cloudAuth.signIn(username, password)
+        } finally {
+            password.fill('\u0000')
+        }
     }
 
-    fun confirmCloudSignIn(response: CharArray) = viewModelScope.launch {
-        app.cloudAuth.confirmSignIn(response)
+    fun confirmCloudSignIn(response: CharArray) = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
+        try {
+            app.cloudAuth.confirmSignIn(response)
+        } finally {
+            response.fill('\u0000')
+        }
     }
 
     fun signOutFromCloud() = viewModelScope.launch { app.cloudAuth.signOut() }
