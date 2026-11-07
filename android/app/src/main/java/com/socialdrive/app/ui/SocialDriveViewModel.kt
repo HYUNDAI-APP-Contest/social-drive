@@ -67,6 +67,7 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     val locationCapability = app.auxiliaryCapabilitySource.location
     val textToSpeechCapability = app.auxiliaryCapabilitySource.textToSpeech
     val speechToTextCapability = app.auxiliaryCapabilitySource.speechToText
+    val speechRecognitionActive = app.auxiliaryCapabilitySource.speechRecognitionActive
     val cloudConnectionCapability = app.cloudConnectionStatusSource.status
     val locationPermission: String? get() = app.auxiliaryCapabilitySource.locationPermission
 
@@ -121,6 +122,8 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     fun requestDescriptionDictation(): Boolean = requestDictation { draft, text ->
         app.draftRepository.updateCopy(draft.id, draft.title, text.take(120))
     }
+
+    fun cancelDictation() = app.auxiliaryCapabilitySource.stopSpeechRecognition()
 
     private fun requestDictation(update: suspend (DraftSnapshot, String) -> Unit): Boolean {
         if (!SpeechRecognitionPolicy.canStart(vehicleMotion.value.motion, speechToTextCapability.value)) return false

@@ -76,6 +76,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private val mutableLocation = MutableStateFlow(checking)
     private val mutableTts = MutableStateFlow(checking)
     private val mutableStt = MutableStateFlow(checking)
+    private val mutableRecognitionActive = MutableStateFlow(false)
     private val locationLock = Any()
     private val rawLocations = ArrayList<RawRouteCoordinate>()
     private var locationCollecting = false
@@ -95,18 +96,28 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private val recognitionListener = object : ResultListener {
         override fun onUpdated(text: String, isFinal: Boolean) {
             recognitionCallback?.invoke(text, isFinal)
-            if (isFinal) recognitionCallback = null
+            if (isFinal) {
+                recognitionCallback = null
+                mutableRecognitionActive.value = false
+            }
         }
         override fun onUpdatedEpdData(start: Long, end: Long) = Unit
         override fun onStartedRecognition() = Unit
-        override fun onEndedRecognition() { recognitionCallback = null }
-        override fun onError(error: ai.pleos.playground.stt.constant.ErrorType) { recognitionCallback = null }
+        override fun onEndedRecognition() {
+            recognitionCallback = null
+            mutableRecognitionActive.value = false
+        }
+        override fun onError(error: ai.pleos.playground.stt.constant.ErrorType) {
+            recognitionCallback = null
+            mutableRecognitionActive.value = false
+        }
         override fun onReady() = Unit
         override fun onUpdatedRms(rms: Double) = Unit
     }
     override val location: StateFlow<CapabilityStatus> = mutableLocation.asStateFlow()
     override val textToSpeech: StateFlow<CapabilityStatus> = mutableTts.asStateFlow()
     override val speechToText: StateFlow<CapabilityStatus> = mutableStt.asStateFlow()
+    override val speechRecognitionActive: StateFlow<Boolean> = mutableRecognitionActive.asStateFlow()
     override val locationPermission: String = FUSED_LOCATION_PERMISSION
 
     override suspend fun initialize() {
@@ -149,13 +160,18 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     override fun startSpeechRecognition(onText: (String, Boolean) -> Unit): Boolean {
         if (mutableStt.value.capability != CapabilityState.Available || recognitionCallback != null) return false
         recognitionCallback = onText
+        mutableRecognitionActive.value = true
         return runCatching { stt.request() }
-            .onFailure { recognitionCallback = null }
+            .onFailure {
+                recognitionCallback = null
+                mutableRecognitionActive.value = false
+            }
             .isSuccess
     }
 
     override fun stopSpeechRecognition() {
         recognitionCallback = null
+        mutableRecognitionActive.value = false
         runCatching { stt.stop() }
     }
 

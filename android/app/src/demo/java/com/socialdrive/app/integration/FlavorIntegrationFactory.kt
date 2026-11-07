@@ -37,6 +37,7 @@ private class DemoAuxiliaryCapabilitySource : AuxiliaryCapabilitySource {
     override val location: StateFlow<CapabilityStatus> = demo.asStateFlow()
     override val textToSpeech: StateFlow<CapabilityStatus> = demo.asStateFlow()
     override val speechToText: StateFlow<CapabilityStatus> = demo.asStateFlow()
+    override val speechRecognitionActive: StateFlow<Boolean> = MutableStateFlow(false).asStateFlow()
     override val locationPermission: String? = null
     override suspend fun initialize() = Unit
     override fun speakFeedback(message: String): Boolean = false

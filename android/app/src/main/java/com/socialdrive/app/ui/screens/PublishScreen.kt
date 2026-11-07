@@ -20,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,8 +62,10 @@ fun PublishScreen(
     highlightCount: Int = 4,
     memoryPalette: MemoryPalette = MemoryPalette.Coast,
     speechRecognition: CapabilityState = CapabilityState.Unavailable,
+    speechRecognitionActive: Boolean = false,
     onDictateTitle: () -> Boolean = { false },
     onDictateDescription: () -> Boolean = { false },
+    onCancelDictation: () -> Unit = {},
 ) {
     var title by remember(initialTitle) { mutableStateOf(initialTitle) }
     var description by remember(initialDescription) { mutableStateOf(initialDescription) }
@@ -129,7 +132,7 @@ fun PublishScreen(
                     )
                     IconButton(
                         onClick = { onDictateTitle() },
-                        enabled = canEdit && speechRecognition == CapabilityState.Available,
+                        enabled = canEdit && speechRecognition == CapabilityState.Available && !speechRecognitionActive,
                         modifier = Modifier.size(48.dp),
                     ) { Icon(Icons.Rounded.Mic, contentDescription = "음성으로 제목 입력") }
                 }
@@ -147,9 +150,17 @@ fun PublishScreen(
                     )
                     IconButton(
                         onClick = { onDictateDescription() },
-                        enabled = canEdit && speechRecognition == CapabilityState.Available,
+                        enabled = canEdit && speechRecognition == CapabilityState.Available && !speechRecognitionActive,
                         modifier = Modifier.size(48.dp),
                     ) { Icon(Icons.Rounded.Mic, contentDescription = "음성으로 설명 입력") }
+                }
+                if (speechRecognitionActive) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("음성을 듣고 있어요…", Modifier.weight(1f), color = MaterialTheme.colorScheme.primary)
+                        TextButton(onClick = onCancelDictation, modifier = Modifier.heightIn(min = 48.dp)) {
+                            Text("음성 입력 취소")
+                        }
+                    }
                 }
                 Text("3  공개 범위 · 전체 공개", style = MaterialTheme.typography.titleMedium)
                 Row(verticalAlignment = Alignment.CenterVertically) {

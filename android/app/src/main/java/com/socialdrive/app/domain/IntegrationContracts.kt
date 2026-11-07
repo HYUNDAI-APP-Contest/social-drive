@@ -96,6 +96,7 @@ interface AuxiliaryCapabilitySource {
     val location: StateFlow<CapabilityStatus>
     val textToSpeech: StateFlow<CapabilityStatus>
     val speechToText: StateFlow<CapabilityStatus>
+    val speechRecognitionActive: StateFlow<Boolean>
     val locationPermission: String?
 
     suspend fun initialize()
