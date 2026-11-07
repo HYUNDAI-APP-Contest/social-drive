@@ -20,6 +20,7 @@ import ai.pleos.playground.location.fused.model.LocationData
 import ai.pleos.playground.tts.TextToSpeech
 import ai.pleos.playground.tts.constant.Mode as TtsMode
 import ai.pleos.playground.tts.listener.OnInitializeListener as TtsInitializeListener
+import ai.pleos.playground.tts.listener.EventListener as TtsEventListener
 import ai.pleos.playground.stt.SpeechToText
 import ai.pleos.playground.stt.constant.Mode as SttMode
 import ai.pleos.playground.stt.listener.OnInitializeListener as SttInitializeListener
@@ -96,6 +97,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private var lastLocationTimestampMillis: Long? = null
     private var registeredLocationListener: FusedLocationListener? = null
     @Volatile private var ttsInitialized = false
+    private var ttsEventListenerRegistered = false
     @Volatile private var sttInitialized = false
     @Volatile private var ttsInitializationGeneration = 0L
     @Volatile private var sttInitializationGeneration = 0L
@@ -104,6 +106,18 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private var recognitionTimeoutJob: Job? = null
     private var recognitionSession = 0L
     private var recognitionListener: ResultListener? = null
+    private val ttsEventListener = object : TtsEventListener {
+        override fun onStart() = Unit
+        override fun onReady() = Unit
+        override fun onDone() = Unit
+        override fun onStop() = Unit
+        override fun onUpdatedRms(rms: Double) = Unit
+        override fun onError(error: ai.pleos.playground.tts.constant.ErrorType) {
+            synchronized(speechOperationLock) {
+                if (!released) markTtsOperationFailure()
+            }
+        }
+    }
     private fun createRecognitionListener(session: Long): ResultListener = object : ResultListener {
         override fun onUpdated(text: String, isFinal: Boolean) {
             val permissionGranted = hasPermission(STT_PERMISSION)
@@ -377,6 +391,14 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
                 override fun onSuccess() {
                     synchronized(speechOperationLock) {
                         if (released || generation != ttsInitializationGeneration || !hasPermission(TTS_PERMISSION)) return
+                        if (!ttsEventListenerRegistered) {
+                            if (runCatching { tts.addEventListener(ttsEventListener) }.isFailure) {
+                                ttsInitialized = false
+                                mutableTts.value = unavailable("실차 · 이벤트 연결 실패")
+                                return
+                            }
+                            ttsEventListenerRegistered = true
+                        }
                         ttsInitialized = true
                         mutableTts.value = available("실차 · 온디바이스")
                     }
@@ -680,6 +702,10 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         unregisterLocationCallback(listener)
         synchronized(speechOperationLock) {
             stopSpeechRecognition()
+            if (ttsEventListenerRegistered) {
+                runCatching { tts.removeEventListener(ttsEventListener) }
+                ttsEventListenerRegistered = false
+            }
             runCatching { tts.release() }
             runCatching { stt.release() }
         }
