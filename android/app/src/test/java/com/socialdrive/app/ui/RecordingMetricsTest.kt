@@ -2,6 +2,7 @@ package com.socialdrive.app.ui
 
 import com.socialdrive.app.domain.AppDestination
 import com.socialdrive.app.domain.RouteSource
+import com.socialdrive.app.domain.RoutePoint
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
@@ -17,6 +18,14 @@ class RecordingMetricsTest {
     fun `실시간과 데모 경로 상태를 구분한다`() {
         assertEquals("경로 수집 중", recordingRouteStatus(RouteSource.LiveAvailable))
         assertEquals("데모 경로", recordingRouteStatus(RouteSource.DemoPreset))
+    }
+
+    @Test
+    fun `실시간 수집 중에는 데모 경로선을 실제 경로처럼 표시하지 않는다`() {
+        val preset = listOf(RoutePoint(0f, 0f), RoutePoint(1f, 1f))
+
+        assertEquals(emptyList(), recordingArtworkRoute(RouteSource.LiveAvailable, preset))
+        assertEquals(preset, recordingArtworkRoute(RouteSource.DemoPreset, preset))
     }
 
     @Test

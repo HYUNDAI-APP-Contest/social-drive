@@ -14,8 +14,12 @@ class RecordingRouteLabelTest {
             recordingRoutePrivacyLabel(RouteSource.LiveAvailable),
         )
         assertEquals(
-            "원본 위치가 제거된 실시간 경로와 하이라이트 2개",
+            "원본 위치가 제거된 실시간 경로 · 하이라이트 2개",
             routeArtworkDescription(RouteSource.LiveAvailable, 2),
+        )
+        assertEquals(
+            "실시간 경로 수집 중인 배경 · 하이라이트 2개",
+            routeArtworkDescription(RouteSource.LiveAvailable, 2, pointCount = 0),
         )
         assertEquals("원본 위치와 사진은 포함되지 않습니다", publishCoverPrivacyLabel(RouteSource.LiveAvailable))
         assertEquals(

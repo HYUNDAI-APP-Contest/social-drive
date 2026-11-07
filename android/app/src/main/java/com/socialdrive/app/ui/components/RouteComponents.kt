@@ -109,7 +109,7 @@ fun RouteMemoryArtwork(
             Modifier
                 .fillMaxSize()
                 .clearAndSetSemantics {
-                    contentDescription = routeArtworkDescription(routeSource, momentCount)
+                    contentDescription = routeArtworkDescription(routeSource, momentCount, points.size)
                 },
         ) {
             when (palette) {
@@ -157,9 +157,13 @@ fun RouteMemoryArtwork(
     }
 }
 
-internal fun routeArtworkDescription(source: RouteSource, momentCount: Int): String {
-    val route = if (source == RouteSource.LiveAvailable) "원본 위치가 제거된 실시간 경로" else "개인 위치가 제거된 데모 경로"
-    return "${route}와 하이라이트 ${momentCount.coerceAtLeast(0)}개"
+internal fun routeArtworkDescription(source: RouteSource, momentCount: Int, pointCount: Int = 2): String {
+    val route = when {
+        source == RouteSource.LiveAvailable && pointCount < 2 -> "실시간 경로 수집 중인 배경"
+        source == RouteSource.LiveAvailable -> "원본 위치가 제거된 실시간 경로"
+        else -> "개인 위치가 제거된 데모 경로"
+    }
+    return "$route · 하이라이트 ${momentCount.coerceAtLeast(0)}개"
 }
 
 @Composable

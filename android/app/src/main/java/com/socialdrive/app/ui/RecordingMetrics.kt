@@ -2,6 +2,7 @@ package com.socialdrive.app.ui
 
 import com.socialdrive.app.domain.AppDestination
 import com.socialdrive.app.domain.RouteSource
+import com.socialdrive.app.domain.RoutePoint
 import java.util.Locale
 
 internal fun formatRecordingElapsed(startedAtEpochMs: Long, nowEpochMs: Long): String {
@@ -14,6 +15,9 @@ internal fun formatRecordingElapsed(startedAtEpochMs: Long, nowEpochMs: Long): S
 
 internal fun recordingRouteStatus(source: RouteSource): String =
     if (source == RouteSource.LiveAvailable) "경로 수집 중" else "데모 경로"
+
+internal fun recordingArtworkRoute(source: RouteSource, preset: List<RoutePoint>): List<RoutePoint> =
+    if (source == RouteSource.LiveAvailable) emptyList() else preset
 
 internal fun recoverRecordingDestination(current: AppDestination, hasActiveRecording: Boolean): AppDestination =
     if (hasActiveRecording && current == AppDestination.Home) AppDestination.Recording else current

@@ -260,7 +260,7 @@ fun SocialDriveApp(
                     AppDestination.Recording -> RecordingScreen(
                         snapshot = RecordingSnapshot(
                             storyId = presentedStory.id,
-                            route = displayedRoute,
+                            route = recordingArtworkRoute(routePrivacy.displayedSource, displayedRoute),
                             elapsed = formatRecordingElapsed(
                                 activeRecording?.startedAtEpochMs ?: recordingNowEpochMs,
                                 recordingNowEpochMs,
