@@ -138,7 +138,7 @@ Pleos 실기 검증 전 다음을 확인해야 합니다.
 
 ### 검증 완료 조건
 
-아래 증거가 모두 생기기 전에는 `실제 SDK` 또는 실행 완료로 표시하지 않습니다.
+`실제 SDK` 표시는 기능별 증거 범위에 한정합니다. 아래에서 완료된 NaviHelper 공개 목적지 1건은 application boundary의 제한적 실제 SDK 증거로 표시할 수 있지만, 체크되지 않은 Vehicle·복구·AWS 항목이나 앱 전체 실행 완료까지 뜻하지 않습니다.
 
 - [x] Android Gradle build 성공 로그와 commit SHA (`4f2b559`)
 - [x] Pleos AVD 설치·실행 및 instrumentation 51/51

@@ -19,11 +19,11 @@ PR #2 병합 커밋 `dcffaad`를 포함한 현재 통합 소스에는 PLEOS·clo
 
 | 영역 | 확인된 증거 | 아직 증명되지 않은 것 |
 |---|---|---|
-| Android 통합 소스 | PR #2 병합 커밋 `dcffaad` 포함; 기존 PLEOS 51/51, Kotlin 74/74, static 29/29, Gradle 179 tasks 증거 | signed release, actual SDK callback, physical Back, AWS E2E |
+| Android 통합 소스 | PR #2 병합 커밋 `dcffaad` 포함; 기존 PLEOS 51/51, Kotlin 74/74, static 29/29, Gradle 179 tasks 증거; Issue #28 Navi 공개 목적지 1건의 app-boundary terminal callback | signed release, Vehicle P/D/R/N callback, Navi UI 전체 여정·경유지·물리 차량, physical Back, AWS E2E |
 | Android local/consent | session/draft/queue, route source, consent/withdraw, Room v6 delete tombstone와 bounded retry 계측 | 실제 위치 샘플·route point 수집, actual cloud delete |
 | Cloud contract | backend `ddbd61fde381d09bc4605c758126ebf6ba0a5ea5` 계약이 `b1c33a2`에 포함 | concrete Cognito/API host와 no-redirect HTTP adapter 설정 부재로 actual cloud unavailable; AWS E2E 미실행 |
 | 현재 제출 worktree의 `infra/` | Cognito, HTTP API, DynamoDB, private S3 scaffold와 `/users/me`, `/feed` skeleton 확인 | 최신 backend branch의 전체 drive/publish/upload 계약을 대표하지 않음 |
-| SDK 가용성 | Vehicle State와 NaviHelper는 Ready to Use; Pleos flavor build/AVD safety suite 성공 | 실제 P/D/R/N·route callback |
+| SDK 가용성 | Vehicle State와 NaviHelper는 Ready to Use; Pleos flavor build/AVD safety suite 성공; Navi 공개 목적지 1건의 app-boundary terminal callback 검증 | 실제 Vehicle P/D/R/N callback, Navi UI 전체 여정·경유지 실행·물리 차량 |
 | 위치 SDK | FusedLocation은 공식 Coming Soon | 실제 위치 수집을 구현·시연할 근거 |
 | 409 conflict review | `4f2b559`: durable FAILED, explicit fetch/adopt, publish-only replay; Room/WorkManager 계측 통과 | actual cloud 미실행 |
 | P0-3A bootstrap/doctor | 역사적 `88b4938`: offline zero-network fail-fast | 현재 차단은 해소됨; 과거 기록은 회귀 진단용 |
