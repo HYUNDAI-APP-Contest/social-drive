@@ -2,6 +2,7 @@ package com.socialdrive.app.data.remote
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 class OkHttpCloudTransportsTest {
@@ -22,5 +23,10 @@ class OkHttpCloudTransportsTest {
         assertEquals(CLOUD_IO_TIMEOUT_SECONDS * 1_000, client.readTimeoutMillis.toLong())
         assertEquals(CLOUD_IO_TIMEOUT_SECONDS * 1_000, client.writeTimeoutMillis.toLong())
         assertEquals(CLOUD_CALL_TIMEOUT_SECONDS * 1_000, client.callTimeoutMillis.toLong())
+    }
+
+    @Test
+    fun `클라우드 전송 연결 풀은 프로세스에서 하나만 재사용한다`() {
+        assertSame(sharedCloudTransports(), sharedCloudTransports())
     }
 }

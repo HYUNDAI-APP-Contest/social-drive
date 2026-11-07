@@ -55,6 +55,12 @@ internal fun createCloudHttpClient(): OkHttpClient = OkHttpClient.Builder()
     .callTimeout(CLOUD_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
     .build()
 
+internal fun sharedCloudTransports(): OkHttpCloudTransports = CloudTransportHolder.instance
+
+private object CloudTransportHolder {
+    val instance: OkHttpCloudTransports = OkHttpCloudTransports.create()
+}
+
 private suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
     continuation.invokeOnCancellation { cancel() }
     enqueue(object : Callback {
