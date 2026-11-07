@@ -166,13 +166,21 @@ class CloudDriveClient(
     /** Downloads a short-lived JPEG cover without forwarding Cognito authorization. */
     suspend fun downloadCover(detail: DriveDetail): ByteArray {
         val response = try {
-            objectTransport.execute(HttpRequest(HttpMethod.GET, detail.links.coverUri, emptyMap(), null))
+            objectTransport.execute(
+                HttpRequest(
+                    HttpMethod.GET,
+                    detail.links.coverUri,
+                    emptyMap(),
+                    null,
+                    maxResponseBytes = MAX_COVER_BYTES,
+                ),
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
             throw CloudDriveException(CloudFailureKind.RETRYABLE, "COVER_TRANSPORT", retryable = true)
         }
-        if (response.body.size > MAX_RESPONSE_BYTES) {
+        if (response.body.size > MAX_COVER_BYTES) {
             throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
         }
         if (response.status == 403) {
@@ -391,7 +399,7 @@ class CloudDriveClient(
         if (requireBothKinds) require(assets.map(AssetManifest::kind).toSet() == AssetKind.entries.toSet())
         assets.forEach { asset ->
             when (asset.kind) {
-                AssetKind.COVER -> require(asset.contentType in setOf("image/jpeg", "image/webp") && asset.sizeBytes <= 10L * 1024 * 1024)
+                AssetKind.COVER -> require(asset.contentType in setOf("image/jpeg", "image/webp") && asset.sizeBytes <= MAX_COVER_BYTES.toLong())
                 AssetKind.ROUTE -> require(asset.contentType == "application/json" && asset.sizeBytes <= 1024L * 1024)
             }
         }
@@ -576,6 +584,7 @@ class CloudDriveClient(
 
     companion object {
         private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+        private const val MAX_COVER_BYTES = 10 * 1024 * 1024
         private const val MAX_CLOUD_URL_LENGTH = 8_192
         private const val MAX_PRESIGNED_SECONDS = 900L
         private const val CLOCK_SKEW_SECONDS = 30L

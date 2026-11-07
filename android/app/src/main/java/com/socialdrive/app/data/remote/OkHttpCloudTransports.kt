@@ -22,7 +22,7 @@ class OkHttpCloudTransports private constructor(private val client: OkHttpClient
         return client.newCall(builder.build()).await().use { response ->
             val responseBody = response.body
             val length = responseBody?.contentLength() ?: 0
-            if (length > MAX_CLOUD_RESPONSE_BYTES) throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
+            if (length > request.maxResponseBytes) throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
             val bytes = responseBody?.byteStream()?.use { input ->
                 val output = java.io.ByteArrayOutputStream()
                 val buffer = ByteArray(8_192)
@@ -31,7 +31,7 @@ class OkHttpCloudTransports private constructor(private val client: OkHttpClient
                     val count = input.read(buffer)
                     if (count < 0) break
                     total += count
-                    if (total > MAX_CLOUD_RESPONSE_BYTES) throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
+                    if (total > request.maxResponseBytes) throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
                     output.write(buffer, 0, count)
                 }
                 output.toByteArray()
@@ -74,7 +74,6 @@ private suspend fun Call.await(): Response = suspendCancellableCoroutine { conti
     })
 }
 
-private const val MAX_CLOUD_RESPONSE_BYTES = 2 * 1024 * 1024
 internal const val CLOUD_CONNECT_TIMEOUT_SECONDS = 10L
 internal const val CLOUD_IO_TIMEOUT_SECONDS = 20L
 internal const val CLOUD_CALL_TIMEOUT_SECONDS = 30L

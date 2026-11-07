@@ -11,7 +11,12 @@ class HttpRequest(
     val uri: URI,
     val headers: Map<String, String>,
     val body: ByteArray?,
+    val maxResponseBytes: Int = DEFAULT_CLOUD_RESPONSE_BYTES,
 ) {
+    init {
+        require(maxResponseBytes in 0..MAX_CLOUD_RESPONSE_BYTES)
+    }
+
     override fun toString(): String = "HttpRequest(method=$method, sensitiveFields=[REDACTED])"
 }
 
@@ -26,7 +31,7 @@ class HttpResponse(
 
 /**
  * Cancellation-cooperative transport. Implementations must disable redirects and logging, stream
- * with a hard 2 MiB response cap, and cancel the underlying call when the coroutine is cancelled.
+ * with the request's bounded response cap, and cancel the underlying call when cancelled.
  */
 fun interface ApiHttpTransport {
     suspend fun execute(request: HttpRequest): HttpResponse
@@ -34,7 +39,7 @@ fun interface ApiHttpTransport {
 
 /**
  * Cancellation-cooperative, no-redirect/no-log transport dedicated to presigned object requests.
- * It must never buffer more than 2 MiB of a response body or add ambient authentication headers.
+ * It must never exceed the request's response cap or add ambient authentication headers.
  */
 fun interface ObjectUploadTransport {
     suspend fun execute(request: HttpRequest): HttpResponse
@@ -264,3 +269,6 @@ data class CloudDriveClientConfig(
         require(allowedUploadHosts.all { it == it.lowercase() && it.isValidCloudHost() })
     }
 }
+
+internal const val DEFAULT_CLOUD_RESPONSE_BYTES = 2 * 1024 * 1024
+internal const val MAX_CLOUD_RESPONSE_BYTES = 10 * 1024 * 1024

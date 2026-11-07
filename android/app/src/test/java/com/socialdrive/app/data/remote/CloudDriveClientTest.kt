@@ -410,11 +410,13 @@ class CloudDriveClientTest {
         assertEquals(HttpMethod.GET, harness.objects.requests.last().method)
         assertTrue(harness.objects.requests.last().headers.isEmpty())
         assertEquals(null, harness.objects.requests.last().body)
+        assertEquals(DEFAULT_CLOUD_RESPONSE_BYTES, harness.objects.requests.last().maxResponseBytes)
 
         harness.objects.responses += HttpResponse(200, body = byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0xd9.toByte()))
         val cover = harness.client.downloadCover(detail)
         assertEquals(4, cover.size)
         assertTrue(harness.objects.requests.last().headers.isEmpty())
+        assertEquals(MAX_CLOUD_RESPONSE_BYTES, harness.objects.requests.last().maxResponseBytes)
 
         harness.objects.responses += HttpResponse(200, body = "not-an-image".toByteArray())
         val malformedCover = assertFailsWith<CloudDriveException> { harness.client.downloadCover(detail) }

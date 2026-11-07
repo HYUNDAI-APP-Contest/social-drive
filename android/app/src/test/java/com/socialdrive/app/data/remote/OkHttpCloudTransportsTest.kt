@@ -1,11 +1,29 @@
 package com.socialdrive.app.data.remote
 
+import java.net.URI
+import kotlin.test.assertFailsWith
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
 import org.junit.Test
 
 class OkHttpCloudTransportsTest {
+    @Test
+    fun `응답 상한은 기본 2 MiB이며 절대 10 MiB를 넘을 수 없다`() {
+        val request = HttpRequest(HttpMethod.GET, URI("https://api.example.com/test"), emptyMap(), null)
+
+        assertEquals(DEFAULT_CLOUD_RESPONSE_BYTES, request.maxResponseBytes)
+        assertFailsWith<IllegalArgumentException> {
+            HttpRequest(
+                HttpMethod.GET,
+                URI("https://api.example.com/test"),
+                emptyMap(),
+                null,
+                maxResponseBytes = MAX_CLOUD_RESPONSE_BYTES + 1,
+            )
+        }
+    }
+
     @Test
     fun `클라우드 호출은 리다이렉트와 암묵적 재시도를 차단한다`() {
         val client = createCloudHttpClient()
