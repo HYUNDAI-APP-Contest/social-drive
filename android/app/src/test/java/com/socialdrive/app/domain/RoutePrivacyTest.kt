@@ -105,6 +105,21 @@ class RoutePrivacyTest {
     }
 
     @Test
+    fun `반복된 오래된 정지 좌표는 실제 주행 구간 선택을 왜곡하지 않는다`() {
+        val stale = RawRouteCoordinate(127.20, 37.40)
+        val current = listOf(
+            RawRouteCoordinate(126.9780, 37.5665),
+            RawRouteCoordinate(126.9790, 37.5665),
+            RawRouteCoordinate(126.9800, 37.5665),
+        )
+
+        val track = RouteDistance.plausibleTrack(List(20) { stale } + current)
+
+        assertEquals(current, track)
+        assertEquals(true, RouteDistance.meters(track) in 175..178)
+    }
+
+    @Test
     fun `장시간 위치 버퍼는 상한 안에서 출발점과 최신점을 보존한다`() {
         val buffer = BoundedRouteBuffer(5)
         val points = (0..12).map { index -> RawRouteCoordinate(126.0 + index / 100.0, 37.0) }

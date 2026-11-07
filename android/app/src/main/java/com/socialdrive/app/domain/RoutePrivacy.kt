@@ -123,8 +123,9 @@ class BoundedRouteBuffer(private val maximumSize: Int) {
 object RouteDistance {
     fun plausibleTrack(points: List<RawRouteCoordinate>): List<RawRouteCoordinate> {
         if (points.size < 2) return points
+        val distinctPoints = points.filterIndexed { index, point -> index == 0 || point != points[index - 1] }
         val tracks = mutableListOf<MutableList<RawRouteCoordinate>>()
-        points.forEach { point ->
+        distinctPoints.forEach { point ->
             val current = tracks.lastOrNull()
             if (current == null || segmentMeters(current.last(), point) > MAX_PLAUSIBLE_SEGMENT_METERS) {
                 tracks += mutableListOf(point)
