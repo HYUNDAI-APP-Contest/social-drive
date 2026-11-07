@@ -6,20 +6,24 @@
 
 ## 확인된 실행 스냅샷
 
-아래 결과는 앱 코드 커밋 `298db32`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
+아래 결과는 앱 코드 커밋 `d1ab8cc`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
 
 - 대상: `emulator-5554`, Android user 10, PLEOS 가로 화면 `2560×1440`
 - 패키지: `com.socialdrive.app`
 - APK: `android/app/build/outputs/apk/pleos/debug/app-pleos-debug.apk`
-- SHA-256: `aa5f00e66ecf7a0175d084628d4427ddf5c852f79db7abd6c5016329f9a9ccd6`
+- SHA-256: `2a95b767a87719e586b3ab0696dc8c7e4ee4e8759b18069665ebce5e346e4ef3`
 - 설치 결과: `adb install -r` 성공
 - 시작 결과: `com.socialdrive.app/.MainActivity`가 현재 포커스이며 시작 직후 FATAL/ANR 없음
 - 설정 화면: 차량 상태, 차량 내비게이션, 위치 연동, 음성 안내, 음성 인식이 모두 `PLEOS 연결됨`
 - 위치 권한: user 10에서 `pleos.car.permission.FUSED_LOCATION` 허용
 - 설치 권한: `TTS_SERVICE`, `STT_SERVICE`, `CAR_DRIVE`, `NAVI_ROUTE_SEARCH`와 SDK 바인딩 권한 허용
 - AWS 상태: 공개 빌드 출력값을 주입하지 않은 APK이므로 `AWS · 빌드 설정 필요`로 안전하게 닫힘
+- 회귀 검증: 핵심 Kotlin 102개, PLEOS/Demo 전체 단위 테스트와 PLEOS lint 통과
+- 게시 복구 계측: Cognito 토큰 시간 초과 뒤 CREATE `retry` → CREATE/UPLOAD/PUBLISH 완료를 별도 disposable AVD에서 `OK (1 test)`로 확인
 
 설정 화면의 `PLEOS 연결됨`은 SDK 초기화 콜백과 권한 상태를 확인한 결과다. 실차의 물리적인 D/R/N 변속, 실제 주행 위치 변화, 마이크 음성 품질과 스피커 출력 품질까지 검증했다는 의미는 아니다.
+
+Cognito 갱신의 시간 초과, Amplify `ServiceException`/`UnknownException`, 내부 `IOException`은 로그인 세션을 지우지 않는 일시 장애로 분류한다. 명시적 로그아웃, 세션 만료, 권한 거부와 API 401만 재인증 경로로 전환한다. 이 구분은 로컬 SDK 타입·Worker 계측으로 검증했으며 실제 AWS 계정 통신 증거는 아니다.
 
 ## 재현 명령
 
@@ -43,6 +47,13 @@ shasum -a 256 android/app/build/outputs/apk/pleos/debug/app-pleos-debug.apk
 5. 로그아웃 뒤 인증 요청이 네트워크 전 안전하게 중단되는지 확인한다.
 
 구체적인 출력 매핑과 금지 항목은 `docs/aws-app-connection.md`를 따른다. 앱 작업자는 AWS 배포, IAM 변경, 테스트 사용자 생성 또는 운영 데이터 변경을 수행하지 않는다.
+
+로컬 구성 게이트는 2026-11-08에 다음 두 방향을 확인했다.
+
+- 속성 미주입: 공개 출력 여섯 개를 모두 누락 항목으로 표시하고 빌드 실패
+- 비밀값 없는 정상 형식 예시: HTTPS API, 허용 업로드 호스트, 승인 동의 정책 버전, 일치하는 리전/User Pool ID, 26자 public client ID로 검증 성공
+
+형식 예시의 성공은 해당 호스트나 Cognito 리소스가 실제 존재하거나 배포됐다는 뜻이 아니다.
 
 ## 아직 미검증
 
