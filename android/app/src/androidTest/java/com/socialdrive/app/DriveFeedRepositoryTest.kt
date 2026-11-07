@@ -41,16 +41,22 @@ class DriveFeedRepositoryTest {
 
     @Test
     fun successfulRefreshPersistsOnlyPublicMetadata() = runTest {
-        val transport = QueueTransport().apply { responses += feedResponse() }
+        val cursor = "next_cursor_123456789012345678901234"
+        val transport = QueueTransport().apply {
+            responses += feedResponse(nextCursor = cursor)
+            responses += feedResponse(id = "drive-public-0002", nextCursor = null)
+        }
         val repository = PersistentCloudDriveFeedRepository(database, { client(transport) }, now = { 123L })
 
         repository.refresh()
 
         val state = repository.state.value as ContentState.Content
-        assertEquals("cloud-drive-public-0001", state.value.single().id)
-        assertEquals("공개 드라이브", state.value.single().title)
-        val cached = database.cachedFeedDao().findAll().single()
-        assertEquals(123L, cached.cachedAtEpochMs)
+        assertEquals(listOf("cloud-drive-public-0001", "cloud-drive-public-0002"), state.value.map { it.id })
+        assertEquals("공개 드라이브", state.value.first().title)
+        val cached = database.cachedFeedDao().findAll()
+        assertEquals(2, cached.size)
+        assertTrue(cached.all { it.cachedAtEpochMs == 123L })
+        assertTrue(transport.requests.last().uri.rawQuery!!.contains("cursor=$cursor"))
         val columns = database.openHelper.readableDatabase
             .query("PRAGMA table_info(cached_feed_drives)")
             .use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(1)) } }
@@ -111,9 +117,12 @@ class DriveFeedRepositoryTest {
         objectTransport = objects,
     )
 
-    private fun feedResponse() = HttpResponse(
+    private fun feedResponse(
+        id: String = "drive-public-0001",
+        nextCursor: String? = null,
+    ) = HttpResponse(
         200,
-        body = """{"items":[{"id":"drive-public-0001","status":"PUBLISHED","version":2,"title":"공개 드라이브","summary":"검증된 공개 요약","distanceMeters":128400,"durationSeconds":9360,"highlightCount":4,"createdAt":"2026-11-01T10:00:00Z","publishedAt":"2026-11-01T10:05:00Z","coverUrl":"https://upload.example.test/private-cover"}],"nextCursor":null}""".toByteArray(),
+        body = """{"items":[{"id":"$id","status":"PUBLISHED","version":2,"title":"공개 드라이브","summary":"검증된 공개 요약","distanceMeters":128400,"durationSeconds":9360,"highlightCount":4,"createdAt":"2026-11-01T10:00:00Z","publishedAt":"2026-11-01T10:05:00Z","coverUrl":"https://upload.example.test/private-cover"}],"nextCursor":${nextCursor?.let { "\"$it\"" } ?: "null"}}""".toByteArray(),
     )
 
     private fun detailResponse(routeName: String, version: Int = 2) = HttpResponse(

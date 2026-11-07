@@ -4,6 +4,9 @@ import androidx.room.withTransaction
 import com.socialdrive.app.data.local.CachedFeedDriveEntity
 import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.remote.CloudDriveClient
+import com.socialdrive.app.data.remote.CloudDriveException
+import com.socialdrive.app.data.remote.CloudFailureKind
+import com.socialdrive.app.data.remote.FeedItem
 import com.socialdrive.app.domain.ContentState
 import com.socialdrive.app.domain.DriveSummary
 import com.socialdrive.app.domain.EphemeralCoverImage
@@ -56,9 +59,9 @@ class PersistentCloudDriveFeedRepository(
             return@withLock
         }
         try {
-            val page = client.feed(limit = 50)
+            val feedItems = fetchBoundedFeed(client)
             val timestamp = now()
-            val entities = page.items.map { item ->
+            val entities = feedItems.map { item ->
                 val drive = item.drive
                 CachedFeedDriveEntity(
                     id = drive.id,
@@ -84,6 +87,21 @@ class PersistentCloudDriveFeedRepository(
             mutableState.value = if (cached.isEmpty()) ContentState.Retry("피드를 불러오지 못했습니다.")
             else ContentState.Offline(cached)
         }
+    }
+
+    private suspend fun fetchBoundedFeed(client: CloudDriveClient): List<FeedItem> {
+        val items = mutableListOf<FeedItem>()
+        val seenIds = mutableSetOf<String>()
+        var cursor: com.socialdrive.app.data.remote.OpaqueFeedCursor? = null
+        repeat(MAX_FEED_PAGES) {
+            val page = client.feed(limit = FEED_PAGE_SIZE, cursor = cursor)
+            if (page.items.any { !seenIds.add(it.drive.id) }) {
+                throw CloudDriveException(CloudFailureKind.CONTRACT, "DUPLICATE_FEED_ITEM", retryable = false)
+            }
+            items += page.items
+            cursor = page.nextCursor ?: return items
+        }
+        throw CloudDriveException(CloudFailureKind.CONTRACT, "FEED_PAGE_LIMIT_EXCEEDED", retryable = false)
     }
 
     override suspend fun detail(id: String): DriveSummary? {
@@ -164,3 +182,5 @@ private fun stableArtworkRoute(id: String): List<RoutePoint> {
 
 private val DATE_FORMATTER = DateTimeFormatter.ofPattern("M월 d일 · 공개 드라이브")
 private const val CLOUD_ID_PREFIX = "cloud-"
+private const val FEED_PAGE_SIZE = 50
+private const val MAX_FEED_PAGES = 10
