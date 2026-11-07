@@ -425,7 +425,9 @@ test("PLEOS TTS and STT permissions fail closed and remain recoverable", () => {
   assert.match(pleos, /ttsInitialized[\s\S]*sttInitialized/);
   assert.match(pleos, /ttsInitializationGeneration[\s\S]*initializeTts\(\)[\s\S]*generation != ttsInitializationGeneration[\s\S]*hasPermission\(TTS_PERMISSION\)/);
   assert.match(pleos, /sttInitializationGeneration[\s\S]*initializeStt\(\)[\s\S]*generation != sttInitializationGeneration[\s\S]*hasPermission\(STT_PERMISSION\)[\s\S]*stt\.addListener/);
-  assert.match(pleos, /scheduleInitializationTimeout\([\s\S]*isCurrent: \(\) -> Boolean[\s\S]*isCurrent\(\)[\s\S]*generation == ttsInitializationGeneration[\s\S]*generation == sttInitializationGeneration/);
+  assert.match(pleos, /TtsInitializeListener[\s\S]*onSuccess\(\)[\s\S]*synchronized\(speechOperationLock\)[\s\S]*generation != ttsInitializationGeneration[\s\S]*mutableTts\.value = available/);
+  assert.match(pleos, /SttInitializeListener[\s\S]*onSuccess\(\)[\s\S]*synchronized\(speechOperationLock\)[\s\S]*generation != sttInitializationGeneration[\s\S]*mutableStt\.value = available/);
+  assert.match(pleos, /scheduleInitializationTimeout[\s\S]*generation == ttsInitializationGeneration[\s\S]*mutableTts\.value == checking[\s\S]*generation == sttInitializationGeneration[\s\S]*mutableStt\.value == checking/);
   assert.match(pleos, /override fun speakFeedback\([\s\S]*if \(released\) return false/);
   assert.match(pleos, /override fun startSpeechRecognition\([\s\S]*if \(released\) return false/);
   assert.match(pleos, /if \(isFinal\)[\s\S]*finishRecognition\([\s\S]*runCatching \{ callback\?\.invoke\(text, true\) \}/);
