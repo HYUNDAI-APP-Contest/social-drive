@@ -7,6 +7,7 @@ import androidx.work.ListenableWorker
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import com.socialdrive.app.data.DraftSnapshot
+import com.socialdrive.app.data.recordedDurationSeconds
 import com.socialdrive.app.data.local.ConflictState
 import com.socialdrive.app.data.local.DraftEntity
 import com.socialdrive.app.data.local.LocalState
@@ -93,20 +94,26 @@ abstract class StagedPublishWorker(
         return if (remote?.retryable == true && runAttemptCount < MAX_RETRY_ATTEMPTS) Result.retry() else Result.failure()
     }
 
-    protected suspend fun DraftEntity.snapshot() = DraftSnapshot(
-        id = id,
-        recordingId = recordingId,
-        clientRequestId = clientRequestId,
-        title = title,
-        description = description,
-        coverPreset = coverPreset,
-        originalContentRef = originalContentRef,
-        state = state,
-        createdAtEpochMs = createdAtEpochMs,
-        routePoints = dependencies.database.routePrivacyDao().pointsForRecording(recordingId).map { point ->
-            NormalizedRoutePoint(point.sequence, point.horizontal, point.vertical)
-        },
-    )
+    protected suspend fun DraftEntity.snapshot(): DraftSnapshot {
+        val recording = dependencies.database.recordingDao().find(recordingId)
+        val durationSeconds = recording.recordedDurationSeconds()
+        return DraftSnapshot(
+            id = id,
+            recordingId = recordingId,
+            clientRequestId = clientRequestId,
+            title = title,
+            description = description,
+            coverPreset = coverPreset,
+            originalContentRef = originalContentRef,
+            state = state,
+            highlightCount = recording?.highlightCount?.coerceIn(0, 100) ?: 0,
+            durationSeconds = durationSeconds,
+            createdAtEpochMs = createdAtEpochMs,
+            routePoints = dependencies.database.routePrivacyDao().pointsForRecording(recordingId).map { point ->
+                NormalizedRoutePoint(point.sequence, point.horizontal, point.vertical)
+            },
+        )
+    }
 
     companion object {
         const val KEY_DRAFT_ID = "draftId"

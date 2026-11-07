@@ -1,5 +1,6 @@
 package com.socialdrive.app.data
 
+import com.socialdrive.app.data.local.RecordingEntity
 import com.socialdrive.app.domain.NormalizedRoutePoint
 
 /**
@@ -18,7 +19,16 @@ data class DraftSnapshot(
     val originalContentRef: String,
     val state: String,
     val highlightCount: Int = 0,
+    val durationSeconds: Int = 0,
     val storyId: String = "demo-coast",
     val routePoints: List<NormalizedRoutePoint> = emptyList(),
     val createdAtEpochMs: Long = 0L,
 )
+
+internal fun RecordingEntity?.recordedDurationSeconds(): Int {
+    val recording = this ?: return 0
+    val endedAt = recording.endedAtEpochMs ?: return 0
+    return ((endedAt - recording.startedAtEpochMs).coerceAtLeast(0L) / 1_000L)
+        .coerceAtMost(259_200L)
+        .toInt()
+}

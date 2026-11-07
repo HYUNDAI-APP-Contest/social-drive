@@ -88,6 +88,33 @@ class PublishWorkChainTest {
     }
 
     @Test
+    fun createWorkerPublishesRecordedDurationAndHighlightCount() = runTest {
+        var now = 1_000L
+        val values = ArrayDeque(listOf("recording-metrics", "draft-metrics", "request-metrics"))
+        val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { now })
+        val recording = recordings.start()
+        recordings.addHighlight(recording.id)
+        recordings.addHighlight(recording.id)
+        now = 3_662_000L
+        val draft = requireNotNull(recordings.finishAsDraft(recording.id))
+        val scheduler = PublishScheduler(
+            WorkManager.getInstance(context),
+            PublishQueueRepository(database, clock = { now }),
+            motion,
+        )
+
+        scheduler.enqueue(draft.id, MotionState.Parked)
+        val manager = WorkManager.getInstance(context)
+        val work = manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id)).get(5, TimeUnit.SECONDS)
+        val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
+        work.forEach { driver.setAllConstraintsMet(it.id) }
+        awaitUniqueWorkFinished(draft.id)
+
+        assertEquals(2, remote.lastCreatedDraft?.highlightCount)
+        assertEquals(3_661, remote.lastCreatedDraft?.durationSeconds)
+    }
+
+    @Test
     fun motionChangeBeforeWorkerRunPausesWithoutRemoteCalls() = runTest {
         val values = ArrayDeque(listOf("recording-4", "draft-4", "request-4"))
         val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 400L })
@@ -315,9 +342,11 @@ private class CountingRemoteDriveApi : RemoteDriveApi {
     var publishCalls = 0
     var createResult: RemoteDraftRef? = null
     var publishError: RemoteDriveException? = null
+    var lastCreatedDraft: DraftSnapshot? = null
     override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): com.socialdrive.app.data.remote.RemoteDraftRef {
         calls += 1
         createCalls += 1
+        lastCreatedDraft = draft
         return createResult ?: com.socialdrive.app.data.remote.RemoteDraftRef("remote-${draft.id}", 1)
     }
     override suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>) { calls += 1; uploadCalls += 1 }

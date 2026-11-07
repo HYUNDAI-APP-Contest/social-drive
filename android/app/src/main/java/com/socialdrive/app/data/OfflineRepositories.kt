@@ -72,9 +72,11 @@ class RecordingRepository(
 
     suspend fun finishAsDraft(id: String): DraftSnapshot? {
         database.draftDao().findByRecording(id)?.let { existing ->
+            val recording = database.recordingDao().find(id)
             return existing.toSnapshot(
-                database.recordingDao().find(id)?.highlightCount ?: 0,
+                recording?.highlightCount ?: 0,
                 database.routePrivacyDao().pointsForRecording(id).map { it.toDomain() },
+                recording.recordedDurationSeconds(),
             )
         }
         val normalizedPoints = routeCollector?.snapshotAndClear().orEmpty()
@@ -103,7 +105,11 @@ class RecordingRepository(
                     NormalizedRoutePointEntity(recording.id, point.sequence, point.horizontal, point.vertical, "UNPUBLISHED"),
                 )
             }
-            draft.toSnapshot(recording.highlightCount, normalizedPoints)
+            draft.toSnapshot(
+                recording.highlightCount,
+                normalizedPoints,
+                recording.copy(endedAtEpochMs = now).recordedDurationSeconds(),
+            )
         }
     }
 
@@ -117,17 +123,21 @@ class DraftRepository(
 ) {
     val drafts: Flow<List<DraftSnapshot>> = database.draftDao().observeAll().map { items ->
         items.map { entity ->
+            val recording = database.recordingDao().find(entity.recordingId)
             entity.toSnapshot(
-                database.recordingDao().find(entity.recordingId)?.highlightCount ?: 0,
+                recording?.highlightCount ?: 0,
                 database.routePrivacyDao().pointsForRecording(entity.recordingId).map { it.toDomain() },
+                recording.recordedDurationSeconds(),
             )
         }
     }
 
     suspend fun find(id: String): DraftSnapshot? = database.draftDao().find(id)?.let { entity ->
+        val recording = database.recordingDao().find(entity.recordingId)
         entity.toSnapshot(
-            database.recordingDao().find(entity.recordingId)?.highlightCount ?: 0,
+            recording?.highlightCount ?: 0,
             database.routePrivacyDao().pointsForRecording(entity.recordingId).map { it.toDomain() },
+            recording.recordedDurationSeconds(),
         )
     }
 
@@ -208,6 +218,7 @@ class PublishQueueRepository(
 private fun DraftEntity.toSnapshot(
     highlightCount: Int,
     routePoints: List<NormalizedRoutePoint> = emptyList(),
+    durationSeconds: Int = 0,
 ) = DraftSnapshot(
     id = id,
     recordingId = recordingId,
@@ -218,6 +229,7 @@ private fun DraftEntity.toSnapshot(
     originalContentRef = originalContentRef,
     state = state,
     highlightCount = highlightCount.coerceIn(0, 100),
+    durationSeconds = durationSeconds,
     storyId = coverPreset.removePrefix("route-memory-").takeIf { it.startsWith("demo-") } ?: "demo-coast",
     routePoints = routePoints,
     createdAtEpochMs = createdAtEpochMs,
