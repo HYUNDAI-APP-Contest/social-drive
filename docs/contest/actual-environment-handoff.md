@@ -6,12 +6,12 @@
 
 ## 확인된 실행 스냅샷
 
-아래 결과는 앱 코드 커밋 `29a1722`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
+아래 결과는 앱 코드 커밋 `6d2ea67`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
 
 - 대상: `emulator-5554`, Android user 10, PLEOS 가로 화면 `2560×1440`
 - 패키지: `com.socialdrive.app`
 - APK: `android/app/build/outputs/apk/pleos/debug/app-pleos-debug.apk`
-- SHA-256: `e26d7bc770a83a0f860fc8b1250708063245d37e1b71942d9f7aab9208d154dd`
+- SHA-256: `f4cf6cd071741e24725cbbcee6fa844167c66efaaa3a84e8020c7a5cbfd54416`
 - 설치 결과: `adb install -r` 성공
 - 시작 결과: `com.socialdrive.app/.MainActivity`가 현재 포커스이며 시작 직후 FATAL/ANR 없음
 - 설정 화면: 차량 상태, 차량 내비게이션, 위치 연동, 음성 안내, 음성 인식이 모두 `PLEOS 연결됨`
@@ -46,6 +46,8 @@ FusedLocation 콜백은 좌표 유효성뿐 아니라 SDK가 양수 타임스탬
 Cognito 갱신의 시간 초과, Amplify `ServiceException`/`UnknownException`, 내부 `IOException`은 로그인 세션을 지우지 않는 일시 장애로 분류한다. 명시적 로그아웃, 세션 만료, 권한 거부와 API 401만 재인증 경로로 전환한다. 이 구분은 로컬 SDK 타입·Worker 계측으로 검증했으며 실제 AWS 계정 통신 증거는 아니다.
 
 로그인·MFA 확인·로그아웃 도중 호출 코루틴이 취소되면 앱이 `처리 중` 상태에 남지 않도록 런타임 세션 공급자를 격리하고 `재인증 필요` 상태로 전환한다. 취소 중에도 이 정리가 완료된 뒤 취소 예외를 상위 호출자에게 다시 전달한다. 상태 전환은 PLEOS 단위 테스트로 확인했지만, 늦게 도착한 실제 Amplify 콜백과 AWS 세션의 종단 간 동작은 승인된 계정에서 추가 확인해야 한다.
+
+Cognito SDK 콜백에는 20초 내부 제한을 유지하되, 더 짧은 상위 작업 제한이 먼저 끝난 경우 그 취소를 Cognito 자체 시간 초과로 바꾸지 않는다. 내부 제한과 외부 제한의 선후 관계는 가상 시간 단위 테스트로 각각 확인했으며, 실제 네트워크 지연 시점의 SDK 콜백은 AWS E2E에서 추가 확인해야 한다.
 
 API와 presigned object 요청은 리디렉션·암묵적 연결 재시도를 끄고 2 MiB 응답 상한과 30초 전체 호출 제한을 적용한 동일 `OkHttpClient` 연결 풀을 프로세스 동안 재사용한다. 반복 작업마다 새 소켓 풀을 만들지 않는 것은 양쪽 flavor 단위 테스트로 확인했지만, 실제 API Gateway/S3 연결 재사용 관찰은 AWS E2E 범위다.
 
