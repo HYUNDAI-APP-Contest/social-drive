@@ -4,6 +4,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.Composable
+import androidx.activity.compose.setContent
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -66,6 +67,7 @@ class VisualRegressionTest {
 
     @Test
     fun homeCategoryFiltersUpdateTheVisibleDriveCollection() {
+        show(VisualScenario.HomeContent)
         compose.onNodeWithText("오늘의 드라이브").assertIsDisplayed()
         compose.onNodeWithText("산").performClick()
         compose.onNodeWithText("가을, 단풍이 머문 길").assertIsDisplayed()
@@ -220,7 +222,7 @@ class VisualRegressionTest {
     }
 
     private fun show(scenario: VisualScenario, theme: ThemeMode = ThemeMode.Day) {
-        compose.setContent {
+        compose.activity.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 1f)) {
                 VisualScenarioFixture(scenario, theme, judgeViewportModifier())
             }
@@ -230,7 +232,7 @@ class VisualRegressionTest {
     }
 
     private fun showLargeText(scenario: VisualScenario) {
-        compose.setContent {
+        compose.activity.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 1.3f)) {
                 VisualScenarioFixture(scenario, ThemeMode.Day, judgeViewportModifier())
             }
@@ -261,7 +263,7 @@ class VisualRegressionTest {
     }
 
     private fun setJudgeContent(content: @Composable () -> Unit) {
-        compose.setContent {
+        compose.activity.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 1f)) {
                 SocialDriveTheme(ThemeMode.Day) {
                     Box(judgeViewportModifier().testTag(VISUAL_FIXTURE_TAG)) { content() }

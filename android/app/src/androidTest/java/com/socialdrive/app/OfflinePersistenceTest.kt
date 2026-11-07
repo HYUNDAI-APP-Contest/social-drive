@@ -121,10 +121,11 @@ class OfflinePersistenceTest {
             )
             override suspend fun stopAndAwait() = Unit
         }
+        val clockValues = ArrayDeque(listOf(250L, 3_661_250L))
         val recordings = RecordingRepository(
             database,
             IdFactory { values.removeFirst() },
-            clock = { 250L },
+            clock = { clockValues.removeFirst() },
             routeCollector = collector,
         )
 
