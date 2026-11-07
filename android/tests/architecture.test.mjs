@@ -433,7 +433,9 @@ test("PLEOS TTS and STT permissions fail closed and remain recoverable", () => {
   assert.match(pleos, /if \(isFinal\)[\s\S]*finishRecognition\([\s\S]*runCatching \{ callback\?\.invoke\(text, true\) \}/);
   assert.match(pleos, /callback\?\.invoke\(text, false\)[\s\S]*finishRecognition\(SpeechRecognitionState\.Failed\)/);
   assert.match(pleos, /locationOperationLock[\s\S]*registerLocationCallback\([\s\S]*synchronized\(locationOperationLock\)/);
-  assert.match(pleos, /registerFusedLocationCallback\(locationListener\)[\s\S]*val stillOwned = synchronized\(locationLock\) \{ locationCollecting && !released \}[\s\S]*if \(!stillOwned\)[\s\S]*unregisterFusedLocationCallback\(locationListener\)/);
+  assert.match(pleos, /createLocationListener\(\)\.also \{ registeredLocationListener = it \}[\s\S]*registerFusedLocationCallback\(listener\)[\s\S]*registeredLocationListener === listener && locationCollecting && !released[\s\S]*unregisterFusedLocationCallback\(listener\)/);
+  assert.match(pleos, /if \(registeredLocationListener === listener && locationCollecting\) rawLocations\.offer\(coordinate\)/);
+  assert.match(pleos, /registeredLocationListener === listener[\s\S]*if \(current\) deactivateLocationCollection/);
   assert.match(pleos, /val shouldRelease = synchronized\(speechOperationLock\)[\s\S]*if \(!shouldRelease\) return/);
   assert.match(pleos, /RawRouteCoordinate\.fromOrNull\(location\.longitude, location\.latitude\) \?: return/);
   assert.match(pleos, /BoundedRouteBuffer\(MAX_ROUTE_POINTS\)/);
@@ -855,7 +857,7 @@ test("route source consent withdrawal and delete pending stay privacy safe", () 
   ]) assert.ok(domain.includes(marker), marker);
   assert.match(domain, /data object LiveAvailable : RouteSource/);
   assert.match(pleos, /collectionAuthorized && recordingRequested && !locationCollecting/);
-  assert.match(pleos, /if \(locationCollecting\) rawLocations\.offer\(coordinate\)/);
+  assert.match(pleos, /registeredLocationListener === listener && locationCollecting/);
   assert.match(domain, /class BoundedRouteBuffer[\s\S]*if \(points\.size >= maximumSize\) compact\(\)/);
   assert.match(domain, /if \(compacted\.last\(\) != latest\) compacted \+= latest/);
   assert.match(domain, /stopAndAwait\(\)[\s\S]*withdrawAndPurge\(\)[\s\S]*pendingUploads\.cancel/);
