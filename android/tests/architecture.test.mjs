@@ -625,10 +625,13 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   assert.doesNotMatch(remote, /class FakeRemoteDriveApi/);
   assert.doesNotMatch(actualFactory, /FakeRemoteDriveApi/);
   assert.match(actualFactory, /SessionAwareRemoteDriveApi/);
-  assert.match(cloudRuntime, /AtomicReference<CognitoSessionSource\?>\(null\)/);
+  assert.match(cloudRuntime, /AtomicReference<InstalledCognitoSession\?>\(null\)/);
+  assert.match(cloudRuntime, /InstalledCognitoSession\(source\)/);
+  assert.match(cloudRuntime, /isCurrent = \{ sessionSource\.get\(\) === installedSession \}/);
+  assert.match(contracts, /requireCurrentSession\(\)[\s\S]*delegate\.freshAccessToken\(\)[\s\S]*requireCurrentSession\(\)/);
   assert.match(cloudRuntime, /AtomicBoolean\(false\)/);
   assert.match(cloudRuntime, /CloudRuntimeAvailability\.INITIALIZING/);
-  assert.match(cloudRuntime, /sessionSource\.compareAndSet\(session, null\)/);
+  assert.match(cloudRuntime, /sessionSource\.compareAndSet\(installedSession, null\)/);
   for (const factory of [actualFactory, actualDeleteFactory, actualConflictFactory]) {
     assert.match(factory, /CloudRuntimeAvailability\.INITIALIZING[\s\S]*SERVER_BUSY/);
     assert.match(factory, /CloudRuntimeAvailability\.AUTHENTICATION_REQUIRED[\s\S]*AUTHENTICATION/);

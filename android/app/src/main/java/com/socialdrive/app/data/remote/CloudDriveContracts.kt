@@ -67,8 +67,10 @@ internal class ValidatingCognitoSessionSource(
     private val delegate: CognitoSessionSource,
     private val validator: AccessTokenValidator,
     private val onValidation: (Boolean) -> Unit,
+    private val isCurrent: () -> Boolean = { true },
 ) : CognitoSessionSource {
     override suspend fun freshAccessToken(): String {
+        requireCurrentSession()
         val token = try {
             delegate.freshAccessToken()
         } catch (cancelled: CancellationException) {
@@ -78,11 +80,19 @@ internal class ValidatingCognitoSessionSource(
             runCatching { delegate.onSessionInvalidated() }
             throw error
         }
+        requireCurrentSession()
         val valid = runCatching { validator.isValid(token) }.getOrDefault(false)
         onValidation(valid)
         if (!valid) runCatching { delegate.onSessionInvalidated() }
         require(valid) { "Invalid Cognito access token" }
         return token
+    }
+
+    private fun requireCurrentSession() {
+        if (!isCurrent()) {
+            onValidation(false)
+            throw IllegalStateException("Cognito session lease expired")
+        }
     }
 }
 

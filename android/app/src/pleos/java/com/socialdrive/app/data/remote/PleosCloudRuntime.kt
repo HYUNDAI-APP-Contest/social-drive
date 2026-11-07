@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * Tokens are requested per operation and are never persisted by this runtime.
  */
 object PleosCloudRuntime : CloudConnectionStatusSource {
-    private val sessionSource = AtomicReference<CognitoSessionSource?>(null)
+    private val sessionSource = AtomicReference<InstalledCognitoSession?>(null)
     private val authenticationInitialized = AtomicBoolean(false)
     private val sessionMutex = Mutex()
 
@@ -53,7 +53,7 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
             return@withLock false
         }
         val valid = validateCognitoSession(source, CognitoAccessTokenPolicy(configured.cognito))
-        sessionSource.set(source.takeIf { valid })
+        sessionSource.set(InstalledCognitoSession(source).takeIf { valid })
         mutableStatus.value = if (valid) {
             signedInStatus()
         } else {
@@ -74,15 +74,21 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
 
     internal fun clientOrNull(): CloudDriveClient? {
         val configured = configuration ?: return null
-        val session = sessionSource.get() ?: return null
+        val installedSession = sessionSource.get() ?: return null
+        val session = installedSession.source
         val policy = CognitoAccessTokenPolicy(configured.cognito)
-        val validatingSession = ValidatingCognitoSessionSource(session, policy) { valid ->
-            if (valid) {
-                if (sessionSource.get() === session) mutableStatus.value = signedInStatus()
-            } else if (sessionSource.compareAndSet(session, null)) {
-                mutableStatus.value = signedOutStatus("AWS · 로그인 갱신 필요")
-            }
-        }
+        val validatingSession = ValidatingCognitoSessionSource(
+            delegate = session,
+            validator = policy,
+            onValidation = { valid ->
+                if (valid) {
+                    if (sessionSource.get() === installedSession) mutableStatus.value = signedInStatus()
+                } else if (sessionSource.compareAndSet(installedSession, null)) {
+                    mutableStatus.value = signedOutStatus("AWS · 로그인 갱신 필요")
+                }
+            },
+            isCurrent = { sessionSource.get() === installedSession },
+        )
         val transports = OkHttpCloudTransports.create()
         return CloudDriveClient(
             config = configured.client,
@@ -104,6 +110,8 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
     private fun signedOutStatus(label: String) =
         CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, label)
 }
+
+private data class InstalledCognitoSession(val source: CognitoSessionSource)
 
 internal enum class CloudRuntimeAvailability {
     READY,

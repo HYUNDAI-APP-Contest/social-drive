@@ -1,6 +1,9 @@
 package com.socialdrive.app.data.remote
 
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.supervisorScope
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -88,5 +91,39 @@ class ValidatingCognitoSessionSourceTest {
             false,
             validateCognitoSession(CognitoSessionSource { error("signed out") }, AccessTokenValidator { true }),
         )
+    }
+
+    @Test
+    fun `만료된 세션 임대는 토큰 조회 전과 완료 후 모두 거부한다`() = kotlinx.coroutines.test.runTest {
+        var current = false
+        var requests = 0
+        val before = ValidatingCognitoSessionSource(
+            delegate = CognitoSessionSource { requests += 1; "token" },
+            validator = AccessTokenValidator { true },
+            onValidation = {},
+            isCurrent = { current },
+        )
+        assertFailsWith<IllegalStateException> { before.freshAccessToken() }
+        assertEquals(0, requests)
+
+        current = true
+        val requestStarted = CompletableDeferred<Unit>()
+        val tokenReady = CompletableDeferred<String>()
+        val after = ValidatingCognitoSessionSource(
+            delegate = CognitoSessionSource {
+                requestStarted.complete(Unit)
+                tokenReady.await()
+            },
+            validator = AccessTokenValidator { true },
+            onValidation = {},
+            isCurrent = { current },
+        )
+        supervisorScope {
+            val request = async { after.freshAccessToken() }
+            requestStarted.await()
+            current = false
+            tokenReady.complete("token")
+            assertFailsWith<IllegalStateException> { request.await() }
+        }
     }
 }
