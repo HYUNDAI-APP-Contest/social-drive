@@ -140,7 +140,7 @@ private fun CachedFeedDriveEntity.toSummary(): DriveSummary = DriveSummary(
     highlights = highlightCount,
     route = stableArtworkRoute(id),
     moments = emptyList(),
-    routeSource = RouteSource.LiveAvailable,
+    routeSource = RouteSource.CloudPublished,
 )
 
 private fun com.socialdrive.app.data.remote.DriveResource.toSummary(
@@ -156,7 +156,7 @@ private fun com.socialdrive.app.data.remote.DriveResource.toSummary(
     highlights = highlightCount,
     route = route,
     moments = emptyList(),
-    routeSource = RouteSource.LiveAvailable,
+    routeSource = RouteSource.CloudPublished,
     coverImage = coverImage,
 )
 

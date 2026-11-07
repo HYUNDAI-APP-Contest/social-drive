@@ -184,6 +184,7 @@ internal fun routeArtworkDescription(source: RouteSource, momentCount: Int, poin
     val route = when {
         source == RouteSource.LiveAvailable && pointCount < 2 -> "실시간 경로 수집 중인 배경"
         source == RouteSource.LiveAvailable -> "원본 위치가 제거된 실시간 경로"
+        source == RouteSource.CloudPublished -> "서버에 공개된 정규화 경로"
         else -> "개인 위치가 제거된 데모 경로"
     }
     return "$route · 하이라이트 ${momentCount.coerceAtLeast(0)}개"
@@ -355,7 +356,8 @@ fun RouteSourceBadge(source: RouteSource, modifier: Modifier = Modifier) {
     val label = when (source) {
         RouteSource.DemoPreset -> "데모 데이터"
         is RouteSource.LiveUnavailable -> "실시간 경로 사용 불가"
-        else -> "실시간 경로"
+        RouteSource.LiveAvailable -> "실시간 경로"
+        RouteSource.CloudPublished -> "AWS 공개 경로"
     }
     Surface(modifier, shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
         Text(

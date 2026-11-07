@@ -18,6 +18,7 @@ sealed interface RouteSource {
     data object DemoPreset : RouteSource
     data class LiveUnavailable(val reason: LiveUnavailableReason) : RouteSource
     data object LiveAvailable : RouteSource
+    data object CloudPublished : RouteSource
 }
 
 enum class RouteConsentState { NotAsked, Granted, Withdrawn }
@@ -49,6 +50,7 @@ object RouteConsentReducer {
             )
             RouteSource.DemoPreset -> RouteConsentDecision(RouteConsentState.Granted, shouldPersist = true)
             RouteSource.LiveAvailable -> RouteConsentDecision(RouteConsentState.Granted, shouldPersist = true)
+            RouteSource.CloudPublished -> RouteConsentDecision(current, shouldPersist = false)
         }
         RouteConsentAction.Withdraw -> RouteConsentDecision(RouteConsentState.Withdrawn, shouldPersist = true)
     }

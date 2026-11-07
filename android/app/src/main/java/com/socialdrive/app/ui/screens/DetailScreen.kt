@@ -123,7 +123,7 @@ fun DetailScreen(
             RouteSourceBadge(drive.routeSource)
             IntegrationStatusChip(navigationCapability, Modifier.padding(start = 8.dp), "차량 내비게이션")
             IconButton(
-                onClick = { feedback = "데모에서는 개인정보 보호를 위해 외부 공유를 실행하지 않아요." },
+                onClick = { feedback = "개인정보 보호를 위해 앱 외부 공유는 실행하지 않아요." },
                 modifier = Modifier.size(48.dp),
             ) {
                 Icon(Icons.Rounded.Share, contentDescription = "드라이브 공유 안내")
@@ -166,10 +166,12 @@ fun DetailScreen(
                         Column(Modifier.padding(16.dp)) {
                             RouteSourceBadge(drive.routeSource)
                             Text(
-                                if (drive.routeSource == com.socialdrive.app.domain.RouteSource.LiveAvailable) {
-                                    "원본 위치를 제거한 정규화 경로 아트워크"
-                                } else {
-                                    "개인 위치를 제거한 비정밀 경로 아트워크"
+                                when (drive.routeSource) {
+                                    com.socialdrive.app.domain.RouteSource.LiveAvailable ->
+                                        "원본 위치를 제거한 정규화 경로 아트워크"
+                                    com.socialdrive.app.domain.RouteSource.CloudPublished ->
+                                        "서버에 공개된 정규화 경로 아트워크"
+                                    else -> "개인 위치를 제거한 비정밀 경로 아트워크"
                                 },
                                 Modifier.padding(top = 8.dp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,

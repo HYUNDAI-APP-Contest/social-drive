@@ -33,4 +33,12 @@ class RecordingRouteLabelTest {
         assertEquals("데모 경로를 기록하고 있어요", recordingRouteTitle(RouteSource.DemoPreset))
         assertEquals("정밀 위치는 수집하지 않습니다.", recordingRoutePrivacyLabel(RouteSource.DemoPreset))
     }
+
+    @Test
+    fun `AWS 공개 경로는 현재 차량의 실시간 경로로 표시하지 않는다`() {
+        assertEquals(
+            "서버에 공개된 정규화 경로 · 하이라이트 2개",
+            routeArtworkDescription(RouteSource.CloudPublished, 2),
+        )
+    }
 }

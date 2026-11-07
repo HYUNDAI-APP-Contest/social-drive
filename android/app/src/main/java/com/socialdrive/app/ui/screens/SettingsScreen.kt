@@ -429,6 +429,7 @@ internal fun routeConsentStorageLabel(consentState: RouteConsentState): String =
 
 internal fun routeCapabilityTitle(source: RouteSource): String = when (source) {
     RouteSource.LiveAvailable -> "PLEOS 위치 SDK 사용 가능"
+    RouteSource.CloudPublished -> "AWS 공개 경로"
     RouteSource.DemoPreset -> "데모 경로 모드"
     is RouteSource.LiveUnavailable -> when (source.reason) {
         LiveUnavailableReason.PERMISSION_DENIED -> "PLEOS 위치 권한 필요"
@@ -492,6 +493,7 @@ private fun LiveUnavailableReason.userLabel() = when (this) {
 
 private fun RouteSource.userLabel() = when (this) {
     RouteSource.LiveAvailable -> "사용 가능"
+    RouteSource.CloudPublished -> "AWS 공개 경로"
     is RouteSource.LiveUnavailable -> reason.userLabel()
     RouteSource.DemoPreset -> "데모 경로"
 }
