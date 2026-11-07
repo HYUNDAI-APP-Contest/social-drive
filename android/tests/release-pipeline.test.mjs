@@ -6,6 +6,10 @@ import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+process.env.LC_ALL = "C";
+process.env.LC_CTYPE = "C";
+process.env.LANG = "C";
+
 const androidRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.dirname(androidRoot);
 const buildScript = fs.readFileSync(path.join(androidRoot, "scripts/build-submission-release.sh"), "utf8");
@@ -81,6 +85,8 @@ printf "package: name='%s' versionCode='1' versionName='0.1.0'\\n" "$package"
   fs.writeFileSync(keystore, "not-a-real-keystore");
   const env = {
     ...process.env,
+    LC_ALL: "C",
+    LANG: "C",
     PATH: `${bin}:${process.env.PATH}`,
     SOCIAL_DRIVE_RELEASE_STORE_FILE: keystore,
     SOCIAL_DRIVE_RELEASE_STORE_PASSWORD: "fixture-store-password",
@@ -172,6 +178,8 @@ esac
 `);
   const env = {
     ...process.env,
+    LC_ALL: "C",
+    LANG: "C",
     PATH: `${bin}:${process.env.PATH}`,
     SOCIAL_DRIVE_RELEASE_CERT_SHA256: fingerprint,
   };
@@ -199,6 +207,8 @@ test("resolved Gradle abbreviations cannot bypass missing release signing", () =
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([key]) => !key.startsWith("SOCIAL_DRIVE_RELEASE_")),
   );
+  env.LC_ALL = "C";
+  env.LANG = "C";
   const result = spawnSync("bash", [
     path.join(androidRoot, "scripts/gradle-local.sh"), "--offline", "--dry-run", ":app:aDR",
   ], { cwd: androidRoot, env, encoding: "utf8" });
