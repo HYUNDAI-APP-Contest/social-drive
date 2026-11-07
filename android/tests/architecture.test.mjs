@@ -431,11 +431,12 @@ test("PLEOS TTS and STT permissions fail closed and remain recoverable", () => {
   assert.match(pleos, /override fun speakFeedback\([\s\S]*if \(released\) return false/);
   assert.match(pleos, /override fun startSpeechRecognition\([\s\S]*if \(released\) return false/);
   assert.match(pleos, /if \(isFinal\)[\s\S]*finishRecognition\([\s\S]*session,[\s\S]*runCatching \{ callback\.invoke\(text, true\) \}/);
-  assert.match(pleos, /recognitionSession == session \+ 1 && recognitionCallback == null[\s\S]*if \(stillFinished\) mutableRecognitionState\.value = SpeechRecognitionState\.Failed/);
+  assert.match(pleos, /synchronized\(recognitionLock\)[\s\S]*recognitionSession == session \+ 1 && recognitionCallback == null[\s\S]*mutableRecognitionState\.value = SpeechRecognitionState\.Failed/);
   assert.match(pleos, /createRecognitionListener\(session: Long\)[\s\S]*recognitionSession == session/);
   assert.match(pleos, /callback\.invoke\(text, false\)[\s\S]*finishRecognition\(SpeechRecognitionState\.Failed, session\)/);
   assert.match(pleos, /stt\.addListener\(listener\)[\s\S]*stt\.request\(\)/);
   assert.match(pleos, /recognitionListener\.also \{ recognitionListener = null \}[\s\S]*stt\.removeListener\(it\)/);
+  assert.match(pleos, /recognitionListener\.also \{ recognitionListener = null \}[\s\S]*mutableRecognitionActive\.value = false[\s\S]*mutableRecognitionState\.value = state[\s\S]*timeout to listener/);
   assert.match(pleos, /override fun stopSpeechRecognition\(\) \{[\s\S]*synchronized\(speechOperationLock\)[\s\S]*stt\.stop\(\)/);
   assert.match(pleos, /finishRecognitionAndStop[\s\S]*synchronized\(speechOperationLock\)[\s\S]*finishRecognition\(state, expectedSession\)[\s\S]*stt\.stop\(\)/);
   assert.match(pleos, /locationOperationLock[\s\S]*registerLocationCallback\([\s\S]*synchronized\(locationOperationLock\)/);
@@ -454,7 +455,7 @@ test("a new publish session clears stale speech recognition feedback", () => {
   const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");
   const app = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
   assert.match(contracts, /fun resetSpeechRecognitionState\(\)/);
-  assert.match(pleos, /override fun resetSpeechRecognitionState\(\)[\s\S]*!mutableRecognitionActive\.value[\s\S]*SpeechRecognitionState\.Idle/);
+  assert.match(pleos, /override fun resetSpeechRecognitionState\(\)[\s\S]*synchronized\(speechOperationLock\)[\s\S]*synchronized\(recognitionLock\)[\s\S]*recognitionCallback == null[\s\S]*SpeechRecognitionState\.Idle/);
   assert.match(viewModel, /fun resetDictationFeedback\(\)[\s\S]*resetSpeechRecognitionState\(\)/);
   assert.match(app, /target == AppDestination\.Publish[\s\S]*resetDictationFeedback\(\)/);
 });

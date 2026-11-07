@@ -114,10 +114,11 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
                     session,
                 )
                 if (completed && runCatching { callback.invoke(text, true) }.isFailure) {
-                    val stillFinished = synchronized(recognitionLock) {
-                        recognitionSession == session + 1 && recognitionCallback == null
+                    synchronized(recognitionLock) {
+                        if (recognitionSession == session + 1 && recognitionCallback == null) {
+                            mutableRecognitionState.value = SpeechRecognitionState.Failed
+                        }
                     }
-                    if (stillFinished) mutableRecognitionState.value = SpeechRecognitionState.Failed
                 }
             } else if (runCatching { callback.invoke(text, false) }.isFailure) {
                 finishRecognitionAndStop(SpeechRecognitionState.Failed, session)
@@ -132,8 +133,10 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             finishRecognition(SpeechRecognitionState.Failed, session)
         }
         override fun onReady() {
-            if (synchronized(recognitionLock) { recognitionSession == session && recognitionCallback != null }) {
-                mutableRecognitionState.value = SpeechRecognitionState.Listening
+            synchronized(recognitionLock) {
+                if (recognitionSession == session && recognitionCallback != null) {
+                    mutableRecognitionState.value = SpeechRecognitionState.Listening
+                }
             }
         }
         override fun onUpdatedRms(rms: Double) = Unit
@@ -241,7 +244,11 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     }
 
     override fun resetSpeechRecognitionState() {
-        if (!mutableRecognitionActive.value) mutableRecognitionState.value = SpeechRecognitionState.Idle
+        synchronized(speechOperationLock) {
+            synchronized(recognitionLock) {
+                if (recognitionCallback == null) mutableRecognitionState.value = SpeechRecognitionState.Idle
+            }
+        }
     }
 
     private fun finishRecognition(state: SpeechRecognitionState, expectedSession: Long? = null): Boolean {
@@ -252,12 +259,12 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             recognitionSession += 1
             val timeout = recognitionTimeoutJob.also { recognitionTimeoutJob = null }
             val listener = recognitionListener.also { recognitionListener = null }
+            mutableRecognitionActive.value = false
+            mutableRecognitionState.value = state
             timeout to listener
         }
         timeout?.cancel()
         listener?.let { runCatching { stt.removeListener(it) } }
-        mutableRecognitionActive.value = false
-        mutableRecognitionState.value = state
         return true
     }
 
