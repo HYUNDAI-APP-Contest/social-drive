@@ -105,6 +105,7 @@ interface AuxiliaryCapabilitySource {
     fun speakFeedback(message: String): Boolean
     fun startSpeechRecognition(onText: (text: String, isFinal: Boolean) -> Unit): Boolean
     fun stopSpeechRecognition()
+    fun resetSpeechRecognitionState()
     fun refreshLocationPermission()
     fun refreshSpeechPermissions()
     fun release()

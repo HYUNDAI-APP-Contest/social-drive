@@ -166,6 +166,8 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
 
     fun cancelDictation() = app.auxiliaryCapabilitySource.stopSpeechRecognition()
 
+    fun resetDictationFeedback() = app.auxiliaryCapabilitySource.resetSpeechRecognitionState()
+
     private fun requestDictation(update: suspend (DraftSnapshot, String) -> Unit): Boolean {
         if (!SpeechRecognitionPolicy.canStart(vehicleMotion.value.motion, speechToTextCapability.value)) return false
         val draft = selectedDraft.value ?: return false

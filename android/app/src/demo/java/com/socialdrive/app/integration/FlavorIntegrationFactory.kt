@@ -48,6 +48,7 @@ private class DemoAuxiliaryCapabilitySource : AuxiliaryCapabilitySource {
     override fun speakFeedback(message: String): Boolean = false
     override fun startSpeechRecognition(onText: (String, Boolean) -> Unit): Boolean = false
     override fun stopSpeechRecognition() = Unit
+    override fun resetSpeechRecognitionState() = Unit
     override fun refreshLocationPermission() = Unit
     override fun refreshSpeechPermissions() = Unit
     override fun release() = Unit

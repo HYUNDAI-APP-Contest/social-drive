@@ -427,6 +427,17 @@ test("PLEOS TTS and STT permissions fail closed and remain recoverable", () => {
   assert.match(pleos, /BoundedRouteBuffer\(MAX_ROUTE_POINTS\)/);
 });
 
+test("a new publish session clears stale speech recognition feedback", () => {
+  const contracts = read("app/src/main/java/com/socialdrive/app/domain/IntegrationContracts.kt");
+  const pleos = read("app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
+  const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");
+  const app = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
+  assert.match(contracts, /fun resetSpeechRecognitionState\(\)/);
+  assert.match(pleos, /override fun resetSpeechRecognitionState\(\)[\s\S]*!mutableRecognitionActive\.value[\s\S]*SpeechRecognitionState\.Idle/);
+  assert.match(viewModel, /fun resetDictationFeedback\(\)[\s\S]*resetSpeechRecognitionState\(\)/);
+  assert.match(app, /target == AppDestination\.Publish[\s\S]*resetDictationFeedback\(\)/);
+});
+
 test("actual adapters fail closed and never fall back to demo state", () => {
   const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
   const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");

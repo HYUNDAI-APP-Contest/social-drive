@@ -160,6 +160,7 @@ fun SocialDriveApp(
     fun navigate(target: AppDestination) {
         val decision = SafetyPolicy.canNavigate(target, motion)
         if (decision.allowed) {
+            if (target == AppDestination.Publish) offlineViewModel.resetDictationFeedback()
             blockedMessage = null
             destination = target
         } else {
