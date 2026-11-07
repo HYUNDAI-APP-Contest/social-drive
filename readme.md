@@ -39,7 +39,7 @@ Social Drive의 목표 흐름은 다음과 같습니다.
 1. 주행 중에는 기록 상태와 `방금 좋았어` 같은 최소 입력만 제공합니다.
 2. recording session, `highlightCount`, draft와 pending queue를 로컬에 보존합니다.
 3. 편집과 게시 확인은 주차 상태에서만 허용합니다.
-4. Vehicle/NaviHelper 검증 후 공개 코스의 목적지·경유지를 차량 Navigation 앱으로 전달합니다.
+4. Parked 경계를 유지한 채 공개 코스의 목적지·경유지를 차량 Navigation 앱으로 전달합니다. 현재 증거는 production NaviHelper adapter를 직접 호출한 공개 목적지 1건의 emulator application-boundary smoke이며, 실제 UI 전체 여정이나 물리 차량 증거는 아닙니다.
 
 ### 핵심 안전 원칙
 
@@ -55,7 +55,7 @@ Social Drive의 목표 흐름은 다음과 같습니다.
 | `앱 구현` | Driving/Unknown 잠금, recording/draft/queue, consent/withdraw, 409 review, published delete | PR #2 병합 커밋 `dcffaad` 포함. 기존 PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29 증거가 있으나 actual cloud는 미완료 |
 | `앱 구현` | Pleos flavor 초기화·수명주기, Compose 안전 UI, Room/WorkManager | 통합 소스 존재. 기존 Pleos Connect Android 14 user 10 검증은 실제 Vehicle state callback이나 physical system Back 전달 증거가 아님 |
 | `역사적 도구 증거` | P0-3A runtime bootstrap/doctor | `88b4938`; offline zero-network fail-fast 확인. tasks/variants/assemble 또는 앱 실행 성공 증거가 아님 |
-| `앱 구현` | Vehicle/NaviHelper와 cloud production 경계 | vendor 초기화/수명주기와 fail-closed production port는 통합. 실제 Vehicle callback·Navi route callback·actual cloud는 별도 증거 필요 |
+| `앱 구현` / NaviHelper `실제 SDK` | Vehicle/NaviHelper와 cloud production 경계 | production port 통합. NaviHelper는 API 34 emulator에서 공개 목적지 1건의 initialize/request/terminal/listener removal/release를 application boundary로 확인. 실제 Vehicle callback·UI 전체 여정·actual cloud는 별도 증거 필요 |
 | `데모 데이터` | preset route / fake motion | 실제 위치나 실제 Vehicle callback이 아님 |
 | `미구현` | 실제 위치·경로점 수집, signed submission release APK, actual cloud E2E | release pipeline 코드는 있으나 승인 서명·clean-install 산출물이 없어 제출 release 완료 증거는 없음 |
 | `향후 기능` | FusedLocation, SpeechToText, TextToSpeech, Vehicle Control | 공식 Coming Soon이며 이번 MVP의 실제 기능으로 사용하지 않음 |

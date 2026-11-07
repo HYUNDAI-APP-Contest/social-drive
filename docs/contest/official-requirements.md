@@ -92,7 +92,7 @@ Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-o
 | 기능 | 공식 상태 | 2026-11-02 저장소 등급 | 승격 조건/금지 사항 |
 |---|---|---|---|
 | Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | `앱 구현` | PR #2 병합 소스의 Pleos flavor에 초기화·release와 fail-closed Unknown 경계가 있다. 실제 permissioned P/D/R/N callback 증거 후에만 `실제 SDK` |
-| NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | `앱 구현` | PR #2 병합 소스에 coordinator·lifecycle·route request 계약이 있다. 실제 route/event callback 실기 증거 후에만 `실제 SDK` |
+| NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | `실제 SDK`(제한적) | production adapter가 Pleos Connect Emulator 2.1.0/API 34에서 공개 목적지 1건의 initialize/request/terminal callback/listener removal/release를 application boundary로 완료했다. 실제 UI 전체 여정·물리 차량·경유지 실행 증거로 확대 금지 |
 | FusedLocation | Coming Soon | `향후 기능` | 실제 위치·경로점 수집 기능으로 주장하거나 MVP 필수 의존성으로 사용 금지 |
 | SpeechToText | Coming Soon | `향후 기능` | 실제 음성 인식 기능으로 주장 금지 |
 | TextToSpeech | Coming Soon | `향후 기능` | 실제 음성 합성 기능으로 주장 금지 |
@@ -123,7 +123,7 @@ Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-o
 | 실제 경로점·위치 수집 | 확인된 구현 증거 없음 | `미구현`. consent 안전 경계가 있어도 실제 위치 샘플·route point를 수집한다고 주장 금지 |
 | Android cloud·409 conflict contract | PR #2 병합 소스 + backend 계약 `ddbd61f` | `앱 구현`. concrete Cognito/API 설정이 없어 actual cloud는 fail closed |
 | 409 crash-window 안전 경계 | PR #2 병합 소스 | `FAILED/VERSION_CONFLICT`는 일반 worker/recovery가 claim하지 않으며 명시적 adopt만 publish queue로 전환. 자동 GET·overwrite·재게시 금지 |
-| Vehicle/NaviHelper adapter | PR #2 병합 소스가 PLEOS 기반 코드 포함 | `앱 구현`. 실제 Vehicle/Navi callback은 미검증이므로 `실제 SDK` 증거 아님 |
+| Vehicle/NaviHelper adapter | Issue #28 production NaviHelper adapter와 PLEOS 기반 코드 | Vehicle은 `앱 구현`이며 실제 P/D/R/N callback 미검증. NaviHelper만 `실제 SDK`(제한적): API 34 emulator에서 공개 목적지 1건의 application-boundary terminal callback·cleanup·release 확인. UI 전체 여정·물리 차량 증거 아님 |
 | PLEOS system Back | PR #2 병합 소스 | `UNRESOLVED`. MainActivity dispatcher 이후 Compose stop dialog만 자동 검증. physical/vendor 수용 시험이 필요 |
 | P0-3A bootstrap/doctor | 역사적 commit `88b4938` | 재현 가능한 bootstrap/doctor와 offline zero-network fail-fast의 역사적 증거. 최신 앱 HEAD 또는 build/runtime 성공 증거가 아님 |
 | root `readme.md` | 앱 소개·실행 방법·테스트 환경/설정·APK 목표 경로를 문서화 | Android 통합과 제출용 signed release 미완료를 구분 |

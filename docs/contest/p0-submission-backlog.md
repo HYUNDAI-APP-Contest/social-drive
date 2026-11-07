@@ -11,7 +11,7 @@
 2. **P0-2 route source·위치 동의 안전 게이트 — 완료(정적·core 승인)**
 3. **P0-3 release APK·AVD·서명·제출 증거 — build/instrumentation 완료, 제출 release 미완료**
 
-PR #2 병합 커밋 `dcffaad`를 포함한 현재 통합 소스에는 PLEOS·cloud·route-consent, Room v6 conflict review와 published-delete lifecycle이 있다. 기존 PLEOS UI 8/8 + 비UI 43/43, Kotlin 74/74, static 29/29, Gradle clean/unit/lint와 build 증거가 있다. actual cloud, 실제 Vehicle/Navi callback, 제출용 signed release와 physical PLEOS Back은 미완료다.
+PR #2 병합 커밋 `dcffaad`를 포함한 현재 통합 소스에는 PLEOS·cloud·route-consent, Room v6 conflict review와 published-delete lifecycle이 있다. 기존 PLEOS UI 8/8 + 비UI 43/43, Kotlin 74/74, static 29/29, Gradle clean/unit/lint와 build 증거가 있다. Issue #28은 production NaviHelper adapter의 공개 목적지 1건을 API 34 emulator application boundary에서 검증했다. actual cloud, 실제 Vehicle callback, NaviHelper UI 전체 여정·경유지 실행·물리 차량, 제출용 signed release와 physical PLEOS Back은 미완료다.
 
 공식적으로 11월 15일에는 기획서가 필수이며 GitHub·APK·영상은 선택 가산점이다. 그러나 2차 PT 대상자는 실제 동작 앱을 완성해야 한다. [공식 제출 안내](https://appdevchallenge.auto-hmg.io/guide/submission), [공식 심사 안내](https://appdevchallenge.auto-hmg.io/guide/judging-awards)
 
@@ -34,7 +34,7 @@ FusedLocation, TTS, STT, Vehicle Control은 현재 Not Available Yet/Coming Soon
 
 ### 승인된 P0-1/P0-2 pin과 runtime 경계
 
-아래 pin과 결과는 PR #2 병합 전 검토 이력이며, 현재 worktree에는 그 결과가 `dcffaad`를 통해 통합돼 있다. 이 이력은 실제 SDK callback·actual cloud·제출 release 성공을 뜻하지 않는다.
+아래 pin과 결과는 PR #2 병합 전 검토 이력이며, 현재 worktree에는 그 결과가 `dcffaad`를 통해 통합돼 있다. 이 역사적 이력 자체는 실제 SDK callback·actual cloud·제출 release 성공을 뜻하지 않는다. NaviHelper의 제한적 실제 SDK 근거는 별도 Issue #28 exact smoke다.
 
 ```text
 PLEOS_BASE=89078a09dc29b0ab8346d4909bb87347f5a8efbb
@@ -231,7 +231,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - current descendant 실행 증거: Kotlin 74/74, static 29/29, PLEOS instrumentation 51/51, Gradle 179 tasks
 - 정적·core 범위: consent reducer, no-consent/no-source zero route points, demo metadata, withdrawal/purge/cancel, forbidden dependency/permission source check
 - DB 실행 증거: Room schema v6 migration/persistence와 conflict/delete DAO instrumentation
-- 남은 검증: actual cloud, 실제 위치 source, signed release, 실제 SDK callback과 physical Back
+- 남은 검증: actual cloud, 실제 위치 source, signed release, 실제 Vehicle callback, NaviHelper UI 전체 여정·경유지 실행·물리 차량과 physical Back
 
 ### Dependencies
 
@@ -260,7 +260,7 @@ BACKEND_CONTRACT_PATH=infra/API.md
 
 정적 검토 코드를 실행 가능한 APK와 재현 가능한 증거로 전환한다. signing secret을 저장소에 넣지 않고 demo와 Pleos runtime을 분리하며, 확인된 사실만 README·영상·PT에 반영한다.
 
-역사적 HEAD `88b4938`의 wrapper/platform/DNS 차단은 해소됐다. 최신 HEAD `4f2b559`에서 tasks·assemble·unit/lint·Android instrumentation·Pleos AVD 실행과 build APK 생성을 확인했다. 제출용 signed release·hash·clean install/relaunch·영상과 실제 SDK callback은 계속 미완료다.
+역사적 HEAD `88b4938`의 wrapper/platform/DNS 차단은 해소됐다. HEAD `4f2b559`에서 tasks·assemble·unit/lint·Android instrumentation·Pleos AVD 실행과 build APK 생성을 확인했다. 이후 Issue #28 exact smoke는 NaviHelper 공개 목적지 1건의 application-boundary callback·cleanup·release를 확인했다. 제출용 signed release·hash·clean install/relaunch·영상, 실제 Vehicle callback과 NaviHelper UI 전체 여정은 계속 미완료다.
 
 ### P0-3A 부분 완료 증거
 
@@ -376,7 +376,7 @@ P0-3A 역사 기록의 완료 판정은 bootstrap/doctor와 fail-fast 범위다.
 - [x] PR #2 병합 커밋 `dcffaad`를 제출 소스에 통합
 - signed submission release 생성과 SHA-256 기록
 - clean Pleos AVD install/relaunch 및 영상
-- 실제 Vehicle/Navi callback과 physical system Back 수용 시험
+- 실제 Vehicle callback, NaviHelper UI 전체 여정·경유지 실행·물리 차량과 physical system Back 수용 시험
 - actual cloud 사용 여부 결정 및 Android-AWS E2E
 
 위 조건 전에는 제출용 signed APK, 실제 SDK, AWS E2E 또는 release 준비 완료로 표시하지 않는다.
