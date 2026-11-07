@@ -55,6 +55,18 @@ class RoutePrivacyTest {
     }
 
     @Test
+    fun `연속 중복 위치 콜백은 경로점 하나로 축약한다`() {
+        val start = RawRouteCoordinate(126.9, 37.4)
+        val end = RawRouteCoordinate(127.1, 37.6)
+
+        val normalized = RouteNormalizer.normalize(listOf(start, start, start, end, end))
+
+        assertEquals(2, normalized.size)
+        assertEquals(listOf(0, 1), normalized.map { it.sequence })
+        assertEquals(listOf(0f, 1f), normalized.map { it.horizontal })
+    }
+
+    @Test
     fun `future fake collector receives zero points before explicit consent`() = runBlocking {
         val harness = Harness()
         harness.collector.offer(NormalizedRoutePoint(0, .2f, .3f))

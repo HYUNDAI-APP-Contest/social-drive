@@ -64,11 +64,12 @@ data class RawRouteCoordinate(val longitude: Double, val latitude: Double) {
 object RouteNormalizer {
     fun normalize(points: List<RawRouteCoordinate>): List<NormalizedRoutePoint> {
         if (points.isEmpty()) return emptyList()
-        val minX = points.minOf(RawRouteCoordinate::longitude)
-        val maxX = points.maxOf(RawRouteCoordinate::longitude)
-        val minY = points.minOf(RawRouteCoordinate::latitude)
-        val maxY = points.maxOf(RawRouteCoordinate::latitude)
-        return points.mapIndexed { index, point ->
+        val distinctPoints = points.filterIndexed { index, point -> index == 0 || point != points[index - 1] }
+        val minX = distinctPoints.minOf(RawRouteCoordinate::longitude)
+        val maxX = distinctPoints.maxOf(RawRouteCoordinate::longitude)
+        val minY = distinctPoints.minOf(RawRouteCoordinate::latitude)
+        val maxY = distinctPoints.maxOf(RawRouteCoordinate::latitude)
+        return distinctPoints.mapIndexed { index, point ->
             NormalizedRoutePoint(
                 sequence = index,
                 horizontal = scale(point.longitude, minX, maxX),
