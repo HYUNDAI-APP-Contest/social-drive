@@ -1,5 +1,6 @@
 package com.socialdrive.app.ui.components
 
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -26,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,6 +38,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
@@ -47,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Dp
 import com.socialdrive.app.R
 import com.socialdrive.app.domain.DriveSummary
+import com.socialdrive.app.domain.EphemeralCoverImage
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.IntegrationSource
 import com.socialdrive.app.domain.RoutePoint
@@ -89,6 +93,7 @@ fun RouteMemoryArtwork(
     selectedMomentIndex: Int? = null,
     compact: Boolean = false,
     routeSource: RouteSource = RouteSource.DemoPreset,
+    coverImage: EphemeralCoverImage? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val routeColors = LocalRouteMemoryColors.current
@@ -98,12 +103,22 @@ fun RouteMemoryArtwork(
         MemoryPalette.City -> listOf(routeColors.brand, scheme.surfaceVariant, scheme.secondaryContainer)
     }
     Box(modifier.background(Brush.linearGradient(gradient))) {
-        Image(
-            painter = painterResource(memoryArtworkRes(palette)),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
+        val decodedCover = remember(coverImage) { coverImage?.decodeBounded() }
+        if (decodedCover != null) {
+            Image(
+                bitmap = decodedCover.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Image(
+                painter = painterResource(memoryArtworkRes(palette)),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
         Box(
             Modifier
                 .fillMaxSize()
@@ -255,6 +270,7 @@ fun DriveSummaryCard(
                 momentCount = drive.highlights,
                 compact = true,
                 routeSource = drive.routeSource,
+                coverImage = drive.coverImage,
                 modifier = Modifier.fillMaxSize(),
             )
             Column(
@@ -298,6 +314,26 @@ fun DriveSummaryCard(
         }
     }
 }
+
+private fun EphemeralCoverImage.decodeBounded(): android.graphics.Bitmap? {
+    val bytes = copyBytes()
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0 ||
+        bounds.outWidth > MAX_COVER_DIMENSION || bounds.outHeight > MAX_COVER_DIMENSION ||
+        bounds.outWidth.toLong() * bounds.outHeight > MAX_COVER_PIXELS
+    ) return null
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = generateSequence(1) { it * 2 }
+            .first { bounds.outWidth / it <= TARGET_COVER_DIMENSION && bounds.outHeight / it <= TARGET_COVER_DIMENSION }
+        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+    }
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+}
+
+private const val MAX_COVER_DIMENSION = 8_192
+private const val MAX_COVER_PIXELS = 16_777_216L
+private const val TARGET_COVER_DIMENSION = 2_048
 
 @Composable
 private fun Metric(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {

@@ -84,6 +84,10 @@ class DriveFeedRepositoryTest {
                 200,
                 body = """{"schemaVersion":1,"path":[{"horizontal":0.1,"vertical":0.8,"progress":0},{"horizontal":0.9,"vertical":0.2,"progress":1}],"highlights":[]}""".toByteArray(),
             )
+            responses += HttpResponse(
+                200,
+                body = byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0xd9.toByte()),
+            )
         }
         val repository = PersistentCloudDriveFeedRepository(database, { client(api, objects) })
 
@@ -91,9 +95,10 @@ class DriveFeedRepositoryTest {
 
         assertEquals(2, detail?.route?.size)
         assertEquals(2, api.requests.size)
-        assertEquals(2, objects.requests.size)
+        assertEquals(3, objects.requests.size)
         assertTrue(objects.requests.all { request -> request.headers.keys.none { it.equals("authorization", true) } })
         assertEquals(0, database.cachedFeedDao().findAll().size)
+        assertEquals("EphemeralCoverImage([REDACTED])", detail?.coverImage.toString())
     }
 
     private fun client(

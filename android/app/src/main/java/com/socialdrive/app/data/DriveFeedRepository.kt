@@ -6,6 +6,7 @@ import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.remote.CloudDriveClient
 import com.socialdrive.app.domain.ContentState
 import com.socialdrive.app.domain.DriveSummary
+import com.socialdrive.app.domain.EphemeralCoverImage
 import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.RouteSource
 import java.time.Instant
@@ -92,14 +93,17 @@ class PersistentCloudDriveFeedRepository(
         val client = currentClient() ?: return null
         return try {
             var detail = client.getDrive(remoteId)
-            val route = try {
-                client.downloadRoute(detail)
+            val assets = try {
+                client.downloadRoute(detail) to client.downloadCover(detail)
             } catch (failure: com.socialdrive.app.data.remote.CloudDriveException) {
                 if (failure.code != "READ_LINK_EXPIRED") throw failure
                 detail = client.getDrive(remoteId)
-                client.downloadRoute(detail)
+                client.downloadRoute(detail) to client.downloadCover(detail)
             }
-            detail.drive.toSummary(route.points.map { RoutePoint(it.horizontal, it.vertical) })
+            detail.drive.toSummary(
+                route = assets.first.points.map { RoutePoint(it.horizontal, it.vertical) },
+                coverImage = EphemeralCoverImage.inMemory(assets.second),
+            )
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
@@ -121,7 +125,10 @@ private fun CachedFeedDriveEntity.toSummary(): DriveSummary = DriveSummary(
     routeSource = RouteSource.LiveAvailable,
 )
 
-private fun com.socialdrive.app.data.remote.DriveResource.toSummary(route: List<RoutePoint>): DriveSummary = DriveSummary(
+private fun com.socialdrive.app.data.remote.DriveResource.toSummary(
+    route: List<RoutePoint>,
+    coverImage: EphemeralCoverImage,
+): DriveSummary = DriveSummary(
     id = CLOUD_ID_PREFIX + id,
     date = requireNotNull(publishedAt).toDisplayDate(),
     title = title,
@@ -132,6 +139,7 @@ private fun com.socialdrive.app.data.remote.DriveResource.toSummary(route: List<
     route = route,
     moments = emptyList(),
     routeSource = RouteSource.LiveAvailable,
+    coverImage = coverImage,
 )
 
 private fun String.toDisplayDate(): String = runCatching {

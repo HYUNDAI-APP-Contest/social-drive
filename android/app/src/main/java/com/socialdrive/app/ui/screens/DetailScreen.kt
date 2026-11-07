@@ -135,6 +135,7 @@ fun DetailScreen(
                         momentCount = drive.moments.size,
                         selectedMomentIndex = selectedMomentIndex.takeIf { drive.moments.isNotEmpty() },
                         routeSource = drive.routeSource,
+                        coverImage = drive.coverImage,
                         modifier = Modifier.fillMaxSize(),
                     )
                     Surface(

@@ -163,6 +163,35 @@ class CloudDriveClient(
         return parsePublishedRoute(response.body)
     }
 
+    /** Downloads a short-lived JPEG cover without forwarding Cognito authorization. */
+    suspend fun downloadCover(detail: DriveDetail): ByteArray {
+        val response = try {
+            objectTransport.execute(HttpRequest(HttpMethod.GET, detail.links.coverUri, emptyMap(), null))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            throw CloudDriveException(CloudFailureKind.RETRYABLE, "COVER_TRANSPORT", retryable = true)
+        }
+        if (response.body.size > MAX_RESPONSE_BYTES) {
+            throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
+        }
+        if (response.status == 403) {
+            throw CloudDriveException(CloudFailureKind.RETRYABLE, "READ_LINK_EXPIRED", retryable = true)
+        }
+        if (response.status != 200) {
+            throw CloudDriveException(
+                if (response.status == 408 || response.status == 429 || response.status >= 500) CloudFailureKind.RETRYABLE else CloudFailureKind.UNKNOWN,
+                "COVER_READ_REJECTED",
+                retryable = response.status == 408 || response.status == 429 || response.status >= 500,
+            )
+        }
+        val bytes = response.body
+        if (bytes.size < 4 || bytes[0] != 0xff.toByte() || bytes[1] != 0xd8.toByte() ||
+            bytes[bytes.lastIndex - 1] != 0xff.toByte() || bytes.last() != 0xd9.toByte()
+        ) throw CloudContractException("INVALID_COVER_IMAGE")
+        return bytes.copyOf()
+    }
+
     suspend fun updateDrive(driveId: String, patch: DrivePatch): DriveResource {
         requireSafeId(driveId)
         require(patch.expectedVersion >= 1)
