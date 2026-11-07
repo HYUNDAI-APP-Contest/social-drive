@@ -41,17 +41,19 @@ class OkHttpCloudTransports private constructor(private val client: OkHttpClient
     }
 
     companion object {
-        fun create(): OkHttpCloudTransports = OkHttpCloudTransports(
-            OkHttpClient.Builder()
-                .followRedirects(false)
-                .followSslRedirects(false)
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(20, TimeUnit.SECONDS)
-                .writeTimeout(20, TimeUnit.SECONDS)
-                .build(),
-        )
+        fun create(): OkHttpCloudTransports = OkHttpCloudTransports(createCloudHttpClient())
     }
 }
+
+internal fun createCloudHttpClient(): OkHttpClient = OkHttpClient.Builder()
+    .followRedirects(false)
+    .followSslRedirects(false)
+    .retryOnConnectionFailure(false)
+    .connectTimeout(CLOUD_CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+    .readTimeout(CLOUD_IO_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+    .writeTimeout(CLOUD_IO_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+    .callTimeout(CLOUD_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+    .build()
 
 private suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
     continuation.invokeOnCancellation { cancel() }
@@ -67,3 +69,6 @@ private suspend fun Call.await(): Response = suspendCancellableCoroutine { conti
 }
 
 private const val MAX_CLOUD_RESPONSE_BYTES = 2 * 1024 * 1024
+internal const val CLOUD_CONNECT_TIMEOUT_SECONDS = 10L
+internal const val CLOUD_IO_TIMEOUT_SECONDS = 20L
+internal const val CLOUD_CALL_TIMEOUT_SECONDS = 30L
