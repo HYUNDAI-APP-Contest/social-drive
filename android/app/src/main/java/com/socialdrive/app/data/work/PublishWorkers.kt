@@ -16,6 +16,7 @@ import com.socialdrive.app.data.local.UploadQueueEntity
 import com.socialdrive.app.data.remote.RemoteDriveApi
 import com.socialdrive.app.data.remote.RemoteDriveException
 import com.socialdrive.app.data.remote.assetUploads
+import com.socialdrive.app.domain.NormalizedRoutePoint
 import com.socialdrive.app.safety.ParkedExecutionGate
 import com.socialdrive.app.safety.ParkedExecutionResult
 import kotlinx.coroutines.CancellationException
@@ -92,7 +93,7 @@ abstract class StagedPublishWorker(
         return if (remote?.retryable == true && runAttemptCount < MAX_RETRY_ATTEMPTS) Result.retry() else Result.failure()
     }
 
-    protected fun DraftEntity.snapshot() = DraftSnapshot(
+    protected suspend fun DraftEntity.snapshot() = DraftSnapshot(
         id = id,
         recordingId = recordingId,
         clientRequestId = clientRequestId,
@@ -101,6 +102,9 @@ abstract class StagedPublishWorker(
         coverPreset = coverPreset,
         originalContentRef = originalContentRef,
         state = state,
+        routePoints = dependencies.database.routePrivacyDao().pointsForRecording(recordingId).map { point ->
+            NormalizedRoutePoint(point.sequence, point.horizontal, point.vertical)
+        },
     )
 
     companion object {

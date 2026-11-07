@@ -41,13 +41,32 @@ data class RemotePublishAck(val version: Int)
 fun DraftSnapshot.assetUploads(): List<AssetUploadCommand> {
     // Contest-safe placeholders contain no original local reference, coordinate, or raw vehicle field.
     val cover = byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0xd9.toByte())
-    val route = """{"schemaVersion":1,"path":[{"horizontal":0.2,"vertical":0.7,"progress":0.0},{"horizontal":0.8,"vertical":0.3,"progress":1.0}],"highlights":[]}"""
-        .toByteArray(Charsets.UTF_8)
+    val route = routeDocument().toByteArray(Charsets.UTF_8)
     return listOf(
         uploadCommand(AssetKind.COVER, "route-memory-cover-v1", "image/jpeg", cover),
         uploadCommand(AssetKind.ROUTE, "route-memory-route-v1", "application/json", route),
     )
 }
+
+private fun DraftSnapshot.routeDocument(): String {
+    val source = if (routePoints.size >= 2) routePoints.downsample(MAX_PUBLISHED_ROUTE_POINTS) else listOf(
+        com.socialdrive.app.domain.NormalizedRoutePoint(0, .2f, .7f),
+        com.socialdrive.app.domain.NormalizedRoutePoint(1, .8f, .3f),
+    )
+    val last = (source.size - 1).coerceAtLeast(1)
+    val path = source.mapIndexed { index, point ->
+        "{\"horizontal\":${point.horizontal},\"vertical\":${point.vertical},\"progress\":${index.toFloat() / last}}"
+    }.joinToString(",")
+    return "{\"schemaVersion\":1,\"path\":[$path],\"highlights\":[]}"
+}
+
+private fun <T> List<T>.downsample(limit: Int): List<T> {
+    if (size <= limit) return this
+    val last = lastIndex
+    return List(limit) { index -> this[(index.toLong() * last / (limit - 1)).toInt()] }
+}
+
+private const val MAX_PUBLISHED_ROUTE_POINTS = 500
 
 private fun DraftSnapshot.uploadCommand(
     kind: AssetKind,

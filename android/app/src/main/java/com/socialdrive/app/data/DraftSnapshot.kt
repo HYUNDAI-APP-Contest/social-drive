@@ -1,5 +1,7 @@
 package com.socialdrive.app.data
 
+import com.socialdrive.app.domain.NormalizedRoutePoint
+
 /**
  * Immutable, privacy-minimized local publication input.
  *
@@ -17,4 +19,5 @@ data class DraftSnapshot(
     val state: String,
     val highlightCount: Int = 0,
     val storyId: String = "demo-coast",
+    val routePoints: List<NormalizedRoutePoint> = emptyList(),
 )
