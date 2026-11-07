@@ -40,6 +40,12 @@ avd_name="$($adb_bin -s "$serial" emu avd name 2>/dev/null | sed -n '1p' | tr -d
   fail 'the source tree must be clean so evidence is bound to the exact tested SHA.'
 source_sha="$(git -C "$repository_root" rev-parse HEAD)"
 [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] || fail 'source SHA is invalid.'
+assert_source_unchanged() {
+  [[ "$(git -C "$repository_root" rev-parse HEAD)" == "$source_sha" ]] ||
+    fail 'HEAD changed during verification; evidence was not published.'
+  [[ -z "$(git -C "$repository_root" status --porcelain --untracked-files=normal)" ]] ||
+    fail 'the source tree changed during verification; evidence was not published.'
+}
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/social-drive-pleos-navi.XXXXXX")"
 cleanup() { rm -rf "$temporary_root"; }
 trap cleanup EXIT
@@ -63,6 +69,7 @@ ANDROID_SERIAL="$serial" bash "$android_root/scripts/gradle-local.sh" --offline 
   :app:connectedPleosDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=com.socialdrive.app.PleosNaviRuntimeSmokeTest \
   -Pandroid.testInstrumentationRunnerArguments.requirePleosNavi=true
+assert_source_unchanged
 
 evidence_directory="$android_root/build/pleos-runtime-evidence"
 mkdir -p "$evidence_directory"
@@ -136,6 +143,7 @@ for forbidden in 'latitude=' 'longitude=' '"lat"' '"lon"' 'RouteInfo(' 'GeoPoint
 done
 
 evidence_file="$evidence_directory/${source_sha}.json"
+assert_source_unchanged
 if [[ -e "$evidence_file" ]]; then
   cmp -s "$evidence_temp" "$evidence_file" || fail 'existing evidence differs for the same source SHA.'
   rm -f "$evidence_temp"
