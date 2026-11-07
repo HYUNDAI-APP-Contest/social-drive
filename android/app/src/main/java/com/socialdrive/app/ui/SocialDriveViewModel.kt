@@ -28,6 +28,7 @@ import com.socialdrive.app.domain.SpeechRecognitionPolicy
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,7 +62,13 @@ internal class ConflatedDraftCopyWriter(
                             pendingByDraftId.remove(entry.key)
                         }
                     } ?: break
-                    persist(update)
+                    try {
+                        persist(update)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Throwable) {
+                        // Keep the writer alive so a later user edit can still be persisted.
+                    }
                 }
             }
         }

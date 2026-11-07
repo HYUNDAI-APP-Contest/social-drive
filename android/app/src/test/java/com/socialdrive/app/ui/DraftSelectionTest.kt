@@ -82,6 +82,23 @@ class DraftSelectionTest {
         )
     }
 
+    @Test
+    fun `개별 저장 실패 뒤에도 다음 최신 편집을 계속 저장한다`() = runTest {
+        val latestPersisted = CompletableDeferred<Unit>()
+        val attempts = mutableListOf<String>()
+        val writer = ConflatedDraftCopyWriter(backgroundScope) { update ->
+            attempts += update.title
+            if (update.title == "실패 입력") error("simulated Room failure")
+            latestPersisted.complete(Unit)
+        }
+
+        writer.submit(DraftCopyUpdate("draft-1", "실패 입력", ""))
+        writer.submit(DraftCopyUpdate("draft-2", "복구 입력", ""))
+        latestPersisted.await()
+
+        assertEquals(listOf("실패 입력", "복구 입력"), attempts)
+    }
+
     private fun draft(id: String) = DraftSnapshot(
         id = id,
         recordingId = "recording-$id",
