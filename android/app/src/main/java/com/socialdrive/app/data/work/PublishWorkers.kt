@@ -102,6 +102,7 @@ abstract class StagedPublishWorker(
         coverPreset = coverPreset,
         originalContentRef = originalContentRef,
         state = state,
+        createdAtEpochMs = createdAtEpochMs,
         routePoints = dependencies.database.routePrivacyDao().pointsForRecording(recordingId).map { point ->
             NormalizedRoutePoint(point.sequence, point.horizontal, point.vertical)
         },

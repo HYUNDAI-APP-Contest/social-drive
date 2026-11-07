@@ -20,4 +20,5 @@ data class DraftSnapshot(
     val highlightCount: Int = 0,
     val storyId: String = "demo-coast",
     val routePoints: List<NormalizedRoutePoint> = emptyList(),
+    val createdAtEpochMs: Long = 0L,
 )

@@ -5,6 +5,22 @@ import com.socialdrive.app.data.local.LocalState
 import com.socialdrive.app.domain.DriveSummary
 import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.RouteSource
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+
+private val localDraftDateFormatter = DateTimeFormatter.ofPattern("M월 d일 HH:mm")
+
+internal fun localDraftDateLabel(
+    createdAtEpochMs: Long,
+    published: Boolean,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+): String {
+    val stateLabel = if (published) "게시 기록" else "초안 · 게시 전"
+    if (createdAtEpochMs <= 0L) return "기기 $stateLabel"
+    val date = Instant.ofEpochMilli(createdAtEpochMs).atZone(zoneId).format(localDraftDateFormatter)
+    return "$date · 기기 $stateLabel"
+}
 
 internal fun DraftSnapshot.toLocalDriveSummary(fallback: DriveSummary): DriveSummary {
     val liveRoute = routePoints.takeIf { it.size >= 2 }
@@ -13,7 +29,7 @@ internal fun DraftSnapshot.toLocalDriveSummary(fallback: DriveSummary): DriveSum
     val published = state == LocalState.PUBLISHED
     return DriveSummary(
         id = "local-$id",
-        date = if (published) "기기 게시 기록" else "기기 초안 · 게시 전",
+        date = localDraftDateLabel(createdAtEpochMs, published),
         title = title,
         summary = description,
         distance = liveRoute?.let { "${it.size}개 경로점" } ?: "데모 아트워크",

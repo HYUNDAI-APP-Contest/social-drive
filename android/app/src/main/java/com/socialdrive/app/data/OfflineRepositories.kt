@@ -220,6 +220,7 @@ private fun DraftEntity.toSnapshot(
     highlightCount = highlightCount.coerceIn(0, 100),
     storyId = coverPreset.removePrefix("route-memory-").takeIf { it.startsWith("demo-") } ?: "demo-coast",
     routePoints = routePoints,
+    createdAtEpochMs = createdAtEpochMs,
 )
 
 private fun NormalizedRoutePointEntity.toDomain() = NormalizedRoutePoint(sequence, horizontal, vertical)

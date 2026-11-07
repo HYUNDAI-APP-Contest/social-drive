@@ -8,6 +8,7 @@ import com.socialdrive.app.domain.RouteSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import java.time.ZoneId
 
 class LocalDraftPresentationTest {
     private val fallback = requireNotNull(FakeDriveRepository().drive("demo-coast"))
@@ -39,6 +40,17 @@ class LocalDraftPresentationTest {
         assertEquals("데모 아트워크", drive.distance)
         assertEquals(RouteSource.DemoPreset, drive.routeSource)
         assertEquals(fallback.route, drive.route)
+    }
+
+    @Test
+    fun `기기 기록의 실제 생성 시각을 한국어로 표시한다`() {
+        val label = localDraftDateLabel(
+            createdAtEpochMs = 1_799_290_800_000L,
+            published = false,
+            zoneId = ZoneId.of("Asia/Seoul"),
+        )
+
+        assertEquals("1월 7일 12:00 · 기기 초안 · 게시 전", label)
     }
 
     private fun snapshot(
