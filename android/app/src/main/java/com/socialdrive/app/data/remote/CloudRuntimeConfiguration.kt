@@ -33,8 +33,10 @@ data class CloudRuntimeConfiguration(
                 .toSet()
             if (hosts.isEmpty() || hosts.any { !it.isValidCloudHost() }) return null
             return runCatching {
+                val apiUri = URI(apiBaseUrl)
+                if (apiUri.host?.lowercase()?.isValidCloudHost() != true) return null
                 CloudRuntimeConfiguration(
-                    client = CloudDriveClientConfig(URI(apiBaseUrl), hosts),
+                    client = CloudDriveClientConfig(apiUri, hosts),
                     consentPolicyVersion = consentPolicyVersion,
                     cognito = cognito,
                 )

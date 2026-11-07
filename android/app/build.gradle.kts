@@ -64,9 +64,9 @@ tasks.register("verifyPleosCloudConfiguration") {
         val apiUri = runCatching { URI(values.getValue("apiBaseUrl")) }.getOrNull()
         if (apiUri == null || !apiUri.scheme.equals("https", true) || apiUri.host == null ||
             apiUri.userInfo != null || apiUri.query != null || apiUri.fragment != null ||
-            (apiUri.port != -1 && apiUri.port != 443)
+            (apiUri.port != -1 && apiUri.port != 443) || !isValidCloudHost(apiUri.host.lowercase())
         ) {
-            throw GradleException("PLEOS cloud API URL must be an origin/path HTTPS URL without credentials, query, or fragment.")
+            throw GradleException("PLEOS cloud API URL must use a public DNS HTTPS host without credentials, query, or fragment.")
         }
         val hosts = values.getValue("uploadHosts").split(',').map(String::trim).filter(String::isNotEmpty)
         if (hosts.isEmpty() || hosts.any { it != it.lowercase() || !isValidCloudHost(it) }) {

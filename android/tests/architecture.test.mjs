@@ -609,6 +609,7 @@ test("PLEOS cloud build gate validates all public deployment outputs without sec
     "apiBaseUrl", "uploadHosts", "consentPolicyVersion", "cognitoRegion", "cognitoUserPoolId", "cognitoClientId",
   ]) assert.ok(build.includes(`\"${marker}\"`), marker);
   assert.match(build, /PLEOS cloud public configuration verified/);
+  assert.match(build, /!isValidCloudHost\(apiUri\.host\.lowercase\(\)\)/);
   assert.doesNotMatch(build, /cloud.*(?:secret|password|accessKey)/i);
   assert.match(handoff, /\.\/gradlew verifyPleosCloudConfiguration/);
   assert.match(auth, /authenticationFlowType", "USER_SRP_AUTH"/);
