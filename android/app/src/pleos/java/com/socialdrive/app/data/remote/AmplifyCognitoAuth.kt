@@ -13,6 +13,7 @@ import com.amplifyframework.core.AmplifyConfiguration
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.IOException
 
@@ -81,6 +83,7 @@ internal class AmplifyCognitoAuth(
                 val result = withCognitoOperationTimeout { awaitSignIn(normalizedUsername, secret) }
                 applySignInResult(result)
             } catch (cancelled: CancellationException) {
+                quarantineCancelledOperation()
                 throw cancelled
             } catch (_: Throwable) {
                 PleosCloudRuntime.reportAuthenticationFailure("AWS · 로그인 실패")
@@ -115,6 +118,7 @@ internal class AmplifyCognitoAuth(
             try {
                 applySignInResult(withCognitoOperationTimeout { awaitConfirmSignIn(secret) })
             } catch (cancelled: CancellationException) {
+                quarantineCancelledOperation()
                 throw cancelled
             } catch (_: Throwable) {
                 mutableState.value = CloudAuthState(CloudAuthPhase.CHALLENGE, "인증 응답을 다시 확인해 주세요", challengeLabel)
@@ -142,6 +146,7 @@ internal class AmplifyCognitoAuth(
                     )
                 }
             } catch (cancelled: CancellationException) {
+                quarantineCancelledOperation()
                 throw cancelled
             } catch (_: Throwable) {
                 mutableState.value = failedCognitoSignOutState(stateBeforeSignOut)
@@ -167,6 +172,11 @@ internal class AmplifyCognitoAuth(
                 }
             }
         }
+
+    private suspend fun quarantineCancelledOperation() = withContext(NonCancellable) {
+        PleosCloudRuntime.clearSessionSource()
+        mutableState.value = cancelledCognitoOperationState()
+    }
 
     override suspend fun freshAccessToken(): String {
         operationGate.enter()
@@ -303,6 +313,11 @@ internal fun failedCognitoSignOutState(previous: CloudAuthState): CloudAuthState
     CloudAuthPhase.SIGNED_IN -> previous.copy(message = "로그아웃을 완료하지 못했습니다. 다시 시도해 주세요")
     else -> CloudAuthState(CloudAuthPhase.ERROR, "로그아웃 상태를 확인하지 못했습니다. 다시 시도해 주세요")
 }
+
+internal fun cancelledCognitoOperationState(): CloudAuthState = CloudAuthState(
+    CloudAuthPhase.REAUTH_REQUIRED,
+    "AWS 인증 작업이 중단됐습니다. 세션 상태를 안전하게 정리해 주세요",
+)
 
 internal suspend fun <T> withCognitoOperationTimeout(
     timeoutMillis: Long = COGNITO_OPERATION_TIMEOUT_MILLIS,

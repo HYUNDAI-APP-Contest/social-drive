@@ -114,6 +114,14 @@ class AmplifyCognitoAuthTest {
     }
 
     @Test
+    fun `취소된 인증 작업은 처리 중에 고착되지 않고 세션 정리를 요구한다`() {
+        val state = cancelledCognitoOperationState()
+
+        assertEquals(CloudAuthPhase.REAUTH_REQUIRED, state.phase)
+        assertTrue(state.message.contains("세션 상태"))
+    }
+
+    @Test
     fun `TOTP와 문자 MFA를 사용자에게 구분해서 안내한다`() {
         assertEquals("인증 앱 코드", AuthSignInStep.CONFIRM_SIGN_IN_WITH_TOTP_CODE.challengeLabel())
         assertEquals("문자 인증코드", AuthSignInStep.CONFIRM_SIGN_IN_WITH_SMS_MFA_CODE.challengeLabel())
