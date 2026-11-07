@@ -42,6 +42,19 @@ class RouteAssetSerializationTest {
     }
 
     @Test
+    fun `중복 좌표나 역순 경로는 실제 기록 자산으로 표시하지 않는다`() {
+        val duplicate = draft(
+            listOf(NormalizedRoutePoint(0, .5f, .5f), NormalizedRoutePoint(1, .5f, .5f)),
+        ).assetUploads().single { it.kind == AssetKind.ROUTE }
+        val reversed = draft(
+            listOf(NormalizedRoutePoint(1, .2f, .7f), NormalizedRoutePoint(0, .8f, .3f)),
+        ).assetUploads().single { it.kind == AssetKind.ROUTE }
+
+        assertTrue(duplicate.syntheticDemoContent)
+        assertTrue(reversed.syntheticDemoContent)
+    }
+
+    @Test
     fun `서버 제한에 맞게 첫 점과 끝 점을 보존하며 500점으로 축약한다`() {
         val points = List(1_001) { index -> NormalizedRoutePoint(index, index / 1_000f, 1f - index / 1_000f) }
         val route = draft(points).assetUploads().single { it.kind == AssetKind.ROUTE }.content

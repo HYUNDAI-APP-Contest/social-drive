@@ -1,10 +1,21 @@
 package com.socialdrive.app.data
 
 import com.socialdrive.app.data.local.RecordingEntity
+import com.socialdrive.app.domain.NormalizedRoutePoint
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 class DraftSnapshotTest {
+    @Test
+    fun `게시 경로는 순서가 증가하고 서로 다른 좌표를 포함해야 한다`() {
+        assertTrue(draft(points(0, .2f, .7f, 1, .8f, .3f)).hasPublishableRecordedRoute())
+        assertFalse(draft(points(1, .2f, .7f, 0, .8f, .3f)).hasPublishableRecordedRoute())
+        assertFalse(draft(points(0, .2f, .7f, 1, .2f, .7f)).hasPublishableRecordedRoute())
+        assertFalse(draft(listOf(NormalizedRoutePoint(0, .2f, .7f))).hasPublishableRecordedRoute())
+    }
+
     @Test
     fun `녹화 시작과 종료 시각으로 게시용 주행 시간을 계산한다`() {
         val recording = RecordingEntity(
@@ -46,4 +57,28 @@ class DraftSnapshotTest {
         assertEquals(1_600, plausibleDistanceMeters(distanceMeters = 1_600, durationSeconds = 6))
         assertEquals(0, plausibleDistanceMeters(distanceMeters = 1_601, durationSeconds = 6))
     }
+
+    private fun points(
+        firstSequence: Int,
+        firstHorizontal: Float,
+        firstVertical: Float,
+        secondSequence: Int,
+        secondHorizontal: Float,
+        secondVertical: Float,
+    ) = listOf(
+        NormalizedRoutePoint(firstSequence, firstHorizontal, firstVertical),
+        NormalizedRoutePoint(secondSequence, secondHorizontal, secondVertical),
+    )
+
+    private fun draft(points: List<NormalizedRoutePoint>) = DraftSnapshot(
+        id = "draft",
+        recordingId = "recording",
+        clientRequestId = "request",
+        title = "제목",
+        description = "설명",
+        coverPreset = "cover",
+        originalContentRef = "local-recording://recording",
+        state = "DRAFT",
+        routePoints = points,
+    )
 }

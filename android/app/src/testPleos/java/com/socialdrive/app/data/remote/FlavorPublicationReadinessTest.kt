@@ -25,6 +25,20 @@ class FlavorPublicationReadinessTest {
         )
     }
 
+    @Test
+    fun `PLEOS는 중복 좌표와 역순 경로를 게시하지 않는다`() {
+        assertNotNull(
+            FlavorPublicationReadiness.rejectionMessage(
+                draft(listOf(NormalizedRoutePoint(0, .5f, .5f), NormalizedRoutePoint(1, .5f, .5f))),
+            ),
+        )
+        assertNotNull(
+            FlavorPublicationReadiness.rejectionMessage(
+                draft(listOf(NormalizedRoutePoint(1, .2f, .7f), NormalizedRoutePoint(0, .8f, .3f))),
+            ),
+        )
+    }
+
     private fun draft(points: List<NormalizedRoutePoint>) = DraftSnapshot(
         id = "draft",
         recordingId = "recording",

@@ -1,6 +1,7 @@
 package com.socialdrive.app.data.remote
 
 import com.socialdrive.app.data.DraftSnapshot
+import com.socialdrive.app.data.hasPublishableRecordedRoute
 import java.security.MessageDigest
 import java.util.Base64
 import kotlinx.coroutines.CancellationException
@@ -43,7 +44,7 @@ data class RemotePublishAck(val version: Int)
 fun DraftSnapshot.assetUploads(): List<AssetUploadCommand> {
     // Contest-safe placeholders contain no original local reference, coordinate, or raw vehicle field.
     val cover = PublicationCover.bytes()
-    val syntheticRoute = routePoints.size < 2
+    val syntheticRoute = !hasPublishableRecordedRoute()
     val route = routeDocument().toByteArray(Charsets.UTF_8)
     return listOf(
         uploadCommand(AssetKind.COVER, "route-memory-cover-v1", "image/jpeg", cover),

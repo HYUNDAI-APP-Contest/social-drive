@@ -1,6 +1,7 @@
 package com.socialdrive.app.data.remote
 
 import com.socialdrive.app.data.DraftSnapshot
+import com.socialdrive.app.data.hasPublishableRecordedRoute
 import kotlinx.coroutines.CancellationException
 
 /** Worker-facing production adapter. Every retry reuses the frozen manifest and stable request id. */
@@ -10,7 +11,7 @@ class CloudRemoteDriveApi(
 ) : RemoteDriveApi {
     override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): RemoteDraftRef = translate {
         require(clientRequestId == draft.clientRequestId)
-        if (draft.routePoints.size < MIN_RECORDED_ROUTE_POINTS) {
+        if (!draft.hasPublishableRecordedRoute()) {
             throw CloudDriveException(CloudFailureKind.VALIDATION, "INSUFFICIENT_RECORDED_ROUTE", false)
         }
         val assets = draft.assetUploads().map(AssetUploadCommand::manifest)
@@ -96,8 +97,6 @@ class CloudRemoteDriveApi(
 }
 
 private const val MAX_UPLOAD_SESSION_ATTEMPTS = 2
-private const val MIN_RECORDED_ROUTE_POINTS = 2
-
 private fun AssetUploadCommand.manifest() = AssetManifest(
     kind = kind,
     contentType = contentType,

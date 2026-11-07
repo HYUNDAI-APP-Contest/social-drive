@@ -25,6 +25,12 @@ data class DraftSnapshot(
     val createdAtEpochMs: Long = 0L,
 )
 
+/** A publishable recording must preserve order and describe movement, not only contain two rows. */
+fun DraftSnapshot.hasPublishableRecordedRoute(): Boolean =
+    routePoints.size >= 2 &&
+        routePoints.zipWithNext().all { (previous, next) -> previous.sequence < next.sequence } &&
+        routePoints.asSequence().map { it.horizontal to it.vertical }.distinct().take(2).count() == 2
+
 /**
  * Rejects legacy/stale-fix distance aggregates that imply physically impossible road travel.
  * A generous 1 km acquisition allowance plus 100 m/s keeps this a corruption guard, not a
