@@ -15,6 +15,14 @@ class CognitoAccessTokenPolicy(
         if (token.length !in 32..MAX_TOKEN_LENGTH || token.any(Char::isWhitespace)) return false
         val parts = token.split('.')
         if (parts.size != 3 || parts.any(String::isEmpty)) return false
+        val headerBytes = runCatching {
+            Base64.getUrlDecoder().decode(parts[0])
+        }.getOrNull() ?: return false
+        if (headerBytes.size > MAX_HEADER_LENGTH) return false
+        val header = runCatching { JsonCodec.parse(headerBytes).objectValue() }.getOrNull() ?: return false
+        if (header.stringClaim("alg") != "RS256") return false
+        val keyId = header.stringClaim("kid") ?: return false
+        if (!KEY_ID_PATTERN.matches(keyId)) return false
         val payloadBytes = runCatching {
             Base64.getUrlDecoder().decode(parts[1])
         }.getOrNull() ?: return false
@@ -44,8 +52,10 @@ class CognitoAccessTokenPolicy(
 
     private companion object {
         const val MAX_TOKEN_LENGTH = 16_384
+        const val MAX_HEADER_LENGTH = 1_024
         const val MAX_PAYLOAD_LENGTH = 8_192
         const val EXPIRY_SAFETY_SECONDS = 30L
         const val CLOCK_SKEW_SECONDS = 300L
+        val KEY_ID_PATTERN = Regex("[A-Za-z0-9_-]{1,128}")
     }
 }

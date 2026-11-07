@@ -18,6 +18,9 @@ class CognitoAccessTokenPolicyTest {
     @Test
     fun `승인된 풀과 클라이언트의 유효한 access token만 허용한다`() {
         assertTrue(policy.isValid(token()))
+        assertFalse(policy.isValid(token(algorithm = "none")))
+        assertFalse(policy.isValid(token(keyId = "bad key id")))
+        assertFalse(policy.isValid(token(keyId = "x".repeat(129))))
         assertFalse(policy.isValid(token(clientId = "abcdefghijklmnopqrstuvwxyz")))
         assertFalse(policy.isValid(token(issuer = "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_AbCdEf123")))
         assertFalse(policy.isValid(token(tokenUse = "id")))
@@ -40,8 +43,10 @@ class CognitoAccessTokenPolicyTest {
         issuedAt: Long = now.epochSecond - 60L,
         expiresAt: Long = now.epochSecond + 3_600L,
         extra: String = "",
+        algorithm: String = "RS256",
+        keyId: String = "test-key_01",
     ): String {
-        val header = encode("{\"alg\":\"RS256\",\"kid\":\"test\"}")
+        val header = encode("{\"alg\":\"$algorithm\",\"kid\":\"$keyId\"}")
         val payload = encode(
             "{$extra\"iss\":\"$issuer\",\"client_id\":\"$clientId\",\"token_use\":\"$tokenUse\",\"iat\":$issuedAt,\"exp\":$expiresAt}",
         )
@@ -51,5 +56,6 @@ class CognitoAccessTokenPolicyTest {
     private fun encode(value: String): String = Base64.getUrlEncoder().withoutPadding()
         .encodeToString(value.toByteArray())
 
-    private fun rawPayload(payload: String): String = "${encode("{\"alg\":\"RS256\"}")}.${encode(payload)}.signature"
+    private fun rawPayload(payload: String): String =
+        "${encode("{\"alg\":\"RS256\",\"kid\":\"test-key_01\"}")}.${encode(payload)}.signature"
 }
