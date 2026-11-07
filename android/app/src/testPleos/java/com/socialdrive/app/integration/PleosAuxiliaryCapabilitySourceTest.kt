@@ -70,4 +70,11 @@ class PleosAuxiliaryCapabilitySourceTest {
             assertTrue(sttErrorInvalidatesCapability(error))
         }
     }
+
+    @Test
+    fun `이전 STT 세션의 늦은 오류는 현재 capability를 끊지 않는다`() {
+        assertFalse(shouldInvalidateSttCapability(false, SttErrorType.ON_DEVICE_ENGINE_ERROR))
+        assertFalse(shouldInvalidateSttCapability(false, SttErrorType.PERMISSION_DENIED))
+        assertTrue(shouldInvalidateSttCapability(true, SttErrorType.ON_DEVICE_ENGINE_ERROR))
+    }
 }

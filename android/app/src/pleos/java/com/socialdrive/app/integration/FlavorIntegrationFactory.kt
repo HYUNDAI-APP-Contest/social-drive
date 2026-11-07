@@ -161,8 +161,10 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             val state = speechRecognitionStateAfterError(error)
             if (sttErrorInvalidatesCapability(error)) {
                 synchronized(speechOperationLock) {
-                    finishRecognition(state, session)
-                    markSttOperationFailure()
+                    val currentSessionFinished = finishRecognition(state, session)
+                    if (shouldInvalidateSttCapability(currentSessionFinished, error)) {
+                        markSttOperationFailure()
+                    }
                 }
             } else {
                 finishRecognition(state, session)
@@ -771,6 +773,11 @@ internal fun speechRecognitionStateAfterError(error: SttErrorType): SpeechRecogn
 
 internal fun sttErrorInvalidatesCapability(error: SttErrorType): Boolean =
     error != SttErrorType.TIMEOUT && error != SttErrorType.INVALID_REQUEST_ERROR
+
+internal fun shouldInvalidateSttCapability(
+    currentSessionFinished: Boolean,
+    error: SttErrorType,
+): Boolean = currentSessionFinished && sttErrorInvalidatesCapability(error)
 
 private const val FUSED_LOCATION_PERMISSION = "pleos.car.permission.FUSED_LOCATION"
 private const val TTS_PERMISSION = "pleos.car.permission.TTS_SERVICE"
