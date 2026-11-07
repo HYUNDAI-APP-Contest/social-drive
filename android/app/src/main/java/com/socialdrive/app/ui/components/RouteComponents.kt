@@ -80,6 +80,7 @@ fun RouteMemoryArtwork(
     momentCount: Int = 0,
     selectedMomentIndex: Int? = null,
     compact: Boolean = false,
+    routeSource: RouteSource = RouteSource.DemoPreset,
 ) {
     val scheme = MaterialTheme.colorScheme
     val routeColors = LocalRouteMemoryColors.current
@@ -108,7 +109,7 @@ fun RouteMemoryArtwork(
             Modifier
                 .fillMaxSize()
                 .clearAndSetSemantics {
-                    contentDescription = "개인 위치가 제거된 데모 경로와 하이라이트 ${momentCount.coerceAtLeast(0)}개"
+                    contentDescription = routeArtworkDescription(routeSource, momentCount)
                 },
         ) {
             when (palette) {
@@ -154,6 +155,11 @@ fun RouteMemoryArtwork(
             )
         }
     }
+}
+
+internal fun routeArtworkDescription(source: RouteSource, momentCount: Int): String {
+    val route = if (source == RouteSource.LiveAvailable) "원본 위치가 제거된 실시간 경로" else "개인 위치가 제거된 데모 경로"
+    return "${route}와 하이라이트 ${momentCount.coerceAtLeast(0)}개"
 }
 
 @Composable

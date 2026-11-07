@@ -100,7 +100,9 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
             vehicleMotionSource.initialize()
             navigationGateway.initialize()
             auxiliaryCapabilitySource.initialize()
-            routePrivacyRepository.restoreCollectionIfConsented()
+            if (routePrivacyRepository.restoreCollectionIfConsented()) {
+                recordingRepository.restoreActiveCollection()
+            }
         }
         applicationScope.launch {
             vehicleMotionSource.status.collect { status ->

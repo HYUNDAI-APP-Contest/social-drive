@@ -60,6 +60,23 @@ class OfflinePersistenceTest {
     }
 
     @Test
+    fun processRestartReattachesCollectorToActiveRecording() = runTest {
+        var beginCount = 0
+        val collector = object : FutureRouteCollector {
+            override suspend fun start() = Unit
+            override suspend fun beginRecording() { beginCount++ }
+            override suspend fun snapshotAndClear() = emptyList<NormalizedRoutePoint>()
+            override suspend fun stopAndAwait() = Unit
+        }
+        val first = RecordingRepository(database, IdFactory { "recording-restart" }, routeCollector = collector)
+        first.start()
+
+        val reconstructed = RecordingRepository(database, routeCollector = collector)
+        assertTrue(reconstructed.restoreActiveCollection())
+        assertEquals(2, beginCount)
+    }
+
+    @Test
     fun drivingAndUnknownNeverEnterThePublishQueue() = runTest {
         val values = ArrayDeque(listOf("recording-2", "draft-2", "request-2"))
         val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 200L })

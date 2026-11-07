@@ -59,6 +59,13 @@ class RecordingRepository(
         return recording
     }
 
+    /** Reattaches the process-local collector to a Room-backed recording after process death. */
+    suspend fun restoreActiveCollection(): Boolean {
+        if (database.recordingDao().findActive() == null) return false
+        routeCollector?.beginRecording()
+        return routeCollector != null
+    }
+
     suspend fun addHighlight(id: String) {
         database.recordingDao().incrementHighlight(id)
     }

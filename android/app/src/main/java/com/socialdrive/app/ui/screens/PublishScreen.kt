@@ -93,6 +93,7 @@ fun PublishScreen(
                             palette = memoryPalette,
                             momentCount = highlightCount,
                             selectedMomentIndex = (highlightCount - 1).takeIf { it >= 0 },
+                            routeSource = routeSource,
                             modifier = Modifier.fillMaxSize(),
                         )
                         Surface(
@@ -106,7 +107,7 @@ fun PublishScreen(
                             ) {
                                 RouteSourceBadge(routeSource)
                                 Text("좋았던 순간을 한 장의 이야기로", style = MaterialTheme.typography.titleLarge)
-                                Text("실제 위치와 사진은 포함되지 않습니다", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                Text(publishCoverPrivacyLabel(routeSource), color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                     }
@@ -160,7 +161,7 @@ fun PublishScreen(
                     )
                     Column {
                         Text("게시할 항목을 확인했습니다.")
-                        Text("데모 경로 아트워크 · 제목과 설명 · 하이라이트 개수", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(publishSharedItemsLabel(routeSource), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 Text("정밀 위치와 원시 차량 상태는 제외됩니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -176,3 +177,11 @@ fun PublishScreen(
         }
     }
 }
+
+internal fun publishCoverPrivacyLabel(source: RouteSource): String =
+    if (source == RouteSource.LiveAvailable) "원본 위치와 사진은 포함되지 않습니다"
+    else "실제 위치와 사진은 포함되지 않습니다"
+
+internal fun publishSharedItemsLabel(source: RouteSource): String =
+    if (source == RouteSource.LiveAvailable) "정규화 경로 아트워크 · 제목과 설명 · 하이라이트 개수"
+    else "데모 경로 아트워크 · 제목과 설명 · 하이라이트 개수"
