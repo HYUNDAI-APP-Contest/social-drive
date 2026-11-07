@@ -31,4 +31,15 @@ class LocationSampleGateTest {
         assertTrue(locationTimestampAccepted(previousTimestampMillis = 1_000L, timestampMillis = 0L))
         assertTrue(locationTimestampAccepted(previousTimestampMillis = 1_000L, timestampMillis = -1L))
     }
+
+    @Test
+    fun `일시 위치 오류 뒤에도 유효한 녹화 세션만 재연결한다`() {
+        assertTrue(locationReconnectAllowed(true, true, true, true, false))
+
+        assertFalse(locationReconnectAllowed(false, true, true, true, false))
+        assertFalse(locationReconnectAllowed(true, false, true, true, false))
+        assertFalse(locationReconnectAllowed(true, true, false, true, false))
+        assertFalse(locationReconnectAllowed(true, true, true, false, false))
+        assertFalse(locationReconnectAllowed(true, true, true, true, true))
+    }
 }

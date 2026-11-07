@@ -534,13 +534,15 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
                         if (registeredLocationListener === listener) registeredLocationListener = null
                     }
                     runCatching { fusedLocation.unregisterFusedLocationCallback(listener) }
+                } else {
+                    mutableLocation.value = available("실차 · 위치 사용 가능")
                 }
             }
         }
         result
             .onFailure {
                 attemptedListener?.let { listener ->
-                    deactivateLocationCollection("실차 · 위치 연결 실패", expectedListener = listener)
+                    recoverLocationCollection("실차 · 위치 연결 실패", listener)
                 }
             }
     }
@@ -591,10 +593,41 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             }
 
             override fun onError(error: Exception) {
-                deactivateLocationCollection("실차 · 위치 수신 오류", expectedListener = listener)
+                recoverLocationCollection("실차 · 위치 수신 오류", listener)
             }
         }
         return listener
+    }
+
+    private fun recoverLocationCollection(label: String, expectedListener: FusedLocationListener) {
+        val listener = synchronized(locationLock) {
+            if (registeredLocationListener !== expectedListener) return
+            locationCollecting = false
+            detachLocationListenerLocked()
+        }
+        mutableLocation.value = unavailable(label)
+        lifecycleScope.launch {
+            unregisterLocationCallback(listener)
+            delay(LOCATION_RECONNECT_DELAY_MILLIS)
+            val permissionGranted = hasLocationPermission()
+            val shouldReconnect = synchronized(locationLock) {
+                locationReconnectAllowed(
+                    listenerAbsent = registeredLocationListener == null,
+                    authorized = collectionAuthorized,
+                    recording = recordingRequested,
+                    permissionGranted = permissionGranted,
+                    released = released,
+                ).also { if (it) locationCollecting = true }
+            }
+            when {
+                shouldReconnect -> registerLocationCallback()
+                !permissionGranted -> deactivateLocationCollection(
+                    label = "실차 · 권한 필요",
+                    status = CapabilityState.PermissionDenied,
+                )
+                !released -> refreshLocationPermission()
+            }
+        }
     }
 
     private fun deactivateLocationCollection(
@@ -669,6 +702,14 @@ internal fun locationTimestampAccepted(
     timestampMillis: Long,
 ): Boolean = timestampMillis <= 0L || previousTimestampMillis == null || timestampMillis > previousTimestampMillis
 
+internal fun locationReconnectAllowed(
+    listenerAbsent: Boolean,
+    authorized: Boolean,
+    recording: Boolean,
+    permissionGranted: Boolean,
+    released: Boolean,
+): Boolean = listenerAbsent && authorized && recording && permissionGranted && !released
+
 internal fun speechResultAccepted(
     sessionMatches: Boolean,
     callbackInstalled: Boolean,
@@ -696,6 +737,7 @@ private const val STT_PERMISSION = "pleos.car.permission.STT_SERVICE"
 private const val MAX_ROUTE_POINTS = 5_000
 internal const val AUXILIARY_INITIALIZATION_TIMEOUT_MILLIS = 10_000L
 internal const val SPEECH_RECOGNITION_TIMEOUT_MILLIS = 30_000L
+internal const val LOCATION_RECONNECT_DELAY_MILLIS = 2_000L
 
 private class PleosVehicleMotionSource(context: Context) : VehicleMotionSource {
     private val actualUnavailable = CapabilityStatus(
