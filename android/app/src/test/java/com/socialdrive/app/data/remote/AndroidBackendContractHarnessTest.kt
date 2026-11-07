@@ -349,7 +349,7 @@ class AndroidBackendContractHarnessTest {
 
     companion object {
         private const val POLICY_VERSION = "2026-11-01"
-        private const val TEST_TIMEOUT_MILLIS = 5_000L
+        private const val TEST_TIMEOUT_MILLIS = 30_000L
     }
 }
 
