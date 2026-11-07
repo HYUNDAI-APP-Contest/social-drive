@@ -14,6 +14,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withTimeout
@@ -177,10 +178,7 @@ internal class AmplifyCognitoAuth(
     }
 
     override fun onSessionInvalidated() {
-        mutableState.value = CloudAuthState(
-            CloudAuthPhase.REAUTH_REQUIRED,
-            "AWS 세션 갱신이 필요합니다. 기존 세션을 정리해 주세요",
-        )
+        mutableState.update(::invalidatedCognitoSessionState)
     }
 
     private suspend fun fetchCognitoSession(): AWSCognitoAuthSession =
@@ -276,6 +274,16 @@ internal fun restoredCognitoSessionState(isSignedIn: Boolean, sessionInstalled: 
     sessionInstalled -> CloudAuthState(CloudAuthPhase.SIGNED_IN, "AWS 계정 연결됨")
     else -> CloudAuthState(CloudAuthPhase.ERROR, "저장된 AWS 세션을 다시 확인해 주세요")
 }
+
+internal fun invalidatedCognitoSessionState(current: CloudAuthState): CloudAuthState =
+    if (current.phase == CloudAuthPhase.SIGNED_IN) {
+        CloudAuthState(
+            CloudAuthPhase.REAUTH_REQUIRED,
+            "AWS 세션 갱신이 필요합니다. 기존 세션을 정리해 주세요",
+        )
+    } else {
+        current
+    }
 
 internal suspend fun <T> withCognitoOperationTimeout(
     timeoutMillis: Long = COGNITO_OPERATION_TIMEOUT_MILLIS,

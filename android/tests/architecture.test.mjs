@@ -696,6 +696,8 @@ test("invalid Cognito tokens synchronize runtime and account reauthentication st
   assert.match(contracts, /fun onSessionInvalidated\(\)/);
   assert.match(contracts, /!valid[\s\S]*delegate\.onSessionInvalidated\(\)/);
   assert.match(auth, /override fun onSessionInvalidated\(\)[\s\S]*CloudAuthPhase\.REAUTH_REQUIRED/);
+  assert.match(auth, /mutableState\.update\(::invalidatedCognitoSessionState\)/);
+  assert.match(auth, /invalidatedCognitoSessionState[\s\S]*current\.phase == CloudAuthPhase\.SIGNED_IN/);
   assert.match(settings, /CloudAuthPhase\.REAUTH_REQUIRED[\s\S]*세션 정리/);
 });
 

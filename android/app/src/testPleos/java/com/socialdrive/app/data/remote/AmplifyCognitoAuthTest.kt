@@ -75,6 +75,17 @@ class AmplifyCognitoAuthTest {
     }
 
     @Test
+    fun `늦은 토큰 무효화는 로그인 완료 상태만 재인증으로 바꾼다`() {
+        val signedIn = CloudAuthState(CloudAuthPhase.SIGNED_IN, "AWS 계정 연결됨")
+        assertEquals(CloudAuthPhase.REAUTH_REQUIRED, invalidatedCognitoSessionState(signedIn).phase)
+
+        for (phase in listOf(CloudAuthPhase.SIGNED_OUT, CloudAuthPhase.WORKING, CloudAuthPhase.CHALLENGE)) {
+            val current = CloudAuthState(phase, "현재 작업 유지")
+            assertEquals(current, invalidatedCognitoSessionState(current))
+        }
+    }
+
+    @Test
     fun `TOTP와 문자 MFA를 사용자에게 구분해서 안내한다`() {
         assertEquals("인증 앱 코드", AuthSignInStep.CONFIRM_SIGN_IN_WITH_TOTP_CODE.challengeLabel())
         assertEquals("문자 인증코드", AuthSignInStep.CONFIRM_SIGN_IN_WITH_SMS_MFA_CODE.challengeLabel())
