@@ -241,7 +241,7 @@ private fun DraftEntity.toSnapshot(
     state = state,
     highlightCount = highlightCount.coerceIn(0, 100),
     durationSeconds = durationSeconds,
-    distanceMeters = distanceMeters.coerceIn(0, 2_000_000),
+    distanceMeters = plausibleDistanceMeters(distanceMeters, durationSeconds),
     storyId = coverPreset.removePrefix("route-memory-").takeIf { it.startsWith("demo-") } ?: "demo-coast",
     routePoints = routePoints,
     createdAtEpochMs = createdAtEpochMs,

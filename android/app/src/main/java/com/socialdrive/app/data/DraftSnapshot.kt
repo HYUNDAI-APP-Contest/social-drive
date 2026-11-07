@@ -33,3 +33,16 @@ internal fun RecordingEntity?.recordedDurationSeconds(): Int {
         .coerceAtMost(259_200L)
         .toInt()
 }
+
+/**
+ * Rejects legacy/stale-fix distance aggregates that imply physically impossible road travel.
+ * A generous 1 km acquisition allowance plus 100 m/s keeps this a corruption guard, not a
+ * driving-style judgement. The persisted source remains untouched for audit/recovery.
+ */
+internal fun plausibleDistanceMeters(distanceMeters: Int, durationSeconds: Int): Int {
+    if (distanceMeters <= 0 || durationSeconds <= 0) return 0
+    val boundedDistance = distanceMeters.coerceAtMost(2_000_000)
+    val boundedDuration = durationSeconds.coerceAtMost(259_200)
+    val maximumPlausible = 1_000L + boundedDuration.toLong() * 100L
+    return boundedDistance.takeIf { it.toLong() <= maximumPlausible } ?: 0
+}

@@ -8,6 +8,7 @@ import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import com.socialdrive.app.data.DraftSnapshot
 import com.socialdrive.app.data.recordedDurationSeconds
+import com.socialdrive.app.data.plausibleDistanceMeters
 import com.socialdrive.app.data.local.ConflictState
 import com.socialdrive.app.data.local.DraftEntity
 import com.socialdrive.app.data.local.LocalState
@@ -108,7 +109,7 @@ abstract class StagedPublishWorker(
             state = state,
             highlightCount = recording?.highlightCount?.coerceIn(0, 100) ?: 0,
             durationSeconds = durationSeconds,
-            distanceMeters = recording?.distanceMeters?.coerceIn(0, 2_000_000) ?: 0,
+            distanceMeters = plausibleDistanceMeters(recording?.distanceMeters ?: 0, durationSeconds),
             createdAtEpochMs = createdAtEpochMs,
             routePoints = dependencies.database.routePrivacyDao().pointsForRecording(recordingId).map { point ->
                 NormalizedRoutePoint(point.sequence, point.horizontal, point.vertical)
