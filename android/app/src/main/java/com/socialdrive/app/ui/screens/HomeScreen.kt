@@ -27,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -68,6 +69,9 @@ fun HomeScreen(
         is ContentState.Offline -> state.cached.any { it.id.startsWith("local-") }
         else -> false
     }
+    LaunchedEffect(hasLocalDrive) {
+        if (!hasLocalDrive && selectedFilter == DriveFilter.Local) selectedFilter = DriveFilter.All
+    }
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier
@@ -97,7 +101,7 @@ fun HomeScreen(
                 Icon(Icons.Rounded.Settings, contentDescription = "설정 열기")
             }
         }
-        HomeFilterBar(selectedFilter, onSelected = { selectedFilter = it })
+        HomeFilterBar(selectedFilter, hasLocalDrive, onSelected = { selectedFilter = it })
         if (blockedMessage != null) SafetyRestrictionBanner(blockedMessage, Modifier.padding(horizontal = 28.dp, vertical = 4.dp))
         // Give state content only the remaining viewport. This keeps the header and
         // primary action stable when a state (notably offline cache) fills its area.
@@ -152,26 +156,27 @@ fun HomeScreen(
     }
 }
 
-private enum class DriveFilter(val label: String) {
-    All("전체"), Coast("바다"), Mountain("산"), City("도심")
+internal enum class DriveFilter(val label: String) {
+    All("전체"), Local("기기"), Coast("바다"), Mountain("산"), City("도심")
 }
 
-private fun filterDrives(drives: List<DriveSummary>, filter: DriveFilter): List<DriveSummary> = when (filter) {
+internal fun filterDrives(drives: List<DriveSummary>, filter: DriveFilter): List<DriveSummary> = when (filter) {
     DriveFilter.All -> drives
+    DriveFilter.Local -> drives.filter { it.id.startsWith("local-") }
     DriveFilter.Coast -> drives.filter { it.id.contains("coast") }
     DriveFilter.Mountain -> drives.filter { it.id.contains("mountain") }
     DriveFilter.City -> drives.filter { it.id.contains("city") }
 }
 
 @Composable
-private fun HomeFilterBar(selected: DriveFilter, onSelected: (DriveFilter) -> Unit) {
+private fun HomeFilterBar(selected: DriveFilter, hasLocalDrive: Boolean, onSelected: (DriveFilter) -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 28.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text("나의 드라이브", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 6.dp))
-        DriveFilter.entries.forEach { filter ->
+        DriveFilter.entries.filter { it != DriveFilter.Local || hasLocalDrive }.forEach { filter ->
             FilterChip(
                 selected = selected == filter,
                 onClick = { onSelected(filter) },
