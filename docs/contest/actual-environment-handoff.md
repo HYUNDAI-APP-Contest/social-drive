@@ -6,19 +6,19 @@
 
 ## 확인된 실행 스냅샷
 
-아래 결과는 앱 코드 커밋 `e362b44`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
+아래 결과는 앱 코드 커밋 `c5304bc`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
 
 - 대상: `emulator-5554`, Android user 10, PLEOS 가로 화면 `2560×1440`
 - 패키지: `com.socialdrive.app`
 - APK: `android/app/build/outputs/apk/pleos/debug/app-pleos-debug.apk`
-- SHA-256: `c2a360aa449eda45376ef35140cfcb99a9e00b9710535d325d657d56cf011671`
+- SHA-256: `b97a6501189434a8f51cbcba349087cc440ae9876129b8d9c835ea8c4cd410d3`
 - 설치 결과: `adb install -r` 성공
 - 시작 결과: `com.socialdrive.app/.MainActivity`가 현재 포커스이며 시작 직후 FATAL/ANR 없음
 - 설정 화면: 차량 상태, 차량 내비게이션, 위치 연동, 음성 안내, 음성 인식이 모두 `PLEOS 연결됨`
 - 위치 권한: user 10에서 `pleos.car.permission.FUSED_LOCATION` 허용
 - 설치 권한: `TTS_SERVICE`, `STT_SERVICE`, `CAR_DRIVE`, `NAVI_ROUTE_SEARCH`와 SDK 바인딩 권한 허용
 - AWS 상태: 공개 빌드 출력값을 주입하지 않은 APK이므로 `AWS · 빌드 설정 필요`로 안전하게 닫힘
-- 회귀 검증: 핵심 Kotlin 109개, PLEOS/Demo 전체 단위 테스트와 PLEOS lint 통과
+- 회귀 검증: 핵심 Kotlin 110개, PLEOS/Demo 전체 단위 테스트와 PLEOS lint 통과
 - 게시 복구 계측: Cognito 토큰 시간 초과 뒤 CREATE `retry` → CREATE/UPLOAD/PUBLISH 완료를 별도 disposable AVD에서 `OK (1 test)`로 확인
 
 설정 화면의 `PLEOS 연결됨`은 SDK 초기화 콜백과 권한 상태를 확인한 결과다. 실차의 물리적인 D/R/N 변속, 실제 주행 위치 변화, 마이크 음성 품질과 스피커 출력 품질까지 검증했다는 의미는 아니다.
@@ -62,6 +62,8 @@ Cognito access token은 SDK lease 검증뿐 아니라 최종 `BearerToken` 공�
 API와 presigned object 요청은 리디렉션·암묵적 연결 재시도를 끄고 요청별 응답 상한과 30초 전체 호출 제한을 적용한 동일 `OkHttpClient` 연결 풀을 프로세스 동안 재사용한다. 반복 작업마다 새 소켓 풀을 만들지 않는 것은 양쪽 flavor 단위 테스트로 확인했지만, 실제 API Gateway/S3 연결 재사용 관찰은 AWS E2E 범위다.
 
 응답 메모리 상한은 요청별로 강제한다. API JSON과 공개 경로는 2 MiB를 유지하고, 백엔드 업로드 계약이 최대 10 MiB를 허용하는 공개 커버만 10 MiB까지 읽을 수 있다. 모든 요청의 절대 상한은 10 MiB이며 이를 넘는 구성은 생성 단계에서 거부한다. 요청별 상한 전달과 기본값은 양쪽 flavor 단위 테스트로 확인했다.
+
+공개 커버 다운로드는 백엔드 업로드 계약과 동일하게 JPEG와 WebP를 허용한다. WebP는 `RIFF` 선언 길이가 실제 바이트 길이와 일치하고 `WEBP` 및 승인된 VP8 청크 식별자가 있는 경우에만 이미지 디코더로 전달하며, 위장된 RIFF 데이터는 계약 오류로 거부한다.
 
 AWS API 및 업로드 호스트는 런타임 구성 파서뿐 아니라 하위 `CloudDriveClientConfig` 생성자에서도 공개 DNS 형식을 강제한다. localhost, IP 리터럴, 스킴·경로가 섞인 업로드 호스트는 transport 생성 전에 거부한다.
 
