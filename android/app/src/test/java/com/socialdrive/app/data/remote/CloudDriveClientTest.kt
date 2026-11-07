@@ -347,6 +347,25 @@ class CloudDriveClientTest {
     }
 
     @Test
+    fun `server retry hint cannot turn terminal client errors into worker retries`() = runBlocking {
+        val harness = Harness()
+        harness.api.responses += errorResponse(400, "VALIDATION_FAILED", retryable = true)
+        val validation = assertFailsWith<CloudDriveException> { harness.client.createDrive(harness.input) }
+        assertEquals(CloudFailureKind.VALIDATION, validation.kind)
+        assertFalse(validation.retryable)
+
+        harness.api.responses += errorResponse(401, "TOKEN_REJECTED", retryable = true)
+        val authentication = assertFailsWith<CloudDriveException> { harness.client.createDrive(harness.input) }
+        assertEquals(CloudFailureKind.AUTHENTICATION, authentication.kind)
+        assertFalse(authentication.retryable)
+
+        harness.api.responses += errorResponse(503, "SERVER_BUSY", retryable = false)
+        val unavailable = assertFailsWith<CloudDriveException> { harness.client.createDrive(harness.input) }
+        assertEquals(CloudFailureKind.RETRYABLE, unavailable.kind)
+        assertTrue(unavailable.retryable)
+    }
+
+    @Test
     fun `delete auth conflict and server responses preserve bounded retry policy inputs`() = runBlocking {
         val harness = Harness()
         val key = "f".repeat(64)

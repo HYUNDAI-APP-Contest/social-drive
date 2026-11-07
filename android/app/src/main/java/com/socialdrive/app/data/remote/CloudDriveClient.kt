@@ -204,13 +204,18 @@ class CloudDriveClient(
     }
 
     private fun parseApiError(response: HttpResponse, terminalDeleteConflict: Boolean): CloudDriveException {
-        val fallbackRetry = response.status == 408 || response.status == 429 || response.status >= 500
+        val transportRetry = response.status == 408 || response.status == 429 || response.status >= 500
         val envelope = runCatching { JsonCodec.parse(response.body).objectValue().requiredObject("error") }.getOrNull()
         val code = envelope?.get("code")
             ?.let { (it as? JsonValue.StringValue)?.value }
             ?.takeIf(ERROR_CODE_PATTERN::matches)
             ?: "HTTP_${response.status}"
-        val retryable = envelope?.get("retryable")?.let { (it as? JsonValue.BooleanValue)?.value } ?: fallbackRetry
+        val declaredRetry = envelope?.get("retryable")?.let { (it as? JsonValue.BooleanValue)?.value } == true
+        val retryable = transportRetry || (
+            response.status == 409 &&
+                code in setOf("UPLOAD_INCOMPLETE", "RESOURCE_CONFLICT") &&
+                declaredRetry
+            )
         val requestId = envelope?.get("requestId")
             ?.let { (it as? JsonValue.StringValue)?.value }
             ?.takeIf(REQUEST_ID_PATTERN::matches)
