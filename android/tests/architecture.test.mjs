@@ -857,6 +857,8 @@ test("route source consent withdrawal and delete pending stay privacy safe", () 
   assert.doesNotMatch(remote, /latitude|longitude/);
   assert.doesNotMatch(build, /play-services-location|FusedLocationProvider|androidx\.core\.location/);
   assert.doesNotMatch(mainManifest, /ACCESS_(?:FINE|COARSE|BACKGROUND)_LOCATION/);
+  assert.match(mainManifest, /android:allowBackup="false"/);
+  assert.match(mainManifest, /android:usesCleartextTraffic="false"/);
   assert.equal((routeFake.match(/routeSource = RouteSource\.DemoPreset/g) ?? []).length, 3);
   for (const marker of [
     "zero points before explicit consent", "atomically purges and tombstones", "late fake point",
