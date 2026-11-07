@@ -69,6 +69,22 @@ fi
 `);
   writeExecutable(path.join(bin, "aapt2"), `#!/usr/bin/env bash
 set -euo pipefail
+if [[ "$1" == "dump" && "$2" == "xmltree" ]]; then
+  printf 'E: manifest\\n  E: application\\n'
+  if [[ -n "${"${MOCK_DEBUGGABLE:-}"}" ]]; then printf '    A: android:debuggable(0x0101000f)=true\\n'; fi
+  if [[ -n "${"${MOCK_BACKUP_ENABLED:-}"}" ]]; then
+    printf '    A: android:allowBackup(0x01010280)=true\\n'
+  else
+    printf '    A: android:allowBackup(0x01010280)=false\\n'
+  fi
+  if [[ -n "${"${MOCK_CLEARTEXT_ENABLED:-}"}" ]]; then
+    printf '    A: android:usesCleartextTraffic(0x010104ec)=true\\n'
+  else
+    printf '    A: android:usesCleartextTraffic(0x010104ec)=false\\n'
+  fi
+  if [[ -n "${"${MOCK_TEST_COMPONENT:-}"}" ]]; then printf '    A: android:name="androidx.compose.ui.tooling.PreviewActivity"\\n'; fi
+  exit 0
+fi
 case "\${*: -1}" in
   *demo*) package="\${MOCK_DEMO_PACKAGE:-com.socialdrive.app.demo}" ;;
   *pleos*) package="\${MOCK_PLEOS_PACKAGE:-com.socialdrive.app}" ;;
@@ -358,6 +374,24 @@ test("clean-install verifier encodes strict device, metadata, install, signer, a
   assert.match(installScript, /ln "\$evidence_temp" "\$evidence_file"/);
   assert.doesNotMatch(installScript, /logcat|screencap|screenrecord/);
   assert.match(buildScript, /inspect_apk_for_sensitive_material/);
+  assert.match(buildScript, /inspect_apk_manifest_policy/);
+});
+
+test("release pipeline rejects debuggable, backup, cleartext, and test-component APKs", (t) => {
+  for (const [flag, message] of [
+    ["MOCK_DEBUGGABLE", /debuggable/],
+    ["MOCK_BACKUP_ENABLED", /disable Android backup/],
+    ["MOCK_CLEARTEXT_ENABLED", /disable cleartext traffic/],
+    ["MOCK_TEST_COMPONENT", /debug or test component/],
+  ]) {
+    const fixture = makeFixture();
+    t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+    const result = run(fixture, { ...fixture.env, [flag]: "1" });
+    assert.notEqual(result.status, 0, `${flag} unexpectedly passed`);
+    assert.match(result.stderr, message);
+    const submission = path.join(fixture.android, "build/submission");
+    assert.deepEqual(fs.existsSync(submission) ? fs.readdirSync(submission) : [], []);
+  }
 });
 
 test("clean-install rejects an offline second device and recorded launch crashes", (t) => {
