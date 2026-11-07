@@ -335,6 +335,7 @@ fun IntegrationStatusChip(
 
 internal fun integrationStatusLabel(status: CapabilityStatus, contextLabel: String): String = when (status.source) {
     IntegrationSource.Actual -> when {
+        contextLabel == "AWS 클라우드" && status.label.startsWith("AWS · ") -> status.label
         status.capability == com.socialdrive.app.domain.CapabilityState.Available -> "PLEOS 연결됨 · $contextLabel"
         status.label.contains("주차 신호") -> "PLEOS 연결됨 · 주차 신호 미확인"
         status.label.contains("연결 안 됨") -> "$contextLabel 연결 미확인"

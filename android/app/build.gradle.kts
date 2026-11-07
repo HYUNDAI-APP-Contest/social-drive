@@ -27,6 +27,9 @@ fun quotedBuildConfig(value: String): String = "\"" +
 val cloudApiBaseUrl = providers.gradleProperty("socialDrive.cloud.apiBaseUrl").orElse("")
 val cloudUploadHosts = providers.gradleProperty("socialDrive.cloud.uploadHosts").orElse("")
 val cloudConsentPolicyVersion = providers.gradleProperty("socialDrive.cloud.consentPolicyVersion").orElse("")
+val cloudCognitoRegion = providers.gradleProperty("socialDrive.cloud.cognitoRegion").orElse("")
+val cloudCognitoUserPoolId = providers.gradleProperty("socialDrive.cloud.cognitoUserPoolId").orElse("")
+val cloudCognitoClientId = providers.gradleProperty("socialDrive.cloud.cognitoClientId").orElse("")
 
 // Inspect the resolved graph, not the user-supplied task spelling. This catches Gradle
 // abbreviations and lifecycle tasks whose dependencies create a release artifact.
@@ -90,6 +93,9 @@ android {
             buildConfigField("String", "CLOUD_API_BASE_URL", quotedBuildConfig(cloudApiBaseUrl.get()))
             buildConfigField("String", "CLOUD_UPLOAD_HOSTS", quotedBuildConfig(cloudUploadHosts.get()))
             buildConfigField("String", "CLOUD_CONSENT_POLICY_VERSION", quotedBuildConfig(cloudConsentPolicyVersion.get()))
+            buildConfigField("String", "CLOUD_COGNITO_REGION", quotedBuildConfig(cloudCognitoRegion.get()))
+            buildConfigField("String", "CLOUD_COGNITO_USER_POOL_ID", quotedBuildConfig(cloudCognitoUserPoolId.get()))
+            buildConfigField("String", "CLOUD_COGNITO_CLIENT_ID", quotedBuildConfig(cloudCognitoClientId.get()))
         }
     }
 

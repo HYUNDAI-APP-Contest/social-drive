@@ -28,4 +28,21 @@ class IntegrationStatusLabelTest {
 
         assertEquals("차량 내비게이션 연결 미확인", integrationStatusLabel(status, "차량 내비게이션"))
     }
+
+    @Test
+    fun `AWS 상태는 PLEOS 상태로 바꾸지 않고 로그인 사유를 보존한다`() {
+        val signedOut = CapabilityStatus(
+            CapabilityState.PermissionDenied,
+            IntegrationSource.Actual,
+            "AWS · 로그인 필요",
+        )
+        val signedIn = CapabilityStatus(
+            CapabilityState.Available,
+            IntegrationSource.Actual,
+            "AWS · 로그인 연결됨",
+        )
+
+        assertEquals("AWS · 로그인 필요", integrationStatusLabel(signedOut, "AWS 클라우드"))
+        assertEquals("AWS · 로그인 연결됨", integrationStatusLabel(signedIn, "AWS 클라우드"))
+    }
 }

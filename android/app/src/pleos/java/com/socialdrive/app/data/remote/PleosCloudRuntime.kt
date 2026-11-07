@@ -21,6 +21,9 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
             BuildConfig.CLOUD_API_BASE_URL,
             BuildConfig.CLOUD_UPLOAD_HOSTS,
             BuildConfig.CLOUD_CONSENT_POLICY_VERSION,
+            BuildConfig.CLOUD_COGNITO_REGION,
+            BuildConfig.CLOUD_COGNITO_USER_POOL_ID,
+            BuildConfig.CLOUD_COGNITO_CLIENT_ID,
         )
     }
     private val mutableStatus = MutableStateFlow(configurationStatus())
