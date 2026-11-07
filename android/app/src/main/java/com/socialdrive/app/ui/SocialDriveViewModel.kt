@@ -29,6 +29,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,11 +52,14 @@ internal class ConflatedDraftCopyWriter(
 ) {
     private val lock = Any()
     private val pendingByDraftId = linkedMapOf<String, DraftCopyUpdate>()
+    private val idleWaiters = mutableListOf<CompletableDeferred<Unit>>()
+    private var persisting = false
     private val wakeups = Channel<Unit>(Channel.CONFLATED)
 
     init {
         scope.launch {
             for (ignored in wakeups) {
+                synchronized(lock) { persisting = true }
                 while (true) {
                     val update = synchronized(lock) {
                         pendingByDraftId.entries.firstOrNull()?.let { entry ->
@@ -70,6 +74,12 @@ internal class ConflatedDraftCopyWriter(
                         // Keep the writer alive so a later user edit can still be persisted.
                     }
                 }
+                val completedWaiters = synchronized(lock) {
+                    persisting = false
+                    if (pendingByDraftId.isEmpty()) idleWaiters.toList().also { idleWaiters.clear() }
+                    else emptyList()
+                }
+                completedWaiters.forEach { it.complete(Unit) }
             }
         }
     }
@@ -77,6 +87,18 @@ internal class ConflatedDraftCopyWriter(
     fun submit(update: DraftCopyUpdate): Boolean {
         synchronized(lock) { pendingByDraftId[update.draftId] = update }
         return wakeups.trySend(Unit).isSuccess
+    }
+
+    suspend fun awaitIdle() {
+        val waiter = synchronized(lock) {
+            if (pendingByDraftId.isEmpty() && !persisting) null
+            else CompletableDeferred<Unit>().also(idleWaiters::add)
+        } ?: return
+        try {
+            waiter.await()
+        } finally {
+            synchronized(lock) { idleWaiters.remove(waiter) }
+        }
     }
 }
 
@@ -233,8 +255,10 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    suspend fun enqueuePublish(motionState: MotionState): EnqueueResult =
-        selectedDraft.value?.let { app.publishScheduler.enqueue(it.id, motionState) } ?: EnqueueResult.MissingDraft
+    suspend fun enqueuePublish(motionState: MotionState): EnqueueResult {
+        draftCopyWriter.awaitIdle()
+        return selectedDraft.value?.let { app.publishScheduler.enqueue(it.id, motionState) } ?: EnqueueResult.MissingDraft
+    }
 
     suspend fun fetchConflictLatest(): ConflictReviewDecision =
         selectedDraft.value?.let { app.conflictReviewRepository.fetchLatest(it.id) } ?: ConflictReviewDecision.Missing

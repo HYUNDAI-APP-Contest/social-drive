@@ -2,6 +2,7 @@ package com.socialdrive.app.ui
 
 import com.socialdrive.app.data.DraftSnapshot
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -97,6 +98,26 @@ class DraftSelectionTest {
         latestPersisted.await()
 
         assertEquals(listOf("실패 입력", "복구 입력"), attempts)
+    }
+
+    @Test
+    fun `게시 전 저장 장벽은 마지막 편집 완료까지 기다린다`() = runTest {
+        val writeStarted = CompletableDeferred<Unit>()
+        val releaseWrite = CompletableDeferred<Unit>()
+        val writer = ConflatedDraftCopyWriter(backgroundScope) {
+            writeStarted.complete(Unit)
+            releaseWrite.await()
+        }
+
+        writer.submit(DraftCopyUpdate("draft-1", "게시할 최신 제목", ""))
+        writeStarted.await()
+        val flush = async { writer.awaitIdle() }
+        testScheduler.runCurrent()
+        assertEquals(false, flush.isCompleted)
+
+        releaseWrite.complete(Unit)
+        flush.await()
+        assertEquals(true, flush.isCompleted)
     }
 
     private fun draft(id: String) = DraftSnapshot(
