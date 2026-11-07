@@ -716,6 +716,21 @@ test("preview matrix includes day night driving recording and failed upload", ()
   for (const marker of ["ThemeMode.Day", "ThemeMode.Night", "MotionState.Driving", "RecordingScreen", "UploadState.Failed"]) assert.match(previews, new RegExp(marker.replace(".", "\\.")));
 });
 
+test("Demo and PLEOS screenshot variants keep the same complete baseline matrix", () => {
+  const baselineNames = (variant) => {
+    const directory = path.join(
+      root,
+      `app/src/screenshotTest${variant}Debug/reference/com/socialdrive/app/VisualScreenshotTestKt`,
+    );
+    assert.equal(fs.existsSync(directory), true, directory);
+    return fs.readdirSync(directory).filter((name) => name.endsWith(".png")).sort();
+  };
+  const demo = baselineNames("Demo");
+  const pleos = baselineNames("Pleos");
+  assert.equal(demo.length, 27);
+  assert.deepEqual(pleos, demo);
+});
+
 test("all required product boundaries and screens exist", () => {
   for (const relative of [
     "app/src/main/java/com/socialdrive/app/domain/Models.kt",
