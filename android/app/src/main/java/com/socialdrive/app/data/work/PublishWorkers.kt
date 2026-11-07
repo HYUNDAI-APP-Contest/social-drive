@@ -228,6 +228,7 @@ class PublishDriveWorker(
                     if (dependencies.database.uploadQueueDao().completePublishStage(id, lease.attempt, now) != 1) {
                         throw StaleWorkerTransition()
                     }
+                    dependencies.database.routePrivacyDao().markRecordingPublished(draft.recordingId)
                     dependencies.database.publishConflictDao().resolveReplay(id, now)
                 }
             } catch (_: StaleWorkerTransition) { return Result.success() }

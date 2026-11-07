@@ -268,6 +268,9 @@ interface RoutePrivacyDao {
     @Query("SELECT * FROM normalized_route_points WHERE recordingId = :recordingId ORDER BY sequence")
     suspend fun pointsForRecording(recordingId: String): List<NormalizedRoutePointEntity>
 
+    @Query("UPDATE normalized_route_points SET publicationState = 'PUBLISHED' WHERE recordingId = :recordingId AND publicationState != 'PUBLISHED'")
+    suspend fun markRecordingPublished(recordingId: String): Int
+
     @Query("DELETE FROM normalized_route_points WHERE publicationState != 'PUBLISHED'")
     suspend fun purgeUnpublishedPoints(): Int
 

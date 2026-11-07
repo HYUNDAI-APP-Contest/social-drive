@@ -19,6 +19,7 @@ import com.socialdrive.app.data.local.DraftEntity
 import com.socialdrive.app.data.local.PublishConflictEntity
 import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.local.UploadQueueEntity
+import com.socialdrive.app.data.local.NormalizedRoutePointEntity
 import com.socialdrive.app.data.remote.RemoteDriveApi
 import com.socialdrive.app.data.remote.AssetUploadCommand
 import com.socialdrive.app.data.remote.RemoteDraftRef
@@ -171,6 +172,7 @@ class PublishWorkChainTest {
         val queueRepository = PublishQueueRepository(database, clock = { 1_000L })
         val scheduler = PublishScheduler(WorkManager.getInstance(context), queueRepository, motion)
         remote.publishError = RemoteDriveException(RemoteFailureCode.VERSION_CONFLICT, false)
+        database.routePrivacyDao().insertPoint(NormalizedRoutePointEntity(draft.recordingId, 0, .2f, .3f, "UNPUBLISHED"))
         scheduler.enqueue(draft.id, MotionState.Parked)
         val manager = WorkManager.getInstance(context)
         val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
@@ -187,6 +189,7 @@ class PublishWorkChainTest {
         assertEquals(draft.clientRequestId, conflict.clientRequestId)
         assertEquals(EnqueueResult.NeedsConflictReview, queueRepository.enqueue(draft.id, MotionState.Parked))
         assertEquals("local-recording://${draft.recordingId}", database.draftDao().find(draft.id)?.originalContentRef)
+        assertEquals("UNPUBLISHED", database.routePrivacyDao().pointsForRecording(draft.recordingId).single().publicationState)
     }
 
     @Test
@@ -211,7 +214,6 @@ class PublishWorkChainTest {
                 1_201L, null, null, null,
             ),
         )
-
         val manager = WorkManager.getInstance(context)
         PublishWorkChainEnqueuer(manager).replacePublishOnly("draft-crash")
         val work = manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName("draft-crash"))
@@ -276,6 +278,7 @@ class PublishWorkChainTest {
             PublishConflictEntity(draft.id, draft.clientRequestId, "drive-remote-replay", 4, 5, "DRAFT",
                 "server", "summary", ConflictState.REPLAY_QUEUED, 1, 1, 1_100L, 1_101L, null, null),
         )
+        database.routePrivacyDao().insertPoint(NormalizedRoutePointEntity(draft.recordingId, 0, .2f, .3f, "UNPUBLISHED"))
         val scheduler = PublishScheduler(WorkManager.getInstance(context), queueRepository, motion)
         scheduler.recoverAfterProcessRestart()
         val work = WorkManager.getInstance(context)
@@ -289,6 +292,7 @@ class PublishWorkChainTest {
         assertEquals(1, remote.publishCalls)
         assertEquals(LocalState.COMPLETE, database.uploadQueueDao().find(draft.id)?.stage)
         assertEquals(ConflictState.RESOLVED, database.publishConflictDao().find(draft.id)?.state)
+        assertEquals("PUBLISHED", database.routePrivacyDao().pointsForRecording(draft.recordingId).single().publicationState)
     }
 
     private suspend fun awaitUniqueWorkFinished(draftId: String) = withContext(Dispatchers.IO) {
