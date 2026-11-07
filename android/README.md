@@ -43,6 +43,12 @@ Requirements: JDK 17+, Android SDK 35, and an emulator or device. From this dire
 ./gradlew connectedDemoDebugAndroidTest
 ```
 
+`connectedPleosDebugAndroidTest` can uninstall the target package when it finishes. To prevent
+accidental loss of local drafts, the task refuses to start when `com.socialdrive.app` is already
+installed for the active device user. Run it only on a disposable AVD. After explicitly accepting
+that reset boundary, pass `-PsocialDrive.tests.allowAppDataReset=true`; never use that override on a
+device containing records that must be retained.
+
 Open `android/` in Android Studio to run the `app` configuration. The first Gradle run downloads public Android and Compose dependencies. Both wrapper scripts fall back to the pinned Gradle 8.9 distribution when the binary wrapper JAR is absent and verify the official SHA-256 before execution. Do not place SDK secrets or AWS credentials in this project.
 
 For a reproducible command-line setup on macOS/Linux, use the repo-local launcher. It selects JDK 17 (ignoring an inherited JDK 21), keeps Gradle state and temporary files below ignored `android/.gradle/local-runtime`, and only auto-detects the conventional macOS Android SDK directory:

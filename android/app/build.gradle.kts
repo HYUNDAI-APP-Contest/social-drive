@@ -194,7 +194,47 @@ android {
 afterEvaluate {
     listOf("Demo", "Pleos").forEach { flavor ->
         tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compile${flavor}DebugScreenshotTestKotlin") {
-            kotlinOptions.freeCompilerArgs += "-Xskip-metadata-version-check"
+            compilerOptions.freeCompilerArgs.add("-Xskip-metadata-version-check")
+        }
+    }
+
+    tasks.named("connectedPleosDebugAndroidTest") {
+        doFirst {
+            val allowReset = providers.gradleProperty("socialDrive.tests.allowAppDataReset")
+                .map { it.toBooleanStrictOrNull() == true }
+                .getOrElse(false)
+            if (allowReset) return@doFirst
+
+            val adb = android.sdkDirectory.resolve("platform-tools/adb")
+            if (!adb.isFile) return@doFirst
+            val deviceRows = providers.exec {
+                commandLine(adb, "devices")
+            }.standardOutput.asText.get().lineSequence()
+                .map(String::trim)
+                .filter { it.endsWith("\tdevice") }
+                .toList()
+            if (deviceRows.size != 1) {
+                throw GradleException(
+                    "PLEOS instrumentation safety check requires exactly one connected device; " +
+                        "the test runner may uninstall the target app and erase its data."
+                )
+            }
+            val serial = deviceRows.single().substringBefore('\t')
+            val currentUser = providers.exec {
+                commandLine(adb, "-s", serial, "shell", "am", "get-current-user")
+            }.standardOutput.asText.get().trim()
+            val installed = providers.exec {
+                isIgnoreExitValue = true
+                commandLine(adb, "-s", serial, "shell", "pm", "path", "--user", currentUser, "com.socialdrive.app")
+            }.standardOutput.asText.get().trim().startsWith("package:")
+            if (installed) {
+                throw GradleException(
+                    "Refusing connectedPleosDebugAndroidTest because com.socialdrive.app is installed for " +
+                        "user $currentUser. Android instrumentation can uninstall it and erase app data. " +
+                        "Use a disposable AVD, or explicitly pass " +
+                        "-PsocialDrive.tests.allowAppDataReset=true after accepting the reset."
+                )
+            }
         }
     }
 }
