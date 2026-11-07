@@ -78,6 +78,7 @@ fun SocialDriveApp(
     val speechRecognitionActive by offlineViewModel.speechRecognitionActive.collectAsStateWithLifecycle()
     val speechRecognitionState by offlineViewModel.speechRecognitionState.collectAsStateWithLifecycle()
     val cloudConnectionCapability by offlineViewModel.cloudConnectionCapability.collectAsStateWithLifecycle()
+    val cloudAuthState by offlineViewModel.cloudAuthState.collectAsStateWithLifecycle()
     val routePrivacy by offlineViewModel.routePrivacy.collectAsStateWithLifecycle()
     val deleteRequestState by offlineViewModel.deleteRequestState.collectAsStateWithLifecycle()
     var recordingNowEpochMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -371,6 +372,10 @@ fun SocialDriveApp(
                         textToSpeechStatus = textToSpeechCapability,
                         speechToTextStatus = speechToTextCapability,
                         cloudConnectionStatus = cloudConnectionCapability,
+                        cloudAuthState = cloudAuthState,
+                        onCloudSignIn = offlineViewModel::signInToCloud,
+                        onCloudConfirm = offlineViewModel::confirmCloudSignIn,
+                        onCloudSignOut = offlineViewModel::signOutFromCloud,
                         onThemeChange = { theme = it },
                         onBack = { navigate(AppDestination.Home) },
                         routePrivacy = routePrivacy,

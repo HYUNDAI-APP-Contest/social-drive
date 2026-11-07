@@ -21,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -31,6 +32,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.CapabilityStatus
@@ -40,6 +44,8 @@ import com.socialdrive.app.domain.RouteConsentState
 import com.socialdrive.app.domain.RoutePrivacyStatus
 import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.DeleteRequestState
+import com.socialdrive.app.data.remote.CloudAuthPhase
+import com.socialdrive.app.data.remote.CloudAuthState
 import com.socialdrive.app.ui.components.IntegrationStatusChip
 import com.socialdrive.app.ui.components.RouteSourceBadge
 import com.socialdrive.app.ui.components.SafetyRestrictionBanner
@@ -54,6 +60,10 @@ fun SettingsScreen(
     textToSpeechStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "사용 불가"),
     speechToTextStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "사용 불가"),
     cloudConnectionStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "설정 필요"),
+    cloudAuthState: CloudAuthState = CloudAuthState(CloudAuthPhase.UNAVAILABLE, "AWS 로그인을 사용할 수 없습니다"),
+    onCloudSignIn: (String, CharArray) -> Unit = { _, secret -> secret.fill('\u0000') },
+    onCloudConfirm: (CharArray) -> Unit = { secret -> secret.fill('\u0000') },
+    onCloudSignOut: () -> Unit = {},
     onThemeChange: (ThemeMode) -> Unit,
     onBack: () -> Unit,
     routePrivacy: RoutePrivacyStatus = RoutePrivacyStatus(
@@ -120,6 +130,7 @@ fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus, cloudConnectionStatus)
+                        CloudAuthSection(motion, cloudAuthState, onCloudSignIn, onCloudConfirm, onCloudSignOut)
                         DemoBoundaryNotice()
                     }
                 }
@@ -136,9 +147,89 @@ fun SettingsScreen(
                         onDeleteRequest = { showDeleteConfirmation = true },
                     )
                     IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus, cloudConnectionStatus)
+                    CloudAuthSection(motion, cloudAuthState, onCloudSignIn, onCloudConfirm, onCloudSignOut)
                     DemoBoundaryNotice()
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CloudAuthSection(
+    motion: MotionState,
+    authState: CloudAuthState,
+    onSignIn: (String, CharArray) -> Unit,
+    onConfirm: (CharArray) -> Unit,
+    onSignOut: () -> Unit,
+) {
+    if (authState.phase == CloudAuthPhase.UNAVAILABLE) return
+    var username by remember { mutableStateOf("") }
+    var secret by remember { mutableStateOf("") }
+    val editable = motion == MotionState.Parked && authState.phase != CloudAuthPhase.WORKING
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("AWS 계정", style = MaterialTheme.typography.titleLarge)
+            Text(authState.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            when (authState.phase) {
+                CloudAuthPhase.SIGNED_IN -> Button(
+                    onClick = onSignOut,
+                    enabled = editable,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("로그아웃") }
+                CloudAuthPhase.CHALLENGE -> {
+                    OutlinedTextField(
+                        value = secret,
+                        onValueChange = { secret = it },
+                        label = { Text(authState.challengeLabel ?: "인증 응답") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        enabled = editable,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Button(
+                        onClick = {
+                            val response = secret.toCharArray()
+                            secret = ""
+                            onConfirm(response)
+                        },
+                        enabled = editable && secret.isNotBlank(),
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) { Text("추가 인증") }
+                }
+                CloudAuthPhase.UNAVAILABLE -> Unit
+                else -> {
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = { username = it },
+                        label = { Text("Cognito 아이디") },
+                        enabled = editable,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = secret,
+                        onValueChange = { secret = it },
+                        label = { Text("비밀번호") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        enabled = editable,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Button(
+                        onClick = {
+                            val password = secret.toCharArray()
+                            secret = ""
+                            onSignIn(username, password)
+                        },
+                        enabled = editable && username.isNotBlank() && secret.isNotBlank(),
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) { Text(if (authState.phase == CloudAuthPhase.WORKING) "확인 중" else "AWS 로그인") }
+                }
+            }
+            Text("비밀번호와 인증코드는 화면 메모리에서 제출 직후 지웁니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

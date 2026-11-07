@@ -41,7 +41,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
     val remoteDeleteApi by lazy { FlavorRemoteDeleteApiFactory.create() }
     val integrationBundle by lazy { FlavorIntegrationFactory.create(this) }
     val cloudConnectionStatusSource by lazy { FlavorCloudConnectionStatusFactory.create() }
-    private val cloudAuthBootstrap by lazy { FlavorCloudAuthBootstrapFactory.create(this) }
+    val cloudAuth by lazy { FlavorCloudAuthBootstrapFactory.create(this) }
     val vehicleMotionSource get() = integrationBundle.vehicleMotionSource
     val navigationGateway get() = integrationBundle.navigationGateway
     val auxiliaryCapabilitySource get() = integrationBundle.auxiliaryCapabilitySource
@@ -98,7 +98,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
-        applicationScope.launch { cloudAuthBootstrap.initialize() }
+        applicationScope.launch { cloudAuth.initialize() }
         applicationScope.launch {
             vehicleMotionSource.initialize()
             navigationGateway.initialize()

@@ -3,11 +3,15 @@ package com.socialdrive.app.data.remote
 import android.content.Context
 import com.amplifyframework.auth.cognito.AWSCognitoAuthPlugin
 import com.amplifyframework.auth.cognito.AWSCognitoAuthSession
+import com.amplifyframework.auth.result.AuthSignInResult
+import com.amplifyframework.auth.result.step.AuthSignInStep
 import com.amplifyframework.core.Amplify
 import com.amplifyframework.core.AmplifyConfiguration
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
 
@@ -15,17 +19,73 @@ import org.json.JSONObject
 internal class AmplifyCognitoAuth(
     private val context: Context,
 ) : CloudAuthBootstrap, CognitoSessionSource {
+    private val mutableState = MutableStateFlow(initialState())
+    override val state = mutableState.asStateFlow()
+
     override suspend fun initialize() {
         val configuration = PleosCloudRuntime.configuration ?: return
         try {
             Amplify.addPlugin(AWSCognitoAuthPlugin())
             Amplify.configure(amplifyConfiguration(configuration.cognito), context)
-            PleosCloudRuntime.installSessionSource(this)
+            val restored = PleosCloudRuntime.installSessionSource(this)
+            mutableState.value = if (restored) signedInState() else signedOutState()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
             PleosCloudRuntime.reportAuthenticationFailure("AWS · 인증 초기화 실패")
+            mutableState.value = CloudAuthState(CloudAuthPhase.ERROR, "AWS 인증을 초기화하지 못했습니다")
         }
+    }
+
+    override suspend fun signIn(username: String, password: CharArray) {
+        if (PleosCloudRuntime.configuration == null) {
+            password.fill('\u0000')
+            return
+        }
+        val normalizedUsername = username.trim()
+        if (normalizedUsername.isEmpty() || password.isEmpty()) {
+            password.fill('\u0000')
+            mutableState.value = CloudAuthState(CloudAuthPhase.ERROR, "아이디와 비밀번호를 입력해 주세요")
+            return
+        }
+        mutableState.value = CloudAuthState(CloudAuthPhase.WORKING, "AWS 로그인 확인 중")
+        val secret = password.concatToString()
+        password.fill('\u0000')
+        try {
+            val result = awaitSignIn(normalizedUsername, secret)
+            applySignInResult(result)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            PleosCloudRuntime.reportAuthenticationFailure("AWS · 로그인 실패")
+            mutableState.value = CloudAuthState(CloudAuthPhase.ERROR, "로그인 정보를 확인해 주세요")
+        }
+    }
+
+    override suspend fun confirmSignIn(response: CharArray) {
+        if (response.isEmpty()) return
+        val challengeLabel = mutableState.value.challengeLabel
+        mutableState.value = CloudAuthState(CloudAuthPhase.WORKING, "추가 인증 확인 중")
+        val secret = response.concatToString()
+        response.fill('\u0000')
+        try {
+            applySignInResult(awaitConfirmSignIn(secret))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            mutableState.value = CloudAuthState(CloudAuthPhase.CHALLENGE, "인증 응답을 다시 확인해 주세요", challengeLabel)
+        }
+    }
+
+    override suspend fun signOut() {
+        mutableState.value = CloudAuthState(CloudAuthPhase.WORKING, "로그아웃 중")
+        suspendCancellableCoroutine { continuation ->
+            Amplify.Auth.signOut {
+                if (continuation.isActive) continuation.resume(Unit)
+            }
+        }
+        PleosCloudRuntime.clearSessionSource()
+        mutableState.value = signedOutState()
     }
 
     override suspend fun freshAccessToken(): String = suspendCancellableCoroutine { continuation ->
@@ -70,4 +130,52 @@ internal class AmplifyCognitoAuth(
         )
         return AmplifyConfiguration.fromJson(root)
     }
+
+    private suspend fun awaitSignIn(username: String, password: String): AuthSignInResult =
+        suspendCancellableCoroutine { continuation ->
+            Amplify.Auth.signIn(
+                username,
+                password,
+                { result -> if (continuation.isActive) continuation.resume(result) },
+                { error -> if (continuation.isActive) continuation.resumeWithException(error) },
+            )
+        }
+
+    private suspend fun awaitConfirmSignIn(response: String): AuthSignInResult =
+        suspendCancellableCoroutine { continuation ->
+            Amplify.Auth.confirmSignIn(
+                response,
+                { result -> if (continuation.isActive) continuation.resume(result) },
+                { error -> if (continuation.isActive) continuation.resumeWithException(error) },
+            )
+        }
+
+    private suspend fun applySignInResult(result: AuthSignInResult) {
+        if (result.isSignedIn) {
+            val valid = PleosCloudRuntime.installSessionSource(this)
+            mutableState.value = if (valid) signedInState() else CloudAuthState(CloudAuthPhase.ERROR, "AWS 세션 검증에 실패했습니다")
+            return
+        }
+        val challenge = result.nextStep.signInStep.challengeLabel()
+        mutableState.value = CloudAuthState(CloudAuthPhase.CHALLENGE, "추가 인증이 필요합니다", challenge)
+    }
+
+    private fun initialState() = if (PleosCloudRuntime.configuration == null) {
+        CloudAuthState(CloudAuthPhase.UNAVAILABLE, "AWS 빌드 설정이 필요합니다")
+    } else {
+        CloudAuthState(CloudAuthPhase.WORKING, "AWS 인증 준비 중")
+    }
+
+    private fun signedOutState() = CloudAuthState(CloudAuthPhase.SIGNED_OUT, "AWS 계정에 로그인해 주세요")
+    private fun signedInState() = CloudAuthState(CloudAuthPhase.SIGNED_IN, "AWS 계정 연결됨")
+}
+
+internal fun AuthSignInStep.challengeLabel(): String = when (this) {
+    AuthSignInStep.CONFIRM_SIGN_IN_WITH_SMS_MFA_CODE -> "문자 인증코드"
+    AuthSignInStep.CONFIRM_SIGN_IN_WITH_TOTP_CODE -> "인증 앱 코드"
+    AuthSignInStep.CONFIRM_SIGN_IN_WITH_NEW_PASSWORD -> "새 비밀번호"
+    AuthSignInStep.CONFIRM_SIGN_IN_WITH_CUSTOM_CHALLENGE -> "추가 인증 응답"
+    AuthSignInStep.CONFIRM_SIGN_IN_WITH_OTP -> "일회용 인증코드"
+    AuthSignInStep.CONFIRM_SIGN_IN_WITH_PASSWORD -> "비밀번호"
+    else -> "Cognito 추가 인증 응답"
 }

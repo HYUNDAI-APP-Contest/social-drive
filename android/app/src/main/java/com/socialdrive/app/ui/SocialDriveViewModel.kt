@@ -79,9 +79,20 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     val speechRecognitionActive = app.auxiliaryCapabilitySource.speechRecognitionActive
     val speechRecognitionState = app.auxiliaryCapabilitySource.speechRecognitionState
     val cloudConnectionCapability = app.cloudConnectionStatusSource.status
+    val cloudAuthState = app.cloudAuth.state
     val locationPermission: String? get() = app.auxiliaryCapabilitySource.locationPermission
 
     fun refreshLocationPermission() = app.auxiliaryCapabilitySource.refreshLocationPermission()
+
+    fun signInToCloud(username: String, password: CharArray) = viewModelScope.launch {
+        app.cloudAuth.signIn(username, password)
+    }
+
+    fun confirmCloudSignIn(response: CharArray) = viewModelScope.launch {
+        app.cloudAuth.confirmSignIn(response)
+    }
+
+    fun signOutFromCloud() = viewModelScope.launch { app.cloudAuth.signOut() }
 
     val routePrivacy: StateFlow<RoutePrivacyStatus> = app.routePrivacyRepository.status
         .stateIn(
