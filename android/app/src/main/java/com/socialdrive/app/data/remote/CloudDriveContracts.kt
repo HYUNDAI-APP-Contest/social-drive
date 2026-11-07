@@ -1,6 +1,7 @@
 package com.socialdrive.app.data.remote
 
 import java.net.URI
+import kotlinx.coroutines.CancellationException
 
 enum class HttpMethod { GET, POST, PUT, PATCH, DELETE }
 
@@ -59,6 +60,27 @@ fun interface AuthSessionProvider {
 /** SDK boundary for a future configured Cognito client. No Cognito SDK or client secret is embedded here. */
 fun interface CognitoSessionSource {
     suspend fun freshAccessToken(): String
+}
+
+internal class ValidatingCognitoSessionSource(
+    private val delegate: CognitoSessionSource,
+    private val validator: AccessTokenValidator,
+    private val onValidation: (Boolean) -> Unit,
+) : CognitoSessionSource {
+    override suspend fun freshAccessToken(): String {
+        val token = try {
+            delegate.freshAccessToken()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            onValidation(false)
+            throw error
+        }
+        val valid = runCatching { validator.isValid(token) }.getOrDefault(false)
+        onValidation(valid)
+        require(valid) { "Invalid Cognito access token" }
+        return token
+    }
 }
 
 fun interface AccessTokenValidator {

@@ -44,9 +44,9 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
         }.getOrDefault(false)
         sessionSource = source.takeIf { valid }
         mutableStatus.value = if (valid) {
-            CapabilityStatus(CapabilityState.Available, IntegrationSource.Actual, "AWS · 로그인 검증됨")
+            signedInStatus()
         } else {
-            CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, "AWS · 로그인 검증 실패")
+            signedOutStatus("AWS · 로그인 검증 실패")
         }
         valid
     }
@@ -59,13 +59,16 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
     internal fun clientOrNull(): CloudDriveClient? {
         val configured = configuration ?: return null
         val session = sessionSource ?: return null
+        val policy = CognitoAccessTokenPolicy(configured.cognito)
+        val validatingSession = ValidatingCognitoSessionSource(session, policy) { valid ->
+            if (sessionSource === session) {
+                mutableStatus.value = if (valid) signedInStatus() else signedOutStatus("AWS · 로그인 갱신 필요")
+            }
+        }
         val transports = OkHttpCloudTransports.create()
         return CloudDriveClient(
             config = configured.client,
-            auth = InMemoryCognitoAuthSessionProvider(
-                session,
-                CognitoAccessTokenPolicy(configured.cognito),
-            ),
+            auth = InMemoryCognitoAuthSessionProvider(validatingSession),
             apiTransport = transports,
             objectTransport = transports,
         )
@@ -74,6 +77,12 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
     private fun configurationStatus(): CapabilityStatus = if (configuration == null) {
         CapabilityStatus(CapabilityState.Unavailable, IntegrationSource.Actual, "AWS · 빌드 설정 필요")
     } else {
-        CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, "AWS · 로그인 필요")
+        signedOutStatus("AWS · 로그인 필요")
     }
+
+    private fun signedInStatus() =
+        CapabilityStatus(CapabilityState.Available, IntegrationSource.Actual, "AWS · 로그인 검증됨")
+
+    private fun signedOutStatus(label: String) =
+        CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, label)
 }
