@@ -23,6 +23,7 @@ import ai.pleos.playground.tts.listener.OnInitializeListener as TtsInitializeLis
 import ai.pleos.playground.tts.listener.EventListener as TtsEventListener
 import ai.pleos.playground.stt.SpeechToText
 import ai.pleos.playground.stt.constant.Mode as SttMode
+import ai.pleos.playground.stt.constant.ErrorType as SttErrorType
 import ai.pleos.playground.stt.listener.OnInitializeListener as SttInitializeListener
 import ai.pleos.playground.stt.listener.ResultListener
 import com.socialdrive.app.domain.AuxiliaryCapabilitySource
@@ -156,8 +157,16 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         override fun onEndedRecognition() {
             finishRecognition(SpeechRecognitionState.NoResult, session)
         }
-        override fun onError(error: ai.pleos.playground.stt.constant.ErrorType) {
-            finishRecognition(SpeechRecognitionState.Failed, session)
+        override fun onError(error: SttErrorType) {
+            val state = speechRecognitionStateAfterError(error)
+            if (sttErrorInvalidatesCapability(error)) {
+                synchronized(speechOperationLock) {
+                    finishRecognition(state, session)
+                    markSttOperationFailure()
+                }
+            } else {
+                finishRecognition(state, session)
+            }
         }
         override fun onReady() {
             synchronized(recognitionLock) {
@@ -756,6 +765,12 @@ internal fun speechCapabilityAfterOperationFailure(permissionGranted: Boolean): 
     } else {
         CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, "실차 · 권한 필요")
     }
+
+internal fun speechRecognitionStateAfterError(error: SttErrorType): SpeechRecognitionState =
+    if (error == SttErrorType.TIMEOUT) SpeechRecognitionState.NoResult else SpeechRecognitionState.Failed
+
+internal fun sttErrorInvalidatesCapability(error: SttErrorType): Boolean =
+    error != SttErrorType.TIMEOUT && error != SttErrorType.INVALID_REQUEST_ERROR
 
 private const val FUSED_LOCATION_PERMISSION = "pleos.car.permission.FUSED_LOCATION"
 private const val TTS_PERMISSION = "pleos.car.permission.TTS_SERVICE"

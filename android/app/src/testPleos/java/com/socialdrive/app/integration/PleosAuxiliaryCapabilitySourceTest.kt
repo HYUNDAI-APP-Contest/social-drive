@@ -1,7 +1,9 @@
 package com.socialdrive.app.integration
 
+import ai.pleos.playground.stt.constant.ErrorType as SttErrorType
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.IntegrationSource
+import com.socialdrive.app.domain.SpeechRecognitionState
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -44,5 +46,28 @@ class PleosAuxiliaryCapabilitySourceTest {
         val denied = speechCapabilityAfterOperationFailure(permissionGranted = false)
         assertEquals(CapabilityState.PermissionDenied, denied.capability)
         assertEquals("실차 · 권한 필요", denied.label)
+    }
+
+    @Test
+    fun `STT 시간 초과는 결과 없음이며 capability를 끊지 않는다`() {
+        assertEquals(SpeechRecognitionState.NoResult, speechRecognitionStateAfterError(SttErrorType.TIMEOUT))
+        assertFalse(sttErrorInvalidatesCapability(SttErrorType.TIMEOUT))
+    }
+
+    @Test
+    fun `STT 엔진과 권한 오류는 capability 재초기화를 요구한다`() {
+        val serviceErrors = listOf(
+            SttErrorType.AUDIO_ERROR,
+            SttErrorType.MIC_ERROR,
+            SttErrorType.PERMISSION_DENIED,
+            SttErrorType.ON_DEVICE_ENGINE_ERROR,
+            SttErrorType.UNAVAILABLE_LANGUAGE,
+            SttErrorType.NOT_SUPPORTED_API,
+        )
+
+        serviceErrors.forEach { error ->
+            assertEquals(SpeechRecognitionState.Failed, speechRecognitionStateAfterError(error))
+            assertTrue(sttErrorInvalidatesCapability(error))
+        }
     }
 }
