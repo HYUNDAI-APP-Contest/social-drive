@@ -7,7 +7,7 @@
 2026-11-02 현재 Android 앱 PR #2의 병합 커밋 `dcffaad`가 이 작업공간 HEAD의 조상이며 `android/` 소스가 통합돼 있습니다. 제출용 서명 release APK와 clean-install 증거는 승인된 signing material 및 PLEOS AVD 검증 전이므로 아직 없습니다.
 
 - Vehicle SDK 2.3.2와 NaviHelper 3.0.5 adapter의 최초 구현 커밋은 `6475287`이며 1차 독립 검토에서 `CHANGES_REQUIRED`였습니다.
-- Issue #28 NaviHelper 경계 구현 커밋 `dd916733a528d933b7804f195d3a00ac4f6e1ba4`에서 static 50/50, Kotlin core 91/91, Demo unit 121/121, Pleos unit 109/109과 양 debug APK 재조립이 통과했습니다. Exact opt-in connected smoke는 Pleos Connect 2.1.0/API 34 AVD가 연결된 상태에서 두 번 시도했지만 Android package service가 준비되지 않아 APK 설치 전 `0 tests`로 실패했으므로 실제 route callback이나 runtime 성공을 주장하지 않습니다. 이 커밋은 로컬 `origin/main` `8a068c3b72cf081d59f41686fa0e15d02e398a7b`를 포함하지만, worker가 원격 최신성을 확인한 것은 아닙니다.
+- Issue #28 NaviHelper 경계 구현 커밋 `2abdd0bdc04bb470e016c53f14d877d4517e6b8f`에서 static 50/50, Kotlin core 92/92, Demo unit 122/122, Pleos unit 110/110이 통과했습니다. PLEOS Connect Emulator 2.1.0/API 34 exact smoke도 1/1, 실패·오류·skip 0으로 통과했고, 실제 legacy `onRouteEnded` 완료 콜백을 production adapter가 안전하게 정규화한 뒤 `terminal_completed`와 `released`까지 관찰했습니다. 이는 물리 차량, signed release, AWS 또는 vendor System Back 증거를 의미하지 않습니다.
 - 최신 Android 검토 HEAD는 `4f2b559116fd98ee3fe05e05fc6431b59888d0d6`입니다. PLEOS Connect Emulator 2.1.0(Android 14, user 10)에서 instrumentation 51/51, SDK-independent Kotlin 74/74, 정적 계약 29/29이 통과했습니다.
 - Gradle clean, Demo/Pleos 단위 테스트, Demo release lint, Demo Debug/Release, Pleos Debug와 Pleos AndroidTest 조립이 179개 task로 성공했습니다. Demo release 산출물은 unsigned이므로 공모전 제출용 서명·설치 검증은 아직 남아 있습니다.
 - Room v6에는 durable 409 conflict review와 parked-only published-delete tombstone, bounded retry가 구현돼 있습니다. Pleos/production cloud factory는 승인된 Cognito/API 설정과 concrete transport가 없으면 fail closed합니다.
