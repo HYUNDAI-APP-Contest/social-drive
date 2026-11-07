@@ -24,6 +24,25 @@ TTS/STT 초기화 콜백이 누락될 때 설정이 무기한정 `확인 중`에
 
 게시 화면에서 제목 음성 입력을 시작하자 앱은 `음성을 듣고 있어요…`를 표시했고 PLEOS 온디바이스 STT가 `ko_KR` 세션, `ReadyToStartRecognition`, 16 kHz `AudioRecord` 시작을 기록했다. 취소 후 SDK `stop`과 `close`, 녹음 세션 해제까지 관찰됐고 화면은 `음성 입력을 취소했어요.`로 복귀했다. 기록 시작·완료의 TTS 호출도 예외 없이 통과했지만 공급자 서비스가 발화 완료 로그나 청취 가능한 출력을 제공하지 않는 한계는 기존과 같다.
 
+### 제출 보안 보강 이후 재확인
+
+커밋 `c845b02`까지 포함한 PLEOS debug APK(`SHA-256 a0891b6727eac772e26a5582d4a8bbfc5932e3a88ec32c1e8b875ab18c2a902c`)를 기존 데이터를 유지한 채 다시 설치하고 user 10에서 실행했다. 앱은 홈 화면에 `PLEOS 연결됨 · 차량 상태`와 기존 실시간 경로 기록 `76 m · 23초`를 표시했다.
+
+활성 사용자인 user 10의 패키지 권한을 다시 조회한 결과 `CAR_DRIVE`, `NAVI_ROUTE_SEARCH`, `FUSED_LOCATION`, `TTS_SERVICE`, `STT_SERVICE`가 모두 허용돼 있었다. 이 가운데 `FUSED_LOCATION`은 `granted=true, USER_SET`인 위험 권한이고 나머지 네 권한은 설치 시 허용되는 일반 권한이다. 비활성 user 0에는 위치 권한이 거부돼 있지만 실행 중인 user 10의 권한·SDK 연결 상태에는 영향을 주지 않는다.
+
+같은 프로세스의 설정 화면에서 다음 실제 문구를 확인했다.
+
+| 항목 | 설정 화면 표시 |
+|---|---|
+| 차량 상태 | `PLEOS 연결됨 · 차량 상태` |
+| 차량 내비게이션 | `PLEOS 연결됨 · 차량 내비게이션` |
+| 위치 연동 | `PLEOS 연결됨 · 위치 연동`, `실시간 경로: 사용 가능` |
+| 음성 안내 | `PLEOS 연결됨 · 음성 안내` |
+| 음성 인식 | `PLEOS 연결됨 · 음성 인식` |
+| AWS 클라우드 | `AWS · 빌드 설정 필요` |
+
+따라서 이전에 보고된 두 SDK 미허용 상태는 현재 활성 사용자에서는 재현되지 않는다. 반면 AWS 표시는 의도한 fail-closed 상태이며, 실제 계정의 public Cognito/API 식별자를 주입하고 승인된 인프라를 배포하기 전에는 클라우드 연결 완료로 간주하지 않는다.
+
 ## NaviHelper 재현 절차
 
 1. 최신 `app-pleos-debug.apk`를 설치하고 `com.socialdrive.app/.MainActivity`를 user 10에서 실행한다.
