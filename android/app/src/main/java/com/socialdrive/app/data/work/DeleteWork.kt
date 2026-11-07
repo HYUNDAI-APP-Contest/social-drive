@@ -135,6 +135,7 @@ class DeleteWorkScheduler(
     private val workManager: WorkManager,
     private val database: SocialDriveDatabase,
     private val executionGate: ParkedExecutionGate,
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private val recoveryMutex = Mutex()
     fun enqueue(
@@ -154,12 +155,15 @@ class DeleteWorkScheduler(
         workManager.enqueueUniqueWork(uniqueName(draftId), policy, request)
     }
 
-    suspend fun recoverAfterProcessRestart() = recover(normalizeInterrupted = true)
+    suspend fun recoverAfterProcessRestart() = recover(normalizeInterrupted = true, resumeAuthentication = false)
 
-    suspend fun resumeWhenParked() = recover(normalizeInterrupted = false)
+    suspend fun resumeWhenParked() = recover(normalizeInterrupted = false, resumeAuthentication = false)
 
-    private suspend fun recover(normalizeInterrupted: Boolean) = recoveryMutex.withLock {
-        val now = System.currentTimeMillis()
+    suspend fun resumeAfterAuthentication() = recover(normalizeInterrupted = false, resumeAuthentication = true)
+
+    private suspend fun recover(normalizeInterrupted: Boolean, resumeAuthentication: Boolean) = recoveryMutex.withLock {
+        val now = clock()
+        if (resumeAuthentication) database.publishedDeleteDao().resumeAuthenticationRequired(now)
         if (normalizeInterrupted) {
             database.publishedDeleteDao().normalizeInterrupted(now)
             database.publishedDeleteDao().failAtLimit(now)

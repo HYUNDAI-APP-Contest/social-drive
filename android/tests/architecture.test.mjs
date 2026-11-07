@@ -607,6 +607,7 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   assert.match(remote, /AssetKind\.COVER/);
   assert.match(remote, /AssetKind\.ROUTE/);
   assert.match(application, /FlavorRemoteDriveApiFactory\.create\(\)/);
+  assert.match(application, /CloudAuthPhase\.SIGNED_IN[\s\S]*resumeAfterAuthentication\(\)[\s\S]*publishScheduler\.recoverAfterProcessRestart\(\)/);
   assert.match(demoFactory, /FakeRemoteDriveApi/);
   assert.match(demoFake, /class FakeRemoteDriveApi/);
   assert.doesNotMatch(remote, /class FakeRemoteDriveApi/);
@@ -902,6 +903,7 @@ test("published delete is parked durable idempotent bounded and fail closed", ()
   assert.match(entity, /idempotencyKeyHash/);
   assert.doesNotMatch(entity, /deleteReceipt|bearer|token|presigned|authorization/i);
   assert.match(dao, /state = 'RUNNING'.*attempts = :runningAttempt/s);
+  assert.match(dao, /state = 'DELETE_PENDING', attempts = 0[\s\S]*WHERE state = 'AUTH_REQUIRED'/);
   assert.match(dao, /NOT EXISTS \([\s\S]*published_delete_requests/);
   assert.match(worker, /executionGate\.execute/);
   assert.match(worker, /DeleteCancellationGuard\.run[\s\S]*handoffInterruptedLease = \{ persistInterruptedLease/);
@@ -910,6 +912,7 @@ test("published delete is parked durable idempotent bounded and fail closed", ()
   assert.match(cancellationSuite, /cancellation while persisting terminal 409 hands off running lease/);
   assert.match(coreScript, /DeleteCancellationGuardTest\.kt/);
   assert.match(worker, /persistInterruptedLease[\s\S]*"INTERRUPTED"/);
+  assert.match(worker, /resumeAfterAuthentication\(\)[\s\S]*resumeAuthenticationRequired/);
   assert.match(worker, /RemoteDeleteConfirmed|confirmCas/);
   assert.match(worker, /local original draft is deliberately retained/);
   assert.match(client, /"Idempotency-Key" to stableKeyHash/);

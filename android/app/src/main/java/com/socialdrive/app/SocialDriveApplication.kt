@@ -10,6 +10,7 @@ import com.socialdrive.app.data.PublishQueueRepository
 import com.socialdrive.app.data.RecordingRepository
 import com.socialdrive.app.data.RoutePrivacyRepository
 import com.socialdrive.app.data.local.SocialDriveDatabase
+import com.socialdrive.app.data.remote.CloudAuthPhase
 import com.socialdrive.app.data.remote.FlavorRemoteDriveApiFactory
 import com.socialdrive.app.data.remote.FlavorRemoteDeleteApiFactory
 import com.socialdrive.app.data.remote.RemoteDriveApi
@@ -99,6 +100,14 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         applicationScope.launch { cloudAuth.initialize() }
+        applicationScope.launch {
+            cloudAuth.state.collect { auth ->
+                if (auth.phase == CloudAuthPhase.SIGNED_IN) {
+                    deleteWorkScheduler.resumeAfterAuthentication()
+                    publishScheduler.recoverAfterProcessRestart()
+                }
+            }
+        }
         applicationScope.launch {
             vehicleMotionSource.initialize()
             navigationGateway.initialize()

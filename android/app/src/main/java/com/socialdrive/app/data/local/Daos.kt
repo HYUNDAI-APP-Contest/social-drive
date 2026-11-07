@@ -295,6 +295,13 @@ interface PublishedDeleteDao {
     suspend fun recoverable(): List<PublishedDeleteRequestEntity>
 
     @Query("""
+        UPDATE published_delete_requests SET state = 'DELETE_PENDING', attempts = 0,
+            nextAttemptAtEpochMs = :now, lastErrorCode = NULL, updatedAtEpochMs = :now
+        WHERE state = 'AUTH_REQUIRED'
+    """)
+    suspend fun resumeAuthenticationRequired(now: Long): Int
+
+    @Query("""
         UPDATE published_delete_requests SET state = 'RUNNING', attempts = :runningAttempt,
             lastErrorCode = NULL, updatedAtEpochMs = :now
         WHERE draftId = :draftId AND clientRequestId = :clientRequestId
