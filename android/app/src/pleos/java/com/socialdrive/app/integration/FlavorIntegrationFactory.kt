@@ -312,16 +312,21 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         runCatching {
             tts.initialize(object : TtsInitializeListener {
                 override fun onSuccess() {
-                    if (!released) {
-                        ttsInitialized = true
-                        mutableTts.value = available("실차 · 온디바이스")
-                    }
+                    if (released || !hasPermission(TTS_PERMISSION)) return
+                    ttsInitialized = true
+                    mutableTts.value = available("실차 · 온디바이스")
                 }
                 override fun onFailure(error: ai.pleos.playground.tts.constant.ErrorType) {
-                    if (!released) mutableTts.value = unavailable("실차 · 초기화 실패")
+                    if (!released && hasPermission(TTS_PERMISSION)) {
+                        mutableTts.value = unavailable("실차 · 초기화 실패")
+                    }
                 }
             })
-        }.onFailure { mutableTts.value = unavailable("실차 · 초기화 실패") }
+        }.onFailure {
+            if (!released && hasPermission(TTS_PERMISSION)) {
+                mutableTts.value = unavailable("실차 · 초기화 실패")
+            }
+        }
         scheduleInitializationTimeout(mutableTts)
     }
 
@@ -329,16 +334,22 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         runCatching {
             stt.initialize(object : SttInitializeListener {
                 override fun onSuccess() {
-                    if (released) return
+                    if (released || !hasPermission(STT_PERMISSION)) return
                     sttInitialized = true
                     stt.addListener(recognitionListener)
                     mutableStt.value = available("실차 · 온디바이스")
                 }
                 override fun onFailure(error: ai.pleos.playground.stt.constant.ErrorType) {
-                    if (!released) mutableStt.value = unavailable("실차 · 초기화 실패")
+                    if (!released && hasPermission(STT_PERMISSION)) {
+                        mutableStt.value = unavailable("실차 · 초기화 실패")
+                    }
                 }
             })
-        }.onFailure { mutableStt.value = unavailable("실차 · 초기화 실패") }
+        }.onFailure {
+            if (!released && hasPermission(STT_PERMISSION)) {
+                mutableStt.value = unavailable("실차 · 초기화 실패")
+            }
+        }
         scheduleInitializationTimeout(mutableStt)
     }
 

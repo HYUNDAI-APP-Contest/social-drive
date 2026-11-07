@@ -423,6 +423,8 @@ test("PLEOS TTS and STT permissions fail closed and remain recoverable", () => {
   assert.match(pleos, /if \(!hasPermission\(TTS_PERMISSION\)\)[\s\S]*permissionDenied/);
   assert.match(pleos, /if \(!hasPermission\(STT_PERMISSION\)\)[\s\S]*permissionDenied/);
   assert.match(pleos, /ttsInitialized[\s\S]*sttInitialized/);
+  assert.match(pleos, /TtsInitializeListener[\s\S]*onSuccess\(\)[\s\S]*released \|\| !hasPermission\(TTS_PERMISSION\)[\s\S]*ttsInitialized = true/);
+  assert.match(pleos, /SttInitializeListener[\s\S]*onSuccess\(\)[\s\S]*released \|\| !hasPermission\(STT_PERMISSION\)[\s\S]*sttInitialized = true[\s\S]*stt\.addListener/);
   assert.match(pleos, /override fun speakFeedback\([\s\S]*if \(released\) return false/);
   assert.match(pleos, /override fun startSpeechRecognition\([\s\S]*if \(released\) return false/);
   assert.match(pleos, /if \(isFinal\)[\s\S]*finishRecognition\([\s\S]*runCatching \{ callback\?\.invoke\(text, true\) \}/);
