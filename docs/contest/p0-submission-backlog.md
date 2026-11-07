@@ -3,6 +3,8 @@
 기준일: 2026-11-02
 목표: 2026-11-15 1차 제출과 12월 PT를 위해, 남은 작업을 최대 3개 GitHub Issue로 제한한다.
 
+> 이 문서는 2026-11-02 의사결정 기록이다. 이후 FusedLocation·TTS·STT가 통합되고 PLEOS AVD에서 실행 검증됐다. 현재 상태 판단에는 [공식 요구사항 truth table](official-requirements.md)과 [2026-11-07 실행 증거](../pleos-runtime-evidence-2026-11-07.md)를 우선한다.
+
 ## 1. 결론
 
 우선순위는 다음과 같다.
@@ -214,6 +216,8 @@ BACKEND_CONTRACT_PATH=infra/API.md
 - preset ref는 실제 route 또는 Vehicle callback으로 직렬화하지 않음
 
 ### 승인된 acceptance criteria와 후속 범위
+
+> 아래 체크리스트는 당시 SDK 미통합 상태의 역사 기록이다. 현재 위치·TTS·STT 상태는 [2026-11-07 PLEOS 실행 증거](../pleos-runtime-evidence-2026-11-07.md)와 `official-requirements.md`의 최신 truth table을 우선한다.
 
 - [x] source/manifest 정적 검사와 Gradle-resolved build에서 FusedLocation/TTS/STT/Vehicle Control dependency와 permission이 없음.
 - [x] 현재 production에서 live route collection을 시작할 수 있는 code path가 없음.

@@ -39,7 +39,7 @@ Social Drive는 다음 경험을 제출 목표로 한다. PR #2 병합 커밋 `d
 3. 제목·설명·공개 범위 확인은 주차 후에만 허용한다.
 4. 통합된 NaviHelper adapter는 실제 route callback이 확인된 뒤에만 공개 코스의 목적지와 경유지를 차량 Navigation 앱으로 전달한다.
 
-위치 동의·철회와 route source 안전 경계는 `앱 구현`이지만 실제 위치 샘플·경로점 수집은 미구현이다. preset 경로는 실제 위치가 아니라 `데모 데이터`다. 게시물 삭제는 Room v6 tombstone, network `DELETE`, bounded retry 계약까지 구현·계측됐지만 actual cloud 설정이 없어 demo transport 증거다.
+위치 수집은 별도 고지와 정책 버전 동의, PLEOS `FUSED_LOCATION` 권한을 모두 통과한 기록 세션에서만 동작한다. AVD에서 실제 SDK callback을 받아 원본 위·경도를 메모리에서 정규화하고 거리와 비정밀 경로만 Room에 보존하는 흐름을 검증했다. preset 경로는 계속 `데모 데이터`로 구분한다. 실제 차량 GNSS 품질과 장시간 주행은 아직 미검증이다. 게시물 삭제는 Room tombstone, network `DELETE`, bounded retry 계약까지 구현·계측됐지만 actual cloud 설정이 없어 demo transport 증거다.
 
 ### 핵심 타깃
 
@@ -131,8 +131,8 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 | Compose 피드·상세·기록·게시 UI | 핵심 흐름 제공 | PR #2 통합, 기존 PLEOS UI 8/8 통과 | `앱 구현` |
 | Room recording/draft/queue | 오프라인/재시작 복구 | PR #2 통합, persistence·migration·WorkManager 포함 비UI 43/43 통과 | `앱 구현` |
 | motion 재검증 Worker | 주행 중 원격 게시 차단 | PR #2 통합, WorkManager 계약 계측 통과. 실제 Vehicle motion callback은 미검증 | `앱 구현` |
-| route source·동의·철회 | 개인정보 통제와 demo/live 분리 | PR #2 통합 코드와 계측 증거 존재. 실제 위치 source는 unavailable | `앱 구현` |
-| 실제 경로점·위치 수집 | 실제 코스 생성 | 확인된 구현 증거 없음 | `미구현` |
+| route source·동의·철회 | 개인정보 통제와 demo/live 분리 | 정책 버전 동의·철회·권한 재확인과 미게시 경로 삭제를 AVD에서 검증 | `앱 구현` |
+| 실제 경로점·위치 수집 | 실제 코스 생성 | PLEOS FusedLocation callback→메모리 정규화→비정밀 Room 저장을 AVD에서 검증. 실차 GNSS는 미검증 | `실제 SDK` |
 | 게시물 삭제 | parked-only 삭제 요청 | PR #2 통합. Room v6 tombstone·network `DELETE`·bounded retry 계약을 demo transport에서 계측. actual cloud 미검증 | `앱 구현` |
 | Cognito/DynamoDB/S3 API | 사용자·피드·비공개 업로드 | PR #2 통합. backend `ddbd61f` 계약 기반 코드 존재. concrete cloud 설정 부재로 actual cloud unavailable | `앱 구현` |
 | 409 conflict review | stale publish의 명시적 사용자 해결 | PR #2 통합. durable FAILED, explicit fetch/adopt, publish-only replay. 일반 worker 자동 claim·GET·overwrite 금지. Room 계측 통과 | `앱 구현` |
@@ -140,11 +140,12 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 | NaviHelper 3.0.5 | 목적지·경유지 전달 | PR #2 통합. lifecycle/coordinator build·core 검증, 실제 route callback 미검증 | `앱 구현` |
 | PLEOS system Back | 기록 중 종료 확인 | Activity dispatcher 이후 dialog 계약은 검증. TaskView의 실제 system Back 전달은 `UNRESOLVED` | `미구현` |
 | preset route/motion | 전체 흐름 시연 보조 | 데모 전용 | `데모 데이터` |
-| FusedLocation/STT/TTS/Vehicle Control | 향후 자연스러운 입력·안내 | 공식 Coming Soon | `향후 기능` |
+| FusedLocation/STT/TTS | 위치·음성 입력·안내 | pinned PLEOS SDK로 AVD 권한·초기화·location callback·STT timeout/cancel 검증. 실차 품질은 미검증 | `실제 SDK` |
+| Vehicle Control | 차량 제어 | 안전 정책상 사용하지 않음 | `향후 기능` |
 
 역사적 commit `88b4938`의 P0-3A bootstrap/doctor는 offline에서 네트워크 요청 0건으로 fail-fast한다. project-required wrapper 8.9 cache와 exact Android platform 35가 없고 `services.gradle.org` DNS가 막혀 tasks/variants/assemble은 시작되지 않았다. 최신 앱 HEAD나 APK·AVD·vendor compile 성공 증거로 사용하지 않는다.
 
-Vehicle State와 NaviHelper는 현재 Ready to Use지만, FusedLocation·STT·TTS·Vehicle Control은 Coming Soon이다. Coming Soon 기능은 이번 MVP의 실제 기능이나 필수 의존성으로 사용하지 않는다. [공식 SDK 상태](https://document.pleos.ai/en/docs/pleos-only/create-my-project)
+Vehicle Control은 이번 MVP에서 사용하지 않는다. FusedLocation·STT·TTS는 저장소에 고정된 PLEOS SDK와 AVD 실행 증거 범위에서만 실제 SDK로 표현하며, production 이미지 승인과 실차 품질을 주장하지 않는다. [실행 증거](../pleos-runtime-evidence-2026-11-07.md)
 
 ## 9. 안전·개인정보 보호
 
@@ -152,7 +153,7 @@ Vehicle State와 NaviHelper는 현재 Ready to Use지만, FusedLocation·STT·TT
 
 - PR #2 통합 Android 소스에 recording session, `highlightCount`, draft, pending queue와 preset reference 코드가 존재한다.
 - 병합 커밋 `dcffaad`를 포함한 소스에는 motion gate, cloud, consent/withdraw, Room v6 conflict review와 published-delete lifecycle이 있다. 기존 PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29, Gradle build/lint 증거가 있으며 actual cloud·AWS E2E·signed release·실 SDK callback은 미완료다.
-- 실제 경로점·위치 샘플 수집은 미구현이며 published delete는 actual cloud에서 검증되지 않았다.
+- 실제 경로점·위치 샘플 수집은 PLEOS AVD에서 검증됐으며 원본 좌표는 저장·업로드하지 않는다. 실차 GNSS와 published delete actual cloud는 검증되지 않았다.
 
 ### 구현·검증해야 할 요구사항
 
