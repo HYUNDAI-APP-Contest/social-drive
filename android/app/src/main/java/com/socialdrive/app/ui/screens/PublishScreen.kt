@@ -22,9 +22,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,6 +74,13 @@ fun PublishScreen(
     var title by remember(initialTitle) { mutableStateOf(initialTitle) }
     var description by remember(initialDescription) { mutableStateOf(initialDescription) }
     var consent by remember { mutableStateOf(false) }
+    val currentRecognitionActive by rememberUpdatedState(speechRecognitionActive)
+    val currentCancelDictation by rememberUpdatedState(onCancelDictation)
+    DisposableEffect(Unit) {
+        onDispose {
+            if (currentRecognitionActive) currentCancelDictation()
+        }
+    }
     Column(Modifier.fillMaxSize().padding(24.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
