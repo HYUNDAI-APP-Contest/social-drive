@@ -315,6 +315,13 @@ private fun PrivacySection(
                     ) { Text("실시간 경로 켜기") }
                 }
                 if (routePrivacy.consentState == RouteConsentState.Granted) {
+                    if (routePermissionRecoveryVisible(routePrivacy.consentState, routePrivacy.liveSource)) {
+                        Button(
+                            onClick = onEnableLiveRoute,
+                            enabled = motion == MotionState.Parked,
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) { Text("위치 권한 다시 확인") }
+                    }
                     Button(
                         onClick = onWithdrawConsent,
                         enabled = motion == MotionState.Parked,
@@ -394,6 +401,10 @@ internal fun routeConsentStorageLabel(consentState: RouteConsentState): String =
     } else {
         "현재 수집하지 않음 · 동의도 저장하지 않음"
     }
+
+internal fun routePermissionRecoveryVisible(consentState: RouteConsentState, liveSource: RouteSource): Boolean =
+    consentState == RouteConsentState.Granted &&
+        liveSource == RouteSource.LiveUnavailable(LiveUnavailableReason.PERMISSION_DENIED)
 
 @Composable
 private fun IntegrationRow(label: String, status: CapabilityStatus) {

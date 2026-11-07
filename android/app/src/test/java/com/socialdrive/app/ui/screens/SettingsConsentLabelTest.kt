@@ -1,7 +1,11 @@
 package com.socialdrive.app.ui.screens
 
 import com.socialdrive.app.domain.RouteConsentState
+import com.socialdrive.app.domain.LiveUnavailableReason
+import com.socialdrive.app.domain.RouteSource
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SettingsConsentLabelTest {
@@ -19,5 +23,14 @@ class SettingsConsentLabelTest {
 
         assertEquals(expected, routeConsentStorageLabel(RouteConsentState.NotAsked))
         assertEquals(expected, routeConsentStorageLabel(RouteConsentState.Withdrawn))
+    }
+
+    @Test
+    fun `저장된 동의가 있고 권한만 철회되면 재허용 동선을 보여준다`() {
+        val denied = RouteSource.LiveUnavailable(LiveUnavailableReason.PERMISSION_DENIED)
+
+        assertTrue(routePermissionRecoveryVisible(RouteConsentState.Granted, denied))
+        assertFalse(routePermissionRecoveryVisible(RouteConsentState.NotAsked, denied))
+        assertFalse(routePermissionRecoveryVisible(RouteConsentState.Granted, RouteSource.LiveAvailable))
     }
 }

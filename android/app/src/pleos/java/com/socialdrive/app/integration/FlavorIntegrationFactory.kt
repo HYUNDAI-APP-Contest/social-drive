@@ -101,7 +101,9 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
                 }
             }
         }
-        override fun onError(error: Exception) = Unit
+        override fun onError(error: Exception) {
+            deactivateLocationCollection("실차 · 위치 수신 오류")
+        }
     }
     private var recognitionCallback: ((String, Boolean) -> Unit)? = null
     private var recognitionTimeoutJob: Job? = null
@@ -248,14 +250,14 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             }
             if (shouldRegister) registerLocationCallback()
         } else {
+            val wasCollecting = synchronized(locationLock) {
+                val active = locationCollecting
+                locationCollecting = false
+                rawLocations.clear()
+                active
+            }
+            if (wasCollecting) runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
             mutableLocation.value = if (!permitted) {
-                val wasCollecting = synchronized(locationLock) {
-                    val active = locationCollecting
-                    locationCollecting = false
-                    rawLocations.clear()
-                    active
-                }
-                if (wasCollecting) runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
                 CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, "실차 · 권한 필요")
             } else {
                 unavailable("실차 · 위치 미지원")
@@ -317,9 +319,21 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private fun registerLocationCallback() {
         runCatching { fusedLocation.registerFusedLocationCallback(locationListener) }
             .onFailure {
-                synchronized(locationLock) { locationCollecting = false }
-                mutableLocation.value = unavailable("실차 · 위치 연결 실패")
+                deactivateLocationCollection("실차 · 위치 연결 실패", unregister = false)
             }
+    }
+
+    private fun deactivateLocationCollection(label: String, unregister: Boolean = true) {
+        val wasCollecting = synchronized(locationLock) {
+            val active = locationCollecting
+            locationCollecting = false
+            rawLocations.clear()
+            active
+        }
+        mutableLocation.value = unavailable(label)
+        if (unregister && wasCollecting) {
+            lifecycleScope.launch { runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) } }
+        }
     }
 
     private fun hasLocationPermission(): Boolean =
