@@ -163,11 +163,11 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
         selectedDraft.value?.let { app.draftRepository.updateCopy(it.id, title, description) } ?: false
 
     fun requestTitleDictation(): Boolean = requestDictation { draft, text ->
-        app.draftRepository.updateCopy(draft.id, text.take(40), draft.description)
+        app.draftRepository.updateCopy(draft.id, text, draft.description)
     }
 
     fun requestDescriptionDictation(): Boolean = requestDictation { draft, text ->
-        app.draftRepository.updateCopy(draft.id, draft.title, text.take(120))
+        app.draftRepository.updateCopy(draft.id, draft.title, text)
     }
 
     fun cancelDictation() = app.auxiliaryCapabilitySource.stopSpeechRecognition()

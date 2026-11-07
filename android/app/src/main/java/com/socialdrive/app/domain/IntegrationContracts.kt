@@ -129,3 +129,12 @@ object SpeechRecognitionPolicy {
     fun canCommit(motion: MotionState, text: String, isFinal: Boolean): Boolean =
         motion == MotionState.Parked && shouldCommit(text, isFinal)
 }
+
+const val DRAFT_TITLE_MAX_CODE_POINTS = 40
+const val DRAFT_DESCRIPTION_MAX_CODE_POINTS = 120
+
+fun String.takeCodePoints(maxCodePoints: Int): String {
+    require(maxCodePoints >= 0)
+    if (codePointCount(0, length) <= maxCodePoints) return this
+    return substring(0, offsetByCodePoints(0, maxCodePoints))
+}

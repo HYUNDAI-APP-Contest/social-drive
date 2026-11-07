@@ -41,4 +41,22 @@ class IntegrationContractsTest {
             ),
         )
     }
+
+    @Test
+    fun `draft text limit counts supplementary unicode as one code point`() {
+        val text = "a".repeat(39) + "🚙" + "tail"
+
+        val limited = text.takeCodePoints(DRAFT_TITLE_MAX_CODE_POINTS)
+
+        assertEquals("a".repeat(39) + "🚙", limited)
+        assertEquals(40, limited.codePointCount(0, limited.length))
+    }
+
+    @Test
+    fun `draft text limit never leaves an unpaired surrogate`() {
+        val limited = ("가".repeat(119) + "🌊" + "뒤").takeCodePoints(DRAFT_DESCRIPTION_MAX_CODE_POINTS)
+
+        assertEquals("가".repeat(119) + "🌊", limited)
+        assertEquals(false, limited.last().isHighSurrogate())
+    }
 }

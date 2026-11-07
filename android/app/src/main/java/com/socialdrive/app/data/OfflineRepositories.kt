@@ -8,10 +8,13 @@ import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.local.UploadQueueEntity
 import com.socialdrive.app.data.local.NormalizedRoutePointEntity
 import com.socialdrive.app.domain.FutureRouteCollector
+import com.socialdrive.app.domain.DRAFT_DESCRIPTION_MAX_CODE_POINTS
+import com.socialdrive.app.domain.DRAFT_TITLE_MAX_CODE_POINTS
 import com.socialdrive.app.domain.NormalizedRoutePoint
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.RouteConsentState
 import com.socialdrive.app.domain.UploadState
+import com.socialdrive.app.domain.takeCodePoints
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -159,7 +162,12 @@ class DraftRepository(
     }
 
     suspend fun updateCopy(id: String, title: String, description: String): Boolean =
-        database.draftDao().updateEditableCopy(id, title.take(40), description.take(120), clock()) == 1
+        database.draftDao().updateEditableCopy(
+            id,
+            title.takeCodePoints(DRAFT_TITLE_MAX_CODE_POINTS),
+            description.takeCodePoints(DRAFT_DESCRIPTION_MAX_CODE_POINTS),
+            clock(),
+        ) == 1
 }
 
 class PublishQueueRepository(

@@ -32,11 +32,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.UploadState
+import com.socialdrive.app.domain.DRAFT_DESCRIPTION_MAX_CODE_POINTS
+import com.socialdrive.app.domain.DRAFT_TITLE_MAX_CODE_POINTS
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.SpeechRecognitionState
+import com.socialdrive.app.domain.takeCodePoints
 import com.socialdrive.app.ui.components.MemoryPalette
 import com.socialdrive.app.ui.components.RouteMemoryArtwork
 import com.socialdrive.app.ui.components.RouteSourceBadge
@@ -139,7 +142,7 @@ fun PublishScreen(
                     OutlinedTextField(
                         title,
                         {
-                            title = it.take(40)
+                            title = it.takeCodePoints(DRAFT_TITLE_MAX_CODE_POINTS)
                             onCopyChanged(title, description)
                         },
                         Modifier.weight(1f),
@@ -157,7 +160,7 @@ fun PublishScreen(
                     OutlinedTextField(
                         description,
                         {
-                            description = it.take(120)
+                            description = it.takeCodePoints(DRAFT_DESCRIPTION_MAX_CODE_POINTS)
                             onCopyChanged(title, description)
                         },
                         Modifier.weight(1f),
