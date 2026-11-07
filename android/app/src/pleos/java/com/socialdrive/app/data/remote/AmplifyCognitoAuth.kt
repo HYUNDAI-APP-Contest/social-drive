@@ -27,8 +27,16 @@ internal class AmplifyCognitoAuth(
         try {
             Amplify.addPlugin(AWSCognitoAuthPlugin())
             Amplify.configure(amplifyConfiguration(configuration.cognito), context)
-            val restored = PleosCloudRuntime.installSessionSource(this)
-            mutableState.value = if (restored) signedInState() else signedOutState()
+            val session = fetchCognitoSession()
+            if (session.isSignedIn) {
+                val restored = PleosCloudRuntime.installSessionSource(this)
+                mutableState.value = if (restored) signedInState() else {
+                    CloudAuthState(CloudAuthPhase.ERROR, "저장된 AWS 세션을 다시 확인해 주세요")
+                }
+            } else {
+                PleosCloudRuntime.clearSessionSource()
+                mutableState.value = signedOutState()
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
@@ -92,24 +100,31 @@ internal class AmplifyCognitoAuth(
         }
     }
 
-    override suspend fun freshAccessToken(): String = suspendCancellableCoroutine { continuation ->
-        Amplify.Auth.fetchAuthSession(
-            { session ->
-                if (!continuation.isActive) return@fetchAuthSession
-                val cognito = session as? AWSCognitoAuthSession
-                val token = cognito?.takeIf { it.isSignedIn }
-                    ?.userPoolTokensResult?.value?.accessToken
-                if (token.isNullOrBlank()) {
-                    continuation.resumeWithException(IllegalStateException("Cognito session is signed out"))
-                } else {
-                    continuation.resume(token)
-                }
-            },
-            { error ->
-                if (continuation.isActive) continuation.resumeWithException(error)
-            },
-        )
+    override suspend fun freshAccessToken(): String {
+        val session = fetchCognitoSession()
+        val token = session.takeIf { it.isSignedIn }
+            ?.userPoolTokensResult?.value?.accessToken
+        return token?.takeIf(String::isNotBlank)
+            ?: throw IllegalStateException("Cognito session is signed out")
     }
+
+    private suspend fun fetchCognitoSession(): AWSCognitoAuthSession =
+        suspendCancellableCoroutine { continuation ->
+            Amplify.Auth.fetchAuthSession(
+                { session ->
+                    if (!continuation.isActive) return@fetchAuthSession
+                    val cognito = session as? AWSCognitoAuthSession
+                    if (cognito == null) {
+                        continuation.resumeWithException(IllegalStateException("Unexpected Cognito session type"))
+                    } else {
+                        continuation.resume(cognito)
+                    }
+                },
+                { error ->
+                    if (continuation.isActive) continuation.resumeWithException(error)
+                },
+            )
+        }
 
     private fun amplifyConfiguration(cognito: CognitoRuntimeConfiguration): AmplifyConfiguration {
         val userPool = JSONObject()
