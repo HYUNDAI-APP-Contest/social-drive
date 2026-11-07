@@ -1,6 +1,7 @@
 package com.socialdrive.app.data.remote
 
 import com.socialdrive.app.data.DraftSnapshot
+import com.socialdrive.app.domain.DeleteFailureCode
 import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,5 +26,28 @@ class SessionAwareRemoteDriveApiTest {
 
         current = null
         assertFailsWith<RemoteDriveException> { adapter.uploadAssets("remote-3", emptyList()) }
+    }
+
+    @Test
+    fun `클라우드 초기화 중 어댑터는 영구 구성 실패 대신 재시도 상태를 보존한다`() = runTest {
+        val publishFailure = assertFailsWith<RemoteDriveException> {
+            UnavailableRemoteDriveApi(RemoteFailureCode.SERVER_BUSY, retryable = true)
+                .uploadAssets("remote-1", emptyList())
+        }
+        assertEquals(RemoteFailureCode.SERVER_BUSY, publishFailure.code)
+        assertEquals(true, publishFailure.retryable)
+
+        val conflictFailure = assertFailsWith<RemoteDriveException> {
+            UnavailableRemoteConflictReviewApi(RemoteFailureCode.SERVER_BUSY, retryable = true)
+                .getOwnedDrive("remote-1")
+        }
+        assertEquals(RemoteFailureCode.SERVER_BUSY, conflictFailure.code)
+        assertEquals(true, conflictFailure.retryable)
+
+        val deleteFailure = assertFailsWith<RemoteDeleteException> {
+            UnavailableRemoteDeleteApi(DeleteFailureCode.SERVER_BUSY)
+                .deletePublishedDrive("remote-1", "d".repeat(64))
+        }
+        assertEquals(DeleteFailureCode.SERVER_BUSY, deleteFailure.failureCode)
     }
 }

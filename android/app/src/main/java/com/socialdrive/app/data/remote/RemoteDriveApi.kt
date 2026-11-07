@@ -103,8 +103,11 @@ interface RemoteDriveApi {
 }
 
 /** Explicit fail-closed production boundary used when authenticated mobile configuration is absent. */
-class UnavailableRemoteDriveApi : RemoteDriveApi {
-    private fun unavailable(): Nothing = throw RemoteDriveException(RemoteFailureCode.CONFIGURATION, retryable = false)
+class UnavailableRemoteDriveApi(
+    private val code: RemoteFailureCode = RemoteFailureCode.CONFIGURATION,
+    private val retryable: Boolean = false,
+) : RemoteDriveApi {
+    private fun unavailable(): Nothing = throw RemoteDriveException(code, retryable)
     override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): RemoteDraftRef = unavailable()
     override suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>) = unavailable()
     override suspend fun publishDrive(remoteDriveId: String, expectedVersion: Int, clientRequestId: String): RemotePublishAck = unavailable()

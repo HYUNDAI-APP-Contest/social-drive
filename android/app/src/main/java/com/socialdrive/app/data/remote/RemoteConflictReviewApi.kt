@@ -37,7 +37,10 @@ class CloudRemoteConflictReviewApi(private val client: CloudDriveClient) : Remot
     }
 }
 
-class UnavailableRemoteConflictReviewApi : RemoteConflictReviewApi {
+class UnavailableRemoteConflictReviewApi(
+    private val code: RemoteFailureCode = RemoteFailureCode.CONFIGURATION,
+    private val retryable: Boolean = false,
+) : RemoteConflictReviewApi {
     override suspend fun getOwnedDrive(remoteDriveId: String): OwnedDriveConflictSnapshot =
-        throw RemoteDriveException(RemoteFailureCode.CONFIGURATION, retryable = false)
+        throw RemoteDriveException(code, retryable)
 }

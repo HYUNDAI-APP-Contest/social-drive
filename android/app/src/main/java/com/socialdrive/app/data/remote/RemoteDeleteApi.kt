@@ -37,7 +37,9 @@ class CloudRemoteDeleteApi(private val client: CloudDriveClient) : RemoteDeleteA
     }
 }
 
-class UnavailableRemoteDeleteApi : RemoteDeleteApi {
+class UnavailableRemoteDeleteApi(
+    private val failureCode: DeleteFailureCode = DeleteFailureCode.REJECTED,
+) : RemoteDeleteApi {
     override suspend fun deletePublishedDrive(remoteDriveId: String, stableKeyHash: String): RemoteDeleteConfirmed =
-        throw RemoteDeleteException(DeleteFailureCode.REJECTED)
+        throw RemoteDeleteException(failureCode)
 }

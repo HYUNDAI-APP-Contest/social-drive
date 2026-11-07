@@ -7,6 +7,13 @@ object FlavorRemoteConflictReviewApiFactory {
 
 private object SessionAwareConflictReviewApi : RemoteConflictReviewApi {
     override suspend fun getOwnedDrive(remoteDriveId: String) =
-        (PleosCloudRuntime.clientOrNull()?.let(::CloudRemoteConflictReviewApi) ?: UnavailableRemoteConflictReviewApi())
+        (PleosCloudRuntime.clientOrNull()?.let(::CloudRemoteConflictReviewApi) ?: unavailableConflictForCurrentCloudState())
             .getOwnedDrive(remoteDriveId)
+}
+
+private fun unavailableConflictForCurrentCloudState(): RemoteConflictReviewApi = when (PleosCloudRuntime.availability()) {
+    CloudRuntimeAvailability.INITIALIZING -> UnavailableRemoteConflictReviewApi(RemoteFailureCode.SERVER_BUSY, retryable = true)
+    CloudRuntimeAvailability.AUTHENTICATION_REQUIRED -> UnavailableRemoteConflictReviewApi(RemoteFailureCode.AUTHENTICATION)
+    CloudRuntimeAvailability.CONFIGURATION_REQUIRED -> UnavailableRemoteConflictReviewApi()
+    CloudRuntimeAvailability.READY -> UnavailableRemoteConflictReviewApi(RemoteFailureCode.SERVER_BUSY, retryable = true)
 }

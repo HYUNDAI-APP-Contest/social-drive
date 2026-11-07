@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Process-local bridge for the approved Cognito mobile login component.
@@ -17,6 +18,7 @@ import java.util.concurrent.atomic.AtomicReference
  */
 object PleosCloudRuntime : CloudConnectionStatusSource {
     private val sessionSource = AtomicReference<CognitoSessionSource?>(null)
+    private val authenticationInitialized = AtomicBoolean(false)
     private val sessionMutex = Mutex()
 
     val configuration: CloudRuntimeConfiguration? by lazy {
@@ -31,6 +33,17 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
     }
     private val mutableStatus = MutableStateFlow(configurationStatus())
     override val status: StateFlow<CapabilityStatus> = mutableStatus.asStateFlow()
+
+    internal fun availability(): CloudRuntimeAvailability = when {
+        configuration == null -> CloudRuntimeAvailability.CONFIGURATION_REQUIRED
+        sessionSource.get() != null -> CloudRuntimeAvailability.READY
+        !authenticationInitialized.get() -> CloudRuntimeAvailability.INITIALIZING
+        else -> CloudRuntimeAvailability.AUTHENTICATION_REQUIRED
+    }
+
+    internal fun markAuthenticationInitialized() {
+        authenticationInitialized.set(true)
+    }
 
     suspend fun installSessionSource(source: CognitoSessionSource): Boolean = sessionMutex.withLock {
         val configured = configuration
@@ -90,4 +103,11 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
 
     private fun signedOutStatus(label: String) =
         CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, label)
+}
+
+internal enum class CloudRuntimeAvailability {
+    READY,
+    INITIALIZING,
+    AUTHENTICATION_REQUIRED,
+    CONFIGURATION_REQUIRED,
 }
