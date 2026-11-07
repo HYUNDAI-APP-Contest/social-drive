@@ -17,6 +17,22 @@ import com.socialdrive.app.domain.NormalizedRoutePoint
 
 class CloudDriveClientTest {
     @Test
+    fun `JPEG와 계약에 포함된 WebP 커버 시그니처만 허용한다`() {
+        assertTrue(isSupportedCoverImage(byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0xd9.toByte())))
+        val webp = ByteArray(20).apply {
+            "RIFF".forEachIndexed { index, character -> this[index] = character.code.toByte() }
+            this[4] = 12
+            "WEBP".forEachIndexed { index, character -> this[8 + index] = character.code.toByte() }
+            "VP8L".forEachIndexed { index, character -> this[12 + index] = character.code.toByte() }
+        }
+        assertTrue(isSupportedCoverImage(webp))
+
+        webp[4] = 11
+        assertFalse(isSupportedCoverImage(webp))
+        assertFalse(isSupportedCoverImage("RIFF....WEBPbad!".toByteArray()))
+    }
+
+    @Test
     fun `메모리에서 변경된 업로드 payload는 세션 요청 전에 거부한다`() = runBlocking {
         val harness = Harness()
         val commands = testDraft().assetUploads()

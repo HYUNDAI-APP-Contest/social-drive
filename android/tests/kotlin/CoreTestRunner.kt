@@ -14,7 +14,7 @@ import java.lang.reflect.InvocationTargetException
 import org.junit.Test
 
 fun main() {
-    val expectedTests = 109
+    val expectedTests = 110
     val classes = listOf(
         IntegrationContractsTest::class.java,
         RoutePrivacyTest::class.java,

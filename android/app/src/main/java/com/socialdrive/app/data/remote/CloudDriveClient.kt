@@ -163,7 +163,7 @@ class CloudDriveClient(
         return parsePublishedRoute(response.body)
     }
 
-    /** Downloads a short-lived JPEG cover without forwarding Cognito authorization. */
+    /** Downloads a short-lived JPEG/WebP cover without forwarding Cognito authorization. */
     suspend fun downloadCover(detail: DriveDetail): ByteArray {
         val response = try {
             objectTransport.execute(
@@ -194,9 +194,7 @@ class CloudDriveClient(
             )
         }
         val bytes = response.body
-        if (bytes.size < 4 || bytes[0] != 0xff.toByte() || bytes[1] != 0xd8.toByte() ||
-            bytes[bytes.lastIndex - 1] != 0xff.toByte() || bytes.last() != 0xd9.toByte()
-        ) throw CloudContractException("INVALID_COVER_IMAGE")
+        if (!isSupportedCoverImage(bytes)) throw CloudContractException("INVALID_COVER_IMAGE")
         return bytes.copyOf()
     }
 
@@ -597,6 +595,30 @@ class CloudDriveClient(
             .ofPattern("uuuuMMdd'T'HHmmss'Z'")
             .withZone(ZoneOffset.UTC)
     }
+}
+
+internal fun isSupportedCoverImage(bytes: ByteArray): Boolean {
+    val jpeg = bytes.size >= 4 &&
+        bytes[0] == 0xff.toByte() && bytes[1] == 0xd8.toByte() &&
+        bytes[bytes.lastIndex - 1] == 0xff.toByte() && bytes.last() == 0xd9.toByte()
+    if (jpeg) return true
+    if (bytes.size < 20 || !bytes.matchesAscii(0, "RIFF") || !bytes.matchesAscii(8, "WEBP")) return false
+    val declaredRiffBytes = bytes.littleEndianUInt32(4) ?: return false
+    if (declaredRiffBytes != bytes.size.toLong() - 8L) return false
+    return bytes.matchesAscii(12, "VP8 ") ||
+        bytes.matchesAscii(12, "VP8L") ||
+        bytes.matchesAscii(12, "VP8X")
+}
+
+private fun ByteArray.matchesAscii(offset: Int, value: String): Boolean =
+    offset >= 0 && offset + value.length <= size && value.indices.all { this[offset + it] == value[it].code.toByte() }
+
+private fun ByteArray.littleEndianUInt32(offset: Int): Long? {
+    if (offset < 0 || offset + 4 > size) return null
+    return (this[offset].toLong() and 0xff) or
+        ((this[offset + 1].toLong() and 0xff) shl 8) or
+        ((this[offset + 2].toLong() and 0xff) shl 16) or
+        ((this[offset + 3].toLong() and 0xff) shl 24)
 }
 
 private fun parsePublishedRoute(bytes: ByteArray): PublishedRoute = try {
