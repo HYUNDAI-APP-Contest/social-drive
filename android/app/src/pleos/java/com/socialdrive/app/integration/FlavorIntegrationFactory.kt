@@ -341,13 +341,25 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         }
         if (ttsGranted && ttsInitialized && mutableTts.value.capability == CapabilityState.PermissionDenied) {
             mutableTts.value = available("실차 · 온디바이스")
-        } else if (shouldRetrySpeechInitialization(ttsGranted, ttsInitialized, mutableTts.value.capability)) {
+        } else if (shouldRetrySpeechInitialization(
+                permissionGranted = ttsGranted,
+                initialized = ttsInitialized,
+                initializationPending = mutableTts.value == checking,
+                capability = mutableTts.value.capability,
+            )
+        ) {
             mutableTts.value = checking
             initializeTts()
         }
         if (sttGranted && sttInitialized && mutableStt.value.capability == CapabilityState.PermissionDenied) {
             mutableStt.value = available("실차 · 온디바이스")
-        } else if (shouldRetrySpeechInitialization(sttGranted, sttInitialized, mutableStt.value.capability)) {
+        } else if (shouldRetrySpeechInitialization(
+                permissionGranted = sttGranted,
+                initialized = sttInitialized,
+                initializationPending = mutableStt.value == checking,
+                capability = mutableStt.value.capability,
+            )
+        ) {
             mutableStt.value = checking
             initializeStt()
         }
@@ -629,8 +641,9 @@ internal fun speechResultAccepted(
 internal fun shouldRetrySpeechInitialization(
     permissionGranted: Boolean,
     initialized: Boolean,
+    initializationPending: Boolean,
     capability: CapabilityState,
-): Boolean = permissionGranted && !initialized &&
+): Boolean = permissionGranted && !initialized && !initializationPending &&
     capability in setOf(CapabilityState.PermissionDenied, CapabilityState.Unavailable)
 
 private const val FUSED_LOCATION_PERMISSION = "pleos.car.permission.FUSED_LOCATION"

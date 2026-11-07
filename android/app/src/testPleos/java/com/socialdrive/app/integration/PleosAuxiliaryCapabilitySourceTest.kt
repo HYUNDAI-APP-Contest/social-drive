@@ -21,14 +21,15 @@ class PleosAuxiliaryCapabilitySourceTest {
 
     @Test
     fun `권한이 복구되면 실패하거나 거부됐던 음성 SDK 초기화를 재시도한다`() {
-        assertTrue(shouldRetrySpeechInitialization(true, false, CapabilityState.PermissionDenied))
-        assertTrue(shouldRetrySpeechInitialization(true, false, CapabilityState.Unavailable))
+        assertTrue(shouldRetrySpeechInitialization(true, false, false, CapabilityState.PermissionDenied))
+        assertTrue(shouldRetrySpeechInitialization(true, false, false, CapabilityState.Unavailable))
     }
 
     @Test
     fun `초기화 중이거나 완료됐거나 권한이 없으면 음성 SDK를 중복 초기화하지 않는다`() {
-        assertFalse(shouldRetrySpeechInitialization(false, false, CapabilityState.Unavailable))
-        assertFalse(shouldRetrySpeechInitialization(true, true, CapabilityState.Unavailable))
-        assertFalse(shouldRetrySpeechInitialization(true, false, CapabilityState.Available))
+        assertFalse(shouldRetrySpeechInitialization(false, false, false, CapabilityState.Unavailable))
+        assertFalse(shouldRetrySpeechInitialization(true, true, false, CapabilityState.Unavailable))
+        assertFalse(shouldRetrySpeechInitialization(true, false, true, CapabilityState.Unavailable))
+        assertFalse(shouldRetrySpeechInitialization(true, false, false, CapabilityState.Available))
     }
 }
