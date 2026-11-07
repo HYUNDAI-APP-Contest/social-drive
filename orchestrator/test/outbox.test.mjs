@@ -82,6 +82,45 @@ test("recovers a publishing handoff as deferred without rerunning implementation
   await fs.rm(ctx.directory, { recursive: true, force: true });
 });
 
+test("recovers every interrupted worker stage without restarting gated or terminal jobs", async () => {
+  const ctx = await harness();
+  const interruptedStages = ["preparing", "running", "planning", "implementing", "reviewing", "reworking"];
+  const preservedStatuses = [
+    "awaiting_merge_approval", "awaiting_deploy_approval", "merged", "deployed", "rejected", "deploy_rejected",
+    "failed", "review_blocked", "merge_failed", "deploy_failed", "merge_approval_expired",
+    "deploy_approval_expired", "removed_from_queue",
+  ];
+  await ctx.store.update((state) => {
+    interruptedStages.forEach((status) => {
+      state.jobs[`interrupted-${status}`] = { status, marker: `metadata-${status}` };
+    });
+    state.jobs["publishing-incomplete"] = { status: "publishing", commit: "b".repeat(40), marker: "metadata-publishing" };
+    preservedStatuses.forEach((status) => {
+      state.jobs[`preserved-${status}`] = { status, marker: `metadata-${status}` };
+    });
+  });
+
+  const restarted = new Store(ctx.file);
+  await restarted.load();
+
+  assert.equal(restarted.state.jobs["interrupted-preparing"].status, "retry");
+  assert.equal(restarted.state.jobs["interrupted-running"].status, "retry");
+  assert.equal(restarted.state.jobs["interrupted-planning"].status, "retry");
+  assert.equal(restarted.state.jobs["interrupted-implementing"].status, "retry");
+  assert.equal(restarted.state.jobs["interrupted-reviewing"].status, "retry");
+  assert.equal(restarted.state.jobs["interrupted-reworking"].status, "retry");
+  assert.equal(restarted.state.jobs["publishing-incomplete"].status, "retry");
+  interruptedStages.forEach((status) => {
+    assert.equal(restarted.state.jobs[`interrupted-${status}`].marker, `metadata-${status}`);
+  });
+  assert.equal(restarted.state.jobs["publishing-incomplete"].marker, "metadata-publishing");
+  preservedStatuses.forEach((status) => {
+    assert.equal(restarted.state.jobs[`preserved-${status}`].status, status);
+    assert.equal(restarted.state.jobs[`preserved-${status}`].marker, `metadata-${status}`);
+  });
+  await fs.rm(ctx.directory, { recursive: true, force: true });
+});
+
 test("accepts only the fixed Discord approval outbox destination", async () => {
   const ctx = await harness();
   const entry = enqueueOutbox(ctx.store.state, {
