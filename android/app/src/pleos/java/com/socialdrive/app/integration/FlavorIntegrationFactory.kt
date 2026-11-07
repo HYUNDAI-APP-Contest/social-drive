@@ -48,6 +48,7 @@ import com.socialdrive.app.domain.VehicleMotionSource
 import com.socialdrive.app.domain.VehicleMotionStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -70,6 +71,8 @@ object FlavorIntegrationFactory {
 }
 
 private class PleosAuxiliaryCapabilitySource(private val context: Context) : AuxiliaryCapabilitySource, FutureRouteCollector {
+    private val lifecycleJob = SupervisorJob()
+    private val lifecycleScope = CoroutineScope(lifecycleJob + Dispatchers.Default)
     private val fusedLocation = FusedLocation(context)
     private val tts = TextToSpeech(context, TtsMode.ON_DEVICE)
     private val stt = SpeechToText(context, SttMode.ON_DEVICE)
@@ -86,6 +89,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private var collectionAuthorized = false
     private var recordingRequested = false
     private var locationCollecting = false
+    @Volatile private var released = false
     private val locationListener = object : FusedLocationListener {
         override fun onChanged(location: LocationData?) {
             location ?: return
@@ -148,23 +152,35 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         }.onFailure { mutableLocation.value = unavailable("실차 · 초기화 실패") }
         runCatching {
             tts.initialize(object : TtsInitializeListener {
-                override fun onSuccess() { mutableTts.value = available("실차 · 온디바이스") }
+                override fun onSuccess() {
+                    if (!released) mutableTts.value = available("실차 · 온디바이스")
+                }
                 override fun onFailure(error: ai.pleos.playground.tts.constant.ErrorType) {
-                    mutableTts.value = unavailable("실차 · 초기화 실패")
+                    if (!released) mutableTts.value = unavailable("실차 · 초기화 실패")
                 }
             })
         }.onFailure { mutableTts.value = unavailable("실차 · 초기화 실패") }
+        scheduleInitializationTimeout(mutableTts)
         runCatching {
             stt.initialize(object : SttInitializeListener {
                 override fun onSuccess() {
+                    if (released) return
                     stt.addListener(recognitionListener)
                     mutableStt.value = available("실차 · 온디바이스")
                 }
                 override fun onFailure(error: ai.pleos.playground.stt.constant.ErrorType) {
-                    mutableStt.value = unavailable("실차 · 초기화 실패")
+                    if (!released) mutableStt.value = unavailable("실차 · 초기화 실패")
                 }
             })
         }.onFailure { mutableStt.value = unavailable("실차 · 초기화 실패") }
+        scheduleInitializationTimeout(mutableStt)
+    }
+
+    private fun scheduleInitializationTimeout(status: MutableStateFlow<CapabilityStatus>): Job = lifecycleScope.launch {
+        delay(AUXILIARY_INITIALIZATION_TIMEOUT_MILLIS)
+        if (!released && status.value == checking) {
+            status.value = unavailable("실차 · 초기화 시간 초과")
+        }
     }
 
     override fun speakFeedback(message: String): Boolean {
@@ -284,6 +300,8 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         context.checkSelfPermission(FUSED_LOCATION_PERMISSION) == PackageManager.PERMISSION_GRANTED
 
     override fun release() {
+        released = true
+        lifecycleJob.cancel()
         synchronized(locationLock) {
             collectionAuthorized = false
             recordingRequested = false
@@ -301,6 +319,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
 
 private const val FUSED_LOCATION_PERMISSION = "pleos.car.permission.FUSED_LOCATION"
 private const val MAX_ROUTE_POINTS = 5_000
+internal const val AUXILIARY_INITIALIZATION_TIMEOUT_MILLIS = 10_000L
 
 private class PleosVehicleMotionSource(context: Context) : VehicleMotionSource {
     private val actualUnavailable = CapabilityStatus(
