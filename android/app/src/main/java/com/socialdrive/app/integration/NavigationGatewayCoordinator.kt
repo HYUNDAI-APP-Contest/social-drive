@@ -19,6 +19,7 @@ internal interface NavigationInitializationCallback {
 
 internal interface NavigationVendorListener {
     fun onRouteStarted()
+    fun onLegacyRoutingCompleted() = onRoutingCompleted()
     fun onRoutingCompleted()
     fun onError(userMessage: String)
 }
@@ -278,6 +279,7 @@ internal class NavigationGatewayCoordinator(
 
     private fun requestListener(session: Session, token: RequestToken) = object : NavigationVendorListener {
         override fun onRouteStarted() = handleEvent(session, token, VendorEvent.RouteStarted)
+        override fun onLegacyRoutingCompleted() = handleEvent(session, token, VendorEvent.LegacyRoutingCompleted)
         override fun onRoutingCompleted() = handleEvent(session, token, VendorEvent.RoutingCompleted)
         override fun onError(userMessage: String) = handleEvent(session, token, VendorEvent.Error(userMessage))
     }
@@ -291,13 +293,19 @@ internal class NavigationGatewayCoordinator(
             }
             val update = when (event) {
                 VendorEvent.RouteStarted -> controller.routeStarted(token)
+                VendorEvent.LegacyRoutingCompleted,
                 VendorEvent.RoutingCompleted -> controller.routingCompleted(token)
                 is VendorEvent.Error -> controller.requestError(token, event.userMessage)
             }
             if (update == ControllerUpdate.TerminalPending) {
+                if (event is VendorEvent.LegacyRoutingCompleted) {
+                    record(token, NavigationRuntimeStage.LEGACY_COMPLETION_CALLBACK)
+                }
                 record(
                     token,
-                    if (event is VendorEvent.RoutingCompleted) NavigationRuntimeStage.TERMINAL_COMPLETED
+                    if (event is VendorEvent.RoutingCompleted || event is VendorEvent.LegacyRoutingCompleted) {
+                        NavigationRuntimeStage.TERMINAL_COMPLETED
+                    }
                     else NavigationRuntimeStage.TERMINAL_ERROR,
                 )
                 cancelTimeout = session.request?.timeoutTask
@@ -495,11 +503,11 @@ internal class NavigationGatewayCoordinator(
                 observer.onCapabilityChanged(false)
                 observer.onStateChanged(NavigationState.Failed(CLEANUP_FAILED))
             }
-            currentMaintenance.completions.forEach { publishCompletion(it, successful) }
             next = synchronized(lock) {
                 currentMaintenance.session.maintenanceClaimed = false
                 claimMaintenanceLocked(currentMaintenance.session)
             }
+            currentMaintenance.completions.forEach { publishCompletion(it, successful) }
         }
         return allSuccessful
     }
@@ -568,6 +576,7 @@ internal class NavigationGatewayCoordinator(
 
     private sealed interface VendorEvent {
         data object RouteStarted : VendorEvent
+        data object LegacyRoutingCompleted : VendorEvent
         data object RoutingCompleted : VendorEvent
         data class Error(val userMessage: String) : VendorEvent
     }

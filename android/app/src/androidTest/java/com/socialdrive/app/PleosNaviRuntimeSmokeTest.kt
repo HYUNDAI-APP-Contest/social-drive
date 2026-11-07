@@ -12,6 +12,7 @@ import com.socialdrive.app.domain.NavigationState
 import com.socialdrive.app.integration.NavigationRuntimeEvidence
 import com.socialdrive.app.integration.NavigationRuntimeEvidenceSource
 import com.socialdrive.app.integration.NavigationRuntimeStage
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -32,6 +33,7 @@ import kotlin.concurrent.thread
 class PleosNaviRuntimeSmokeTest {
     @Test
     fun productionGatewayObservesCompletedVendorRouteAndCleanup() {
+        val deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(TOTAL_DEADLINE_MILLIS)
         assumeTrue(
             "Requires an explicitly prepared Pleos Navi runtime",
             InstrumentationRegistry.getArguments().getString(REQUIRE_PLEOS_NAVI_ARGUMENT) == "true",
@@ -52,7 +54,7 @@ class PleosNaviRuntimeSmokeTest {
         var primaryFailure: Throwable? = null
         try {
             runBlocking {
-                val capability = withTimeout(INITIALIZE_DEADLINE_MILLIS) {
+                val capability = withTimeout(remainingMillis(deadlineNanos)) {
                     gateway.capability
                         .filter { it.capability == CapabilityState.Available || gateway.state.value is NavigationState.Failed }
                         .first()
@@ -64,7 +66,7 @@ class PleosNaviRuntimeSmokeTest {
                 assertEquals(NavigationRequestResult.Accepted, result)
                 Log.i(LOG_TAG, STAGE_REQUESTED)
 
-                val terminal = withTimeout(REQUEST_DEADLINE_MILLIS) {
+                val terminal = withTimeout(remainingMillis(deadlineNanos)) {
                     gateway.state.filter { state ->
                         state is NavigationState.Failed ||
                             evidence.navigationRuntimeEvidence().any {
@@ -76,13 +78,19 @@ class PleosNaviRuntimeSmokeTest {
                 Log.i(LOG_TAG, STAGE_TERMINAL)
             }
 
-            assertSuccessfulRequestEvidence(evidence.navigationRuntimeEvidence())
+            val legacyCallback = assertSuccessfulRequestEvidence(evidence.navigationRuntimeEvidence())
+            Log.i(LOG_TAG, if (legacyCallback) STAGE_CALLBACK_LEGACY else STAGE_CALLBACK_PREFERRED)
         } catch (failure: Throwable) {
             primaryFailure = failure
         }
 
         val cleanupFailure = runCatching {
-            releaseWithinDeadline(gateway::release)
+            val lifecycleGeneration = evidence.navigationRuntimeEvidence()
+                .lastOrNull { it.stage == NavigationRuntimeStage.INITIALIZE_STARTED }
+                ?.lifecycleGeneration
+                ?: throw AssertionError("Pleos Navi lifecycle evidence is unavailable")
+            releaseWithinDeadline(remainingMillis(deadlineNanos), gateway::release)
+            awaitReleaseEvidence(evidence, lifecycleGeneration, deadlineNanos)
             assertReleaseEvidence(
                 evidence.navigationRuntimeEvidence(),
                 requireCompletedRequest = primaryFailure == null,
@@ -97,7 +105,7 @@ class PleosNaviRuntimeSmokeTest {
         cleanupFailure?.let { throw it }
     }
 
-    private fun releaseWithinDeadline(release: () -> Unit) {
+    private fun releaseWithinDeadline(timeoutMillis: Long, release: () -> Unit) {
         val completed = CountDownLatch(1)
         val failure = AtomicReference<Throwable?>(null)
         val cleanup = thread(name = "pleos-navi-smoke-cleanup", isDaemon = true) {
@@ -109,7 +117,7 @@ class PleosNaviRuntimeSmokeTest {
                 completed.countDown()
             }
         }
-        if (!completed.await(CLEANUP_DEADLINE_SECONDS, TimeUnit.SECONDS)) {
+        if (!completed.await(timeoutMillis, TimeUnit.MILLISECONDS)) {
             cleanup.interrupt()
             throw AssertionError("Pleos Navi cleanup exceeded its deadline")
         }
@@ -118,7 +126,29 @@ class PleosNaviRuntimeSmokeTest {
         }
     }
 
-    private fun assertSuccessfulRequestEvidence(actual: List<NavigationRuntimeEvidence>) {
+    private fun awaitReleaseEvidence(
+        evidence: NavigationRuntimeEvidenceSource,
+        lifecycleGeneration: Long,
+        deadlineNanos: Long,
+    ) = runBlocking {
+        withTimeout(remainingMillis(deadlineNanos)) {
+            while (evidence.navigationRuntimeEvidence().none {
+                    it.lifecycleGeneration == lifecycleGeneration &&
+                        it.requestGeneration == 0L &&
+                        it.stage in RELEASE_TERMINAL_STAGES
+                }) {
+                delay(EVIDENCE_POLL_MILLIS)
+            }
+        }
+    }
+
+    private fun remainingMillis(deadlineNanos: Long): Long {
+        val remainingNanos = deadlineNanos - System.nanoTime()
+        if (remainingNanos <= 0L) throw AssertionError("Pleos Navi proof exceeded its total deadline")
+        return TimeUnit.NANOSECONDS.toMillis(remainingNanos).coerceAtLeast(1L)
+    }
+
+    private fun assertSuccessfulRequestEvidence(actual: List<NavigationRuntimeEvidence>): Boolean {
         val terminal = actual.single { it.stage == NavigationRuntimeStage.TERMINAL_COMPLETED }
         assertTrue(terminal.lifecycleGeneration > 0L)
         assertTrue(terminal.requestGeneration > 0L)
@@ -143,6 +173,7 @@ class PleosNaviRuntimeSmokeTest {
             NavigationRuntimeStage.LISTENER_REMOVED,
         )
         assertFalse(sameLifecycle.any { it.stage in FAIL_CLOSED_STAGES })
+        return requestStages.contains(NavigationRuntimeStage.LEGACY_COMPLETION_CALLBACK)
     }
 
     private fun assertReleaseEvidence(
@@ -175,15 +206,21 @@ class PleosNaviRuntimeSmokeTest {
     private companion object {
         const val REQUIRE_PLEOS_NAVI_ARGUMENT = "requirePleosNavi"
         const val NAVI_ROUTE_SEARCH_PERMISSION = "pleos.car.permission.NAVI_ROUTE_SEARCH"
-        const val INITIALIZE_DEADLINE_MILLIS = 20_000L
-        const val REQUEST_DEADLINE_MILLIS = 20_000L
-        const val CLEANUP_DEADLINE_SECONDS = 20L
+        const val TOTAL_DEADLINE_MILLIS = 20_000L
+        const val EVIDENCE_POLL_MILLIS = 10L
         const val LOG_TAG = "PleosNaviSmoke"
         const val STAGE_START = "stage=start"
         const val STAGE_INITIALIZED = "stage=initialized"
         const val STAGE_REQUESTED = "stage=requested"
         const val STAGE_TERMINAL = "stage=terminal_completed"
+        const val STAGE_CALLBACK_LEGACY = "stage=callback_legacy"
+        const val STAGE_CALLBACK_PREFERRED = "stage=callback_preferred"
         const val STAGE_RELEASED = "stage=released"
+
+        val RELEASE_TERMINAL_STAGES = setOf(
+            NavigationRuntimeStage.RELEASED,
+            NavigationRuntimeStage.CLEANUP_FAILED,
+        )
 
         val FAIL_CLOSED_STAGES = setOf(
             NavigationRuntimeStage.PERMISSION_DENIED,

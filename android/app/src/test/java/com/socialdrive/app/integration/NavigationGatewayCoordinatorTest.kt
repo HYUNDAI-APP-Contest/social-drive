@@ -360,6 +360,30 @@ class NavigationGatewayCoordinatorTest {
         assertTrue(NavigationRuntimeStage.CLEANUP_FAILED !in harness.evidence.stages())
     }
 
+    @Test
+    fun `active publication hands off maintenance before observer release returns`() {
+        val harness = Harness()
+        harness.coordinator.initialize()
+        val port = harness.ports.single()
+        var releasedWhenCallReturned = false
+        harness.observer.stateAction = { state ->
+            if (state is NavigationState.Active) {
+                harness.coordinator.release()
+                releasedWhenCallReturned = NavigationRuntimeStage.RELEASED in harness.evidence.stages()
+            }
+        }
+
+        harness.coordinator.requestRoute(request("publish-release", "완료 직후 해제"))
+        requireNotNull(port.listener).onRoutingCompleted()
+        harness.scheduler.advanceBy(250)
+
+        assertTrue(releasedWhenCallReturned)
+        assertTrue(port.events.indexOf("removeListener") < port.events.indexOf("release"))
+        assertEquals(1, port.events.count { it == "removeListener" })
+        assertEquals(1, port.events.count { it == "release" })
+        assertIs<NavigationState.Idle>(harness.observer.states.last())
+    }
+
     private fun request(id: String, label: String) = NavigationRequest(
         requestId = id,
         destination = NavigationPlace(label, 0.0, 0.0),
@@ -399,11 +423,15 @@ class NavigationGatewayCoordinatorTest {
         val capabilities = mutableListOf<Boolean>()
         val states = mutableListOf<NavigationState>()
         var capabilityAction: (Boolean) -> Unit = {}
+        var stateAction: (NavigationState) -> Unit = {}
         override fun onCapabilityChanged(available: Boolean) {
             capabilities += available
             capabilityAction(available)
         }
-        override fun onStateChanged(state: NavigationState) { states += state }
+        override fun onStateChanged(state: NavigationState) {
+            states += state
+            stateAction(state)
+        }
     }
 
     private class FakePort : NavigationVendorPort {

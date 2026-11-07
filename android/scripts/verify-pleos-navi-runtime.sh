@@ -120,10 +120,12 @@ for (const required of requiredStages) {
   cursor = stages.indexOf(required, cursor + 1);
   if (cursor < 0) throw new Error(`privacy-safe stage is missing: ${required}`);
 }
-const completionCallback = logcat.includes("onRouteEnded")
+const callbackStages = [...logcat.matchAll(/PleosNaviSmoke:\s+stage=(callback_legacy|callback_preferred)\b/g)]
+  .map((match) => match[1]);
+if (callbackStages.length !== 1) throw new Error("exactly one app-owned completion callback stage is required");
+const completionCallback = callbackStages[0] === "callback_legacy"
   ? "legacy_onRouteEnded"
-  : logcat.includes("onRoutingCompleted") ? "onRoutingCompleted" : null;
-if (!completionCallback) throw new Error("vendor completion callback was not observed");
+  : "onRoutingCompleted";
 
 const evidence = {
   schemaVersion: 1,

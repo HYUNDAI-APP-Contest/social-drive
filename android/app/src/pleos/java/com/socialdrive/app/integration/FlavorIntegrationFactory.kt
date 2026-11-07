@@ -245,7 +245,7 @@ private class PleosNaviPort(private val helper: NaviHelper) : NavigationVendorPo
             // NaviHelper 3.0.5 deprecates it in favor of onRoutingCompleted(), so normalize
             // both SDK generations to the same application-owned terminal event.
             @Suppress("DEPRECATION")
-            override fun onRouteEnded() = listener.onRoutingCompleted()
+            override fun onRouteEnded() = listener.onLegacyRoutingCompleted()
 
             override fun onRoutingCompleted() = listener.onRoutingCompleted()
             override fun onError(errorCode: NaviErrorCode) = listener.onError(errorCode.safeUserMessage())
