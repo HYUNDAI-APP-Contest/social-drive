@@ -27,6 +27,8 @@ import com.socialdrive.app.domain.VehicleMotionStatus
 import com.socialdrive.app.domain.SpeechRecognitionPolicy
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,8 +42,42 @@ import kotlinx.coroutines.launch
 internal fun selectVisibleDraft(items: List<DraftSnapshot>, selectedId: String?): DraftSnapshot? =
     items.firstOrNull { it.id == selectedId } ?: items.firstOrNull()
 
+internal data class DraftCopyUpdate(val draftId: String, val title: String, val description: String)
+
+internal class ConflatedDraftCopyWriter(
+    scope: CoroutineScope,
+    persist: suspend (DraftCopyUpdate) -> Unit,
+) {
+    private val lock = Any()
+    private val pendingByDraftId = linkedMapOf<String, DraftCopyUpdate>()
+    private val wakeups = Channel<Unit>(Channel.CONFLATED)
+
+    init {
+        scope.launch {
+            for (ignored in wakeups) {
+                while (true) {
+                    val update = synchronized(lock) {
+                        pendingByDraftId.entries.firstOrNull()?.let { entry ->
+                            pendingByDraftId.remove(entry.key)
+                        }
+                    } ?: break
+                    persist(update)
+                }
+            }
+        }
+    }
+
+    fun submit(update: DraftCopyUpdate): Boolean {
+        synchronized(lock) { pendingByDraftId[update.draftId] = update }
+        return wakeups.trySend(Unit).isSuccess
+    }
+}
+
 class SocialDriveViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as SocialDriveApplication
+    private val draftCopyWriter = ConflatedDraftCopyWriter(viewModelScope) { update ->
+        app.draftRepository.updateCopy(update.draftId, update.title, update.description)
+    }
 
     val activeRecording: StateFlow<RecordingEntity?> = app.recordingRepository.active
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
@@ -159,15 +195,17 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
         return true
     }
 
-    suspend fun updateDraftCopy(title: String, description: String): Boolean =
-        selectedDraft.value?.let { app.draftRepository.updateCopy(it.id, title, description) } ?: false
+    fun updateDraftCopy(title: String, description: String): Boolean =
+        selectedDraft.value?.let { draft ->
+            draftCopyWriter.submit(DraftCopyUpdate(draft.id, title, description))
+        } ?: false
 
     fun requestTitleDictation(): Boolean = requestDictation { draft, text ->
-        app.draftRepository.updateCopy(draft.id, text, draft.description)
+        draftCopyWriter.submit(DraftCopyUpdate(draft.id, text, draft.description))
     }
 
     fun requestDescriptionDictation(): Boolean = requestDictation { draft, text ->
-        app.draftRepository.updateCopy(draft.id, draft.title, text)
+        draftCopyWriter.submit(DraftCopyUpdate(draft.id, draft.title, text))
     }
 
     fun cancelDictation() = app.auxiliaryCapabilitySource.stopSpeechRecognition()
@@ -178,16 +216,12 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
 
     fun resetDictationFeedback() = app.auxiliaryCapabilitySource.resetSpeechRecognitionState()
 
-    private fun requestDictation(update: suspend (DraftSnapshot, String) -> Unit): Boolean {
+    private fun requestDictation(update: (DraftSnapshot, String) -> Unit): Boolean {
         if (!SpeechRecognitionPolicy.canStart(vehicleMotion.value.motion, speechToTextCapability.value)) return false
         val draft = selectedDraft.value ?: return false
         return app.auxiliaryCapabilitySource.startSpeechRecognition { text, isFinal ->
-            if (SpeechRecognitionPolicy.shouldCommit(text, isFinal)) {
-                viewModelScope.launch {
-                    if (SpeechRecognitionPolicy.canCommit(vehicleMotion.value.motion, text, isFinal)) {
-                        update(draft, text.trim())
-                    }
-                }
+            if (SpeechRecognitionPolicy.canCommit(vehicleMotion.value.motion, text, isFinal)) {
+                update(draft, text.trim())
             }
         }
     }

@@ -396,7 +396,7 @@ fun SocialDriveApp(
                             initialDescription = displayedDraft?.description ?: presentedStory.summary,
                             onCopyChanged = { title, description ->
                                 if (displayedDraft != null) {
-                                    scope.launch { offlineViewModel.updateDraftCopy(title, description) }
+                                    offlineViewModel.updateDraftCopy(title, description)
                                 }
                             },
                             canAct = SafetyPolicy.canEdit(motion),
