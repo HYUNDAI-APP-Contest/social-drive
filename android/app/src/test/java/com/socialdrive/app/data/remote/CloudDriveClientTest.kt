@@ -191,6 +191,7 @@ class CloudDriveClientTest {
         assertEquals("drive-request-0001", request.headers["Idempotency-Key"])
         assertEquals("drive-request-0001", body.string("clientDraftId"))
         assertEquals("Bearer fresh-token-1", request.headers["Authorization"])
+        assertEquals("/dev/drives", request.uri.path)
         assertEquals(setOf("COVER", "ROUTE"), body.array("assets").map { it.objectValue().string("kind") }.toSet())
         assertTrue(body.array("assets").all { it.objectValue().string("sha256").matches(Regex("[a-f0-9]{64}")) })
         assertEquals("drive-remote-0001", created.drive.id)
