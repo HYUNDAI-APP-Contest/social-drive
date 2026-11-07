@@ -2,6 +2,7 @@ package com.socialdrive.app.data.fake
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 class FakeDriveRepositoryTest {
@@ -15,5 +16,8 @@ class FakeDriveRepositoryTest {
         assertTrue(repository.drives().flatMap { it.route }.all { point ->
             point.horizontal in 0f..1f && point.vertical in 0f..1f
         })
+        val navigation = assertNotNull(repository.drive("demo-coast")?.navigationRequest)
+        assertEquals("공개 데모 목적지", navigation.destination.name)
+        assertTrue(navigation.requestId.startsWith("demo-public-destination-"))
     }
 }

@@ -92,7 +92,7 @@ fun DetailScreen(
                     if (drive.navigationRequest == null) {
                         "이 데모 기록에는 실제 좌표가 포함되지 않아 차량 내비게이션으로 보내지 않아요."
                     } else {
-                        "차량 내비게이션 연결 상태를 확인해 주세요."
+                        "개인 경로가 아닌 공개 데모 목적지를 차량 내비게이션으로 보냅니다."
                     },
                 )
                 Text("서버가 차량을 직접 제어하지 않습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
