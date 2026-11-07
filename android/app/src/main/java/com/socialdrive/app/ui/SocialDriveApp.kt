@@ -265,6 +265,13 @@ fun SocialDriveApp(
                                     offlineViewModel.selectDraft(id.removePrefix("local-"))
                                 }
                                 memoryStory = memoryStory.select(drive)
+                                if (id.startsWith("cloud-")) {
+                                    scope.launch {
+                                        offlineViewModel.loadDriveDetail(id)?.let { detailed ->
+                                            if (memoryStory.driveId == id) memoryStory = memoryStory.select(detailed)
+                                        }
+                                    }
+                                }
                             }
                             navigate(AppDestination.Detail)
                         },

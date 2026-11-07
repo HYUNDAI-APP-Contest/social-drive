@@ -19,6 +19,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -71,11 +72,38 @@ class DriveFeedRepositoryTest {
         assertEquals("cloud-drive-public-0001", state.cached.single().id)
     }
 
-    private fun client(api: ApiHttpTransport) = CloudDriveClient(
+    @Test
+    fun detailRefreshesOneExpiredLinkAndKeepsRouteInMemory() = runTest {
+        val api = QueueTransport().apply {
+            responses += detailResponse("old-route")
+            responses += detailResponse("fresh-route", version = 3)
+        }
+        val objects = QueueObjectTransport().apply {
+            responses += HttpResponse(403)
+            responses += HttpResponse(
+                200,
+                body = """{"schemaVersion":1,"path":[{"horizontal":0.1,"vertical":0.8,"progress":0},{"horizontal":0.9,"vertical":0.2,"progress":1}],"highlights":[]}""".toByteArray(),
+            )
+        }
+        val repository = PersistentCloudDriveFeedRepository(database, { client(api, objects) })
+
+        val detail = repository.detail("cloud-drive-public-0001")
+
+        assertEquals(2, detail?.route?.size)
+        assertEquals(2, api.requests.size)
+        assertEquals(2, objects.requests.size)
+        assertTrue(objects.requests.all { request -> request.headers.keys.none { it.equals("authorization", true) } })
+        assertEquals(0, database.cachedFeedDao().findAll().size)
+    }
+
+    private fun client(
+        api: ApiHttpTransport,
+        objects: ObjectUploadTransport = ObjectUploadTransport { HttpResponse(500) },
+    ) = CloudDriveClient(
         config = CloudDriveClientConfig(URI("https://api.example.test/dev"), setOf("upload.example.test")),
         auth = AuthSessionProvider { BearerToken.inMemory("test-token") },
         apiTransport = api,
-        objectTransport = ObjectUploadTransport { HttpResponse(500) },
+        objectTransport = objects,
     )
 
     private fun feedResponse() = HttpResponse(
@@ -83,9 +111,27 @@ class DriveFeedRepositoryTest {
         body = """{"items":[{"id":"drive-public-0001","status":"PUBLISHED","version":2,"title":"공개 드라이브","summary":"검증된 공개 요약","distanceMeters":128400,"durationSeconds":9360,"highlightCount":4,"createdAt":"2026-11-01T10:00:00Z","publishedAt":"2026-11-01T10:05:00Z","coverUrl":"https://upload.example.test/private-cover"}],"nextCursor":null}""".toByteArray(),
     )
 
+    private fun detailResponse(routeName: String, version: Int = 2) = HttpResponse(
+        200,
+        body = """{"drive":{"id":"drive-public-0001","status":"PUBLISHED","version":$version,"title":"공개 드라이브","summary":"검증된 공개 요약","distanceMeters":128400,"durationSeconds":9360,"highlightCount":4,"createdAt":"2026-11-01T10:00:00Z","publishedAt":"2026-11-01T10:05:00Z","coverUrl":"https://upload.example.test/private-cover","routeUrl":"https://upload.example.test/$routeName","routeSchemaVersion":1}}""".toByteArray(),
+    )
+
     private class QueueTransport : ApiHttpTransport {
+        val requests = mutableListOf<HttpRequest>()
         val responses = ArrayDeque<HttpResponse>()
-        override suspend fun execute(request: HttpRequest): HttpResponse = responses.removeFirst()
+        override suspend fun execute(request: HttpRequest): HttpResponse {
+            requests += request
+            return responses.removeFirst()
+        }
+    }
+
+    private class QueueObjectTransport : ObjectUploadTransport {
+        val requests = mutableListOf<HttpRequest>()
+        val responses = ArrayDeque<HttpResponse>()
+        override suspend fun execute(request: HttpRequest): HttpResponse {
+            requests += request
+            return responses.removeFirst()
+        }
     }
 
     private object ThrowingTransport : ApiHttpTransport {

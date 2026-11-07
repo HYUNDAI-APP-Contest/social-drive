@@ -136,6 +136,33 @@ class CloudDriveClient(
         )
     }
 
+    /** Downloads a short-lived public route without forwarding Cognito authorization. */
+    suspend fun downloadRoute(detail: DriveDetail): PublishedRoute {
+        if (detail.routeSchemaVersion != 1) throw CloudContractException("INVALID_ROUTE_SCHEMA")
+        val uri = detail.links.routeUri ?: throw CloudContractException("MISSING_ROUTE_URL")
+        val response = try {
+            objectTransport.execute(HttpRequest(HttpMethod.GET, uri, emptyMap(), null))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            throw CloudDriveException(CloudFailureKind.RETRYABLE, "ROUTE_TRANSPORT", retryable = true)
+        }
+        if (response.body.size > MAX_RESPONSE_BYTES) {
+            throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
+        }
+        if (response.status == 403) {
+            throw CloudDriveException(CloudFailureKind.RETRYABLE, "READ_LINK_EXPIRED", retryable = true)
+        }
+        if (response.status != 200) {
+            throw CloudDriveException(
+                if (response.status == 408 || response.status == 429 || response.status >= 500) CloudFailureKind.RETRYABLE else CloudFailureKind.UNKNOWN,
+                "ROUTE_READ_REJECTED",
+                retryable = response.status == 408 || response.status == 429 || response.status >= 500,
+            )
+        }
+        return parsePublishedRoute(response.body)
+    }
+
     suspend fun updateDrive(driveId: String, patch: DrivePatch): DriveResource {
         requireSafeId(driveId)
         require(patch.expectedVersion >= 1)
@@ -515,3 +542,52 @@ class CloudDriveClient(
             .withZone(ZoneOffset.UTC)
     }
 }
+
+private fun parsePublishedRoute(bytes: ByteArray): PublishedRoute = try {
+    val root = JsonCodec.parse(bytes).objectValue()
+    if (root.keys != setOf("schemaVersion", "path", "highlights") || root.integer("schemaVersion") != 1) {
+        throw CloudContractException("INVALID_ROUTE_SCHEMA")
+    }
+    val path = root.array("path")
+    if (path.size !in 2..500) throw CloudContractException("INVALID_ROUTE_PATH")
+    val highlights = root.array("highlights")
+    if (highlights.size > 100) throw CloudContractException("INVALID_ROUTE_HIGHLIGHTS")
+    highlights.forEach { value ->
+        val highlight = value.objectValue()
+        if (highlight.keys.any { it !in setOf("progress", "title") } || "progress" !in highlight) {
+            throw CloudContractException("INVALID_ROUTE_HIGHLIGHT")
+        }
+        highlight.unitFloat("progress")
+        val title = highlight["title"]
+        if (title != null && ((title as? JsonValue.StringValue)?.value?.codePointLength() ?: 41) > 40) {
+            throw CloudContractException("INVALID_ROUTE_HIGHLIGHT")
+        }
+    }
+    PublishedRoute(path.map { value ->
+        val point = value.objectValue()
+        if (point.keys.any { it !in setOf("horizontal", "vertical", "progress") } ||
+            !point.keys.containsAll(setOf("horizontal", "vertical"))
+        ) throw CloudContractException("INVALID_ROUTE_POINT")
+        PublishedRoutePoint(
+            horizontal = point.unitFloat("horizontal"),
+            vertical = point.unitFloat("vertical"),
+            progress = point.optionalUnitFloat("progress"),
+        )
+    })
+} catch (known: CloudDriveException) {
+    throw known
+} catch (_: Throwable) {
+    throw CloudContractException("INVALID_ROUTE_DOCUMENT")
+}
+
+private fun Map<String, JsonValue>.unitFloat(name: String): Float =
+    ((get(name) as? JsonValue.NumberValue)?.value?.toDoubleOrNull()
+        ?.takeIf { it.isFinite() && it in 0.0..1.0 }
+        ?: throw CloudContractException("INVALID_ROUTE_POINT")).toFloat()
+
+private fun Map<String, JsonValue>.optionalUnitFloat(name: String): Float? = when (get(name)) {
+    null -> null
+    else -> unitFloat(name)
+}
+
+private fun String.codePointLength(): Int = codePoints().count().toInt()

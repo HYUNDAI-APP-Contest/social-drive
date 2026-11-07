@@ -295,6 +295,29 @@ class CloudDriveClientTest {
         assertEquals(DriveStatus.DRAFT, detail.drive.status)
         assertEquals(1, detail.routeSchemaVersion)
 
+        harness.objects.responses += jsonResponse(
+            200,
+            """{"schemaVersion":1,"path":[{"horizontal":0.1,"vertical":0.8,"progress":0},{"horizontal":0.9,"vertical":0.2,"progress":1}],"highlights":[{"progress":0.5,"title":"좋은 순간"}]}""",
+        )
+        val route = harness.client.downloadRoute(detail)
+        assertEquals(2, route.points.size)
+        assertEquals(.1f, route.points.first().horizontal)
+        assertEquals(HttpMethod.GET, harness.objects.requests.last().method)
+        assertTrue(harness.objects.requests.last().headers.isEmpty())
+        assertEquals(null, harness.objects.requests.last().body)
+
+        harness.objects.responses += HttpResponse(403)
+        val expiredRoute = assertFailsWith<CloudDriveException> { harness.client.downloadRoute(detail) }
+        assertEquals("READ_LINK_EXPIRED", expiredRoute.code)
+        assertTrue(expiredRoute.retryable)
+
+        harness.objects.responses += jsonResponse(
+            200,
+            """{"schemaVersion":1,"path":[{"horizontal":37.5,"vertical":0.8},{"horizontal":0.9,"vertical":0.2}],"highlights":[]}""",
+        )
+        val rawCoordinate = assertFailsWith<CloudDriveException> { harness.client.downloadRoute(detail) }
+        assertEquals(CloudFailureKind.CONTRACT, rawCoordinate.kind)
+
         harness.api.responses += jsonResponse(
             200,
             """{"items":[${driveJson(status = "PUBLISHED", extra = ",\"coverUrl\":\"https://evil.example.test/cover\"")}],"nextCursor":null}""",

@@ -20,11 +20,14 @@ import kotlinx.coroutines.sync.withLock
 interface DriveFeedRepository {
     val state: StateFlow<ContentState<List<DriveSummary>>>
     suspend fun refresh()
+    suspend fun detail(id: String): DriveSummary?
 }
 
 class StaticDriveFeedRepository(items: List<DriveSummary>) : DriveFeedRepository {
+    private val items = items.toList()
     override val state = MutableStateFlow<ContentState<List<DriveSummary>>>(ContentState.Content(items))
     override suspend fun refresh() = Unit
+    override suspend fun detail(id: String): DriveSummary? = items.firstOrNull { it.id == id }
 }
 
 /**
@@ -81,10 +84,32 @@ class PersistentCloudDriveFeedRepository(
             else ContentState.Offline(cached)
         }
     }
+
+    override suspend fun detail(id: String): DriveSummary? {
+        if (!id.startsWith(CLOUD_ID_PREFIX)) return null
+        val remoteId = id.removePrefix(CLOUD_ID_PREFIX)
+        if (remoteId.isBlank()) return null
+        val client = currentClient() ?: return null
+        return try {
+            var detail = client.getDrive(remoteId)
+            val route = try {
+                client.downloadRoute(detail)
+            } catch (failure: com.socialdrive.app.data.remote.CloudDriveException) {
+                if (failure.code != "READ_LINK_EXPIRED") throw failure
+                detail = client.getDrive(remoteId)
+                client.downloadRoute(detail)
+            }
+            detail.drive.toSummary(route.points.map { RoutePoint(it.horizontal, it.vertical) })
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            null
+        }
+    }
 }
 
 private fun CachedFeedDriveEntity.toSummary(): DriveSummary = DriveSummary(
-    id = "cloud-$id",
+    id = CLOUD_ID_PREFIX + id,
     date = publishedAt.toDisplayDate(),
     title = title,
     summary = summary,
@@ -92,6 +117,19 @@ private fun CachedFeedDriveEntity.toSummary(): DriveSummary = DriveSummary(
     duration = durationSeconds.toDurationLabel(),
     highlights = highlightCount,
     route = stableArtworkRoute(id),
+    moments = emptyList(),
+    routeSource = RouteSource.LiveAvailable,
+)
+
+private fun com.socialdrive.app.data.remote.DriveResource.toSummary(route: List<RoutePoint>): DriveSummary = DriveSummary(
+    id = CLOUD_ID_PREFIX + id,
+    date = requireNotNull(publishedAt).toDisplayDate(),
+    title = title,
+    summary = summary,
+    distance = distanceMeters.toDistanceLabel(),
+    duration = durationSeconds.toDurationLabel(),
+    highlights = highlightCount,
+    route = route,
     moments = emptyList(),
     routeSource = RouteSource.LiveAvailable,
 )
@@ -117,3 +155,4 @@ private fun stableArtworkRoute(id: String): List<RoutePoint> {
 }
 
 private val DATE_FORMATTER = DateTimeFormatter.ofPattern("M월 d일 · 공개 드라이브")
+private const val CLOUD_ID_PREFIX = "cloud-"

@@ -185,6 +185,8 @@ class EphemeralAssetLinks internal constructor(
 data class FeedItem(val drive: DriveResource, val links: EphemeralAssetLinks)
 data class FeedPage(val items: List<FeedItem>, val nextCursor: OpaqueFeedCursor?)
 data class DriveDetail(val drive: DriveResource, val links: EphemeralAssetLinks, val routeSchemaVersion: Int)
+data class PublishedRoutePoint(val horizontal: Float, val vertical: Float, val progress: Float?)
+data class PublishedRoute(val points: List<PublishedRoutePoint>)
 data class DrivePatch(val expectedVersion: Int, val title: String? = null, val summary: String? = null)
 
 class UploadInstruction internal constructor(
