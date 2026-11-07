@@ -359,12 +359,14 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         if (!ttsGranted) {
             synchronized(speechOperationLock) {
                 ttsInitializationGeneration += 1
+                ttsInitialized = speechInitializedAfterPermissionRefresh(ttsGranted, ttsInitialized)
                 mutableTts.value = permissionDenied("실차 · TTS 권한 필요")
             }
         }
         if (!sttGranted) {
             synchronized(speechOperationLock) {
                 sttInitializationGeneration += 1
+                sttInitialized = speechInitializedAfterPermissionRefresh(sttGranted, sttInitialized)
                 mutableStt.value = permissionDenied("실차 · STT 권한 필요")
             }
             stopSpeechRecognition()
@@ -760,6 +762,9 @@ internal fun shouldRetrySpeechInitialization(
     capability: CapabilityState,
 ): Boolean = permissionGranted && !initialized && !initializationPending &&
     capability in setOf(CapabilityState.PermissionDenied, CapabilityState.Unavailable)
+
+internal fun speechInitializedAfterPermissionRefresh(permissionGranted: Boolean, initialized: Boolean): Boolean =
+    permissionGranted && initialized
 
 internal fun speechCapabilityAfterOperationFailure(permissionGranted: Boolean): CapabilityStatus =
     if (permissionGranted) {
