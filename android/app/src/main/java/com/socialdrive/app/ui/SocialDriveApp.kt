@@ -42,6 +42,7 @@ import com.socialdrive.app.domain.ThemeMode
 import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.domain.PublishedDeleteDecision
 import com.socialdrive.app.domain.DeleteRequestState
+import com.socialdrive.app.domain.DriveSummary
 import com.socialdrive.app.safety.SafetyPolicy
 import com.socialdrive.app.ui.screens.DetailScreen
 import com.socialdrive.app.ui.screens.ConflictReviewScreen
@@ -55,6 +56,17 @@ import com.socialdrive.app.ui.components.memoryPaletteFor
 import com.socialdrive.app.ui.theme.SocialDriveTheme
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+
+internal fun selectStoryBase(
+    selectedId: String,
+    ephemeralCloudDetail: DriveSummary?,
+    localDraft: DriveSummary?,
+    repositoryDrive: DriveSummary?,
+    fallback: DriveSummary,
+): DriveSummary = ephemeralCloudDetail?.takeIf { it.id == selectedId }
+    ?: localDraft?.takeIf { it.id == selectedId }
+    ?: repositoryDrive?.takeIf { it.id == selectedId }
+    ?: fallback
 
 @Composable
 fun SocialDriveApp(
@@ -91,6 +103,7 @@ fun SocialDriveApp(
         mutableStateOf(MemoryStoryPresentation.browsing(defaultStoryDrive))
     }
     var hydratedDraftId by rememberSaveable { mutableStateOf<String?>(null) }
+    var ephemeralCloudDetail by remember { mutableStateOf<DriveSummary?>(null) }
     var demoUploadState by rememberSaveable { mutableStateOf<UploadState?>(null) }
     var stopConfirmationRequested by rememberSaveable { mutableStateOf(false) }
     var privacyMessage by rememberSaveable { mutableStateOf<String?>(null) }
@@ -222,9 +235,13 @@ fun SocialDriveApp(
                     else -> emptyList()
                 }
                 val homeDrives = localDraftDrives + remoteDrives
-                val storyBase = localDraftDrive
-                    ?: repository.drive(memoryStory.driveId)
-                    ?: defaultStoryDrive
+                val storyBase = selectStoryBase(
+                    selectedId = memoryStory.driveId,
+                    ephemeralCloudDetail = ephemeralCloudDetail,
+                    localDraft = localDraftDrive,
+                    repositoryDrive = repository.drive(memoryStory.driveId),
+                    fallback = defaultStoryDrive,
+                )
                 val presentedStory = memoryStory.present(storyBase)
                 val displayedRoute = presentedStory.route
                 val displayedDraft = selectedDraft?.takeIf { "local-${it.id}" == presentedStory.id }
@@ -261,6 +278,7 @@ fun SocialDriveApp(
                         blockedMessage = blockedMessage,
                         onDetail = { id ->
                             homeDrives.firstOrNull { it.id == id }?.let { drive ->
+                                ephemeralCloudDetail = null
                                 if (id.startsWith("local-")) {
                                     offlineViewModel.selectDraft(id.removePrefix("local-"))
                                 }
@@ -268,7 +286,10 @@ fun SocialDriveApp(
                                 if (id.startsWith("cloud-")) {
                                     scope.launch {
                                         offlineViewModel.loadDriveDetail(id)?.let { detailed ->
-                                            if (memoryStory.driveId == id) memoryStory = memoryStory.select(detailed)
+                                            if (memoryStory.driveId == id) {
+                                                ephemeralCloudDetail = detailed
+                                                memoryStory = memoryStory.select(detailed)
+                                            }
                                         }
                                     }
                                 }
