@@ -41,7 +41,8 @@ data class CloudRuntimeConfiguration(
                     apiUri.userInfo != null ||
                     apiUri.query != null ||
                     apiUri.fragment != null ||
-                    (apiUri.port != -1 && apiUri.port != 443)
+                    (apiUri.port != -1 && apiUri.port != 443) ||
+                    !apiUri.rawPath.isValidCloudBasePath()
                 ) return null
                 CloudRuntimeConfiguration(
                     client = CloudDriveClientConfig(apiUri, hosts),

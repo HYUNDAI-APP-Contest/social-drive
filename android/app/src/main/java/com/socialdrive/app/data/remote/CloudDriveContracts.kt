@@ -265,6 +265,7 @@ data class CloudDriveClientConfig(
         require(apiBaseUri.userInfo == null && apiBaseUri.query == null && apiBaseUri.fragment == null)
         require(apiBaseUri.host != null && (apiBaseUri.port == -1 || apiBaseUri.port == 443))
         require(apiBaseUri.host.lowercase().isValidCloudHost())
+        require(apiBaseUri.rawPath.isValidCloudBasePath())
         require(allowedUploadHosts.isNotEmpty())
         require(allowedUploadHosts.all { it == it.lowercase() && it.isValidCloudHost() })
     }
@@ -282,5 +283,16 @@ internal fun String.isValidCloudHost(): Boolean {
             label.first().isLetterOrDigit() &&
             label.last().isLetterOrDigit() &&
             label.all { it in 'a'..'z' || it in '0'..'9' || it == '-' }
+    }
+}
+
+internal fun String?.isValidCloudBasePath(): Boolean {
+    val path = this.orEmpty()
+    if (path.length > 512 || '\\' in path || '%' in path || path.any(Char::isWhitespace)) return false
+    if (path.isEmpty() || path == "/") return true
+    if (!path.startsWith('/') || "//" in path) return false
+    return path.removePrefix("/").removeSuffix("/").split('/').all { segment ->
+        segment.isNotEmpty() && segment !in setOf(".", "..") &&
+            segment.all { it.isLetterOrDigit() || it in "-._~$" }
     }
 }

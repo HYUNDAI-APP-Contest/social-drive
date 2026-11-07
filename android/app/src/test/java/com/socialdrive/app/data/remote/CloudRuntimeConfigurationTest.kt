@@ -18,6 +18,9 @@ class CloudRuntimeConfigurationTest {
         assertFailsWith<IllegalArgumentException> {
             CloudDriveClientConfig(URI("https://api.example.com/prod"), setOf("upload.example.com/path"))
         }
+        assertFailsWith<IllegalArgumentException> {
+            CloudDriveClientConfig(URI("https://api.example.com/prod/../admin"), setOf("upload.example.com"))
+        }
     }
 
     @Test
@@ -46,6 +49,9 @@ class CloudRuntimeConfigurationTest {
         assertNull(valid(apiBaseUrl = "https://api.example.com:8443/prod"))
         assertNull(valid(apiBaseUrl = "https://api.example.com/prod?stage=dev"))
         assertNull(valid(apiBaseUrl = "https://api.example.com/prod#fragment"))
+        assertNull(valid(apiBaseUrl = "https://api.example.com/prod/../admin"))
+        assertNull(valid(apiBaseUrl = "https://api.example.com/prod//admin"))
+        assertNull(valid(apiBaseUrl = "https://api.example.com/%2e%2e/admin"))
         assertNull(valid(apiBaseUrl = "https://127.0.0.1/prod"))
         assertNull(valid(apiBaseUrl = "https://localhost/prod"))
         assertNull(valid(apiBaseUrl = "https://api..example.com/prod"))

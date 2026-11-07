@@ -46,6 +46,17 @@ fun isValidCloudHost(value: String): Boolean {
     }
 }
 
+fun isValidCloudBasePath(value: String?): Boolean {
+    val path = value.orEmpty()
+    if (path.length > 512 || '\\' in path || '%' in path || path.any(Char::isWhitespace)) return false
+    if (path.isEmpty() || path == "/") return true
+    if (!path.startsWith('/') || "//" in path) return false
+    return path.removePrefix("/").removeSuffix("/").split('/').all { segment ->
+        segment.isNotEmpty() && segment !in setOf(".", "..") &&
+            segment.all { it.isLetterOrDigit() || it in "-._~$" }
+    }
+}
+
 tasks.register("verifyPleosCloudConfiguration") {
     group = "verification"
     description = "Validates the public AWS/Cognito configuration without printing its values."
@@ -65,9 +76,12 @@ tasks.register("verifyPleosCloudConfiguration") {
         val apiUri = runCatching { URI(values.getValue("apiBaseUrl")) }.getOrNull()
         if (apiUri == null || !apiUri.scheme.equals("https", true) || apiUri.host == null ||
             apiUri.userInfo != null || apiUri.query != null || apiUri.fragment != null ||
-            (apiUri.port != -1 && apiUri.port != 443) || !isValidCloudHost(apiUri.host.lowercase())
+            (apiUri.port != -1 && apiUri.port != 443) || !isValidCloudHost(apiUri.host.lowercase()) ||
+            !isValidCloudBasePath(apiUri.rawPath)
         ) {
-            throw GradleException("PLEOS cloud API URL must use a public DNS HTTPS host without credentials, query, or fragment.")
+            throw GradleException(
+                "PLEOS cloud API URL must use a public DNS HTTPS host and a normalized stage path without credentials, query, or fragment."
+            )
         }
         val hosts = values.getValue("uploadHosts").split(',').map(String::trim).filter(String::isNotEmpty)
         if (hosts.isEmpty() || hosts.any { it != it.lowercase() || !isValidCloudHost(it) }) {
