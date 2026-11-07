@@ -4,6 +4,8 @@ import android.content.Context
 import com.amplifyframework.auth.cognito.AWSCognitoAuthPlugin
 import com.amplifyframework.auth.cognito.AWSCognitoAuthSession
 import com.amplifyframework.auth.cognito.result.AWSCognitoAuthSignOutResult
+import com.amplifyframework.auth.exceptions.ServiceException
+import com.amplifyframework.auth.exceptions.UnknownException
 import com.amplifyframework.auth.result.AuthSignInResult
 import com.amplifyframework.auth.result.step.AuthSignInStep
 import com.amplifyframework.core.Amplify
@@ -19,6 +21,7 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
+import java.io.IOException
 
 internal const val COGNITO_OPERATION_TIMEOUT_MILLIS = 20_000L
 
@@ -172,6 +175,11 @@ internal class AmplifyCognitoAuth(
                 withCognitoOperationTimeout { fetchCognitoSession() }
             } catch (timeout: CognitoOperationTimeoutException) {
                 throw AuthSessionTemporarilyUnavailableException(timeout)
+            } catch (error: Throwable) {
+                if (isTemporaryCognitoSessionFailure(error)) {
+                    throw AuthSessionTemporarilyUnavailableException(error)
+                }
+                throw error
             }
             val token = session.takeIf { it.isSignedIn }
                 ?.userPoolTokensResult?.value?.accessToken
@@ -306,6 +314,10 @@ internal suspend fun <T> withCognitoOperationTimeout(
 }
 
 internal class CognitoOperationTimeoutException : Exception("Cognito operation timed out")
+
+internal fun isTemporaryCognitoSessionFailure(error: Throwable): Boolean =
+    error is ServiceException || error is UnknownException ||
+        generateSequence(error.cause) { it.cause }.any { it is IOException }
 
 internal class CognitoOperationGate {
     private val mutex = Mutex()

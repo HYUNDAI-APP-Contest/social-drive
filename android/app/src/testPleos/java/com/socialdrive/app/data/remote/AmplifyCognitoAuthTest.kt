@@ -1,6 +1,12 @@
 package com.socialdrive.app.data.remote
 
 import com.amplifyframework.auth.result.step.AuthSignInStep
+import com.amplifyframework.auth.exceptions.NotAuthorizedException
+import com.amplifyframework.auth.exceptions.ServiceException
+import com.amplifyframework.auth.exceptions.SessionExpiredException
+import com.amplifyframework.auth.exceptions.SignedOutException
+import com.amplifyframework.auth.exceptions.UnknownException
+import java.io.IOException
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.async
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -52,6 +58,17 @@ class AmplifyCognitoAuthTest {
             timedOut = true
         }
         assertTrue(timedOut)
+    }
+
+    @Test
+    fun `Cognito 네트워크와 서비스 장애만 세션 유지 재시도로 분류한다`() {
+        assertTrue(isTemporaryCognitoSessionFailure(ServiceException("service", "retry", null)))
+        assertTrue(isTemporaryCognitoSessionFailure(UnknownException("unknown", null)))
+        assertTrue(isTemporaryCognitoSessionFailure(IllegalStateException("wrapped", IOException("offline"))))
+
+        assertEquals(false, isTemporaryCognitoSessionFailure(SignedOutException()))
+        assertEquals(false, isTemporaryCognitoSessionFailure(SessionExpiredException()))
+        assertEquals(false, isTemporaryCognitoSessionFailure(NotAuthorizedException()))
     }
 
     @Test
