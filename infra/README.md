@@ -43,6 +43,22 @@ See [the contract harness guide](../docs/android-backend-contract-harness.md) fo
 5. Execute only after explicit Discord approval.
 6. Run smoke tests and report outputs without tokens or personal data.
 
+After the approved stack execution, save only the `describe-stacks` JSON to a temporary path outside the repository and convert its public outputs into Android properties:
+
+```bash
+node infra/scripts/render-android-cloud-properties.mjs /tmp/social-drive-stack.json > /tmp/social-drive-android.properties
+```
+
+The converter emits exactly the six `socialDrive.cloud.*` values required by the PLEOS release gate. It rejects missing, multiline, or secret-like outputs and never emits the bucket name, account ID, token, or credential. Supply those properties to Gradle as `-Pkey=value` arguments; do not commit the generated file.
+
+Before creating any test user, verify that the deployed API is reachable over HTTPS and rejects an anonymous feed request at the JWT boundary:
+
+```bash
+node infra/scripts/verify-deployed-boundary.mjs "$(node -e 'const d=require(process.argv[1]); console.log(d.Stacks[0].Outputs.find(x=>x.OutputKey==="ApiUrl").OutputValue)' /tmp/social-drive-stack.json)"
+```
+
+This smoke check performs one read-only anonymous `GET /feed` and succeeds only on HTTP 401 without following redirects. Authenticated Cognito/API/S3 E2E still requires an approved test account and must not use production personal data.
+
 Never place AWS access keys, account IDs, JWTs, precise routes, or raw vehicle data in the repository or logs.
 
 The scripts under `infra/bootstrap/` create only the private SAM artifact bucket and restricted CloudFormation service role. Runtime deployment uses `aws cloudformation package`, a named change set, and the Discord approval boundary. SAM CLI is not required on the always-on host.
