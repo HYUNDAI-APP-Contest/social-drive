@@ -87,6 +87,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private val mutableRecognitionState = MutableStateFlow(SpeechRecognitionState.Idle)
     private val locationLock = Any()
     private val recognitionLock = Any()
+    private val speechOperationLock = Any()
     private val rawLocations = BoundedRouteBuffer(MAX_ROUTE_POINTS)
     private var collectionAuthorized = false
     private var recordingRequested = false
@@ -142,6 +143,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     override val speechPermissions: List<String> = listOf(TTS_PERMISSION, STT_PERMISSION)
 
     override suspend fun initialize() {
+        if (released) return
         runCatching {
             fusedLocation.initialize()
             fusedLocation.isSupported()
@@ -172,46 +174,52 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     }
 
     override fun speakFeedback(message: String): Boolean {
-        if (!hasPermission(TTS_PERMISSION)) {
-            mutableTts.value = permissionDenied("실차 · TTS 권한 필요")
-            return false
+        synchronized(speechOperationLock) {
+            if (released) return false
+            if (!hasPermission(TTS_PERMISSION)) {
+                mutableTts.value = permissionDenied("실차 · TTS 권한 필요")
+                return false
+            }
+            if (mutableTts.value.capability != CapabilityState.Available || message.isBlank()) return false
+            return runCatching { tts.speak(message, false) }.isSuccess
         }
-        if (mutableTts.value.capability != CapabilityState.Available || message.isBlank()) return false
-        return runCatching { tts.speak(message, false) }.isSuccess
     }
 
     override fun startSpeechRecognition(onText: (String, Boolean) -> Unit): Boolean {
-        if (!hasPermission(STT_PERMISSION)) {
-            mutableStt.value = permissionDenied("실차 · STT 권한 필요")
-            return false
-        }
-        if (mutableStt.value.capability != CapabilityState.Available) return false
-        val session = synchronized(recognitionLock) {
-            if (recognitionCallback != null) return false
-            recognitionSession += 1
-            recognitionCallback = onText
-            recognitionSession
-        }
-        mutableRecognitionActive.value = true
-        mutableRecognitionState.value = SpeechRecognitionState.Listening
-        if (runCatching { stt.request() }.isFailure) {
-            finishRecognition(SpeechRecognitionState.Failed, session)
-            return false
-        }
-        val timeout = lifecycleScope.launch {
-            delay(SPEECH_RECOGNITION_TIMEOUT_MILLIS)
-            if (finishRecognition(SpeechRecognitionState.NoResult, session)) {
-                runCatching { stt.stop() }
+        synchronized(speechOperationLock) {
+            if (released) return false
+            if (!hasPermission(STT_PERMISSION)) {
+                mutableStt.value = permissionDenied("실차 · STT 권한 필요")
+                return false
             }
-        }
-        synchronized(recognitionLock) {
-            if (recognitionSession == session && recognitionCallback != null) {
-                recognitionTimeoutJob = timeout
-            } else {
-                timeout.cancel()
+            if (mutableStt.value.capability != CapabilityState.Available) return false
+            val session = synchronized(recognitionLock) {
+                if (recognitionCallback != null) return false
+                recognitionSession += 1
+                recognitionCallback = onText
+                recognitionSession
             }
+            mutableRecognitionActive.value = true
+            mutableRecognitionState.value = SpeechRecognitionState.Listening
+            if (runCatching { stt.request() }.isFailure) {
+                finishRecognition(SpeechRecognitionState.Failed, session)
+                return false
+            }
+            val timeout = lifecycleScope.launch {
+                delay(SPEECH_RECOGNITION_TIMEOUT_MILLIS)
+                if (finishRecognition(SpeechRecognitionState.NoResult, session)) {
+                    runCatching { stt.stop() }
+                }
+            }
+            synchronized(recognitionLock) {
+                if (recognitionSession == session && recognitionCallback != null) {
+                    recognitionTimeoutJob = timeout
+                } else {
+                    timeout.cancel()
+                }
+            }
+            return true
         }
-        return true
     }
 
     override fun stopSpeechRecognition() {
@@ -400,7 +408,6 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, label)
 
     override fun release() {
-        released = true
         lifecycleJob.cancel()
         synchronized(locationLock) {
             collectionAuthorized = false
@@ -409,11 +416,14 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             rawLocations.clear()
         }
         runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
-        stopSpeechRecognition()
-        runCatching { stt.removeListener(recognitionListener) }
+        synchronized(speechOperationLock) {
+            released = true
+            stopSpeechRecognition()
+            runCatching { stt.removeListener(recognitionListener) }
+            runCatching { tts.release() }
+            runCatching { stt.release() }
+        }
         runCatching { fusedLocation.release() }
-        runCatching { tts.release() }
-        runCatching { stt.release() }
     }
 }
 

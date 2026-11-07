@@ -417,6 +417,8 @@ test("PLEOS TTS and STT permissions fail closed and remain recoverable", () => {
   assert.match(pleos, /if \(!hasPermission\(TTS_PERMISSION\)\)[\s\S]*permissionDenied/);
   assert.match(pleos, /if \(!hasPermission\(STT_PERMISSION\)\)[\s\S]*permissionDenied/);
   assert.match(pleos, /ttsInitialized[\s\S]*sttInitialized/);
+  assert.match(pleos, /override fun speakFeedback\([\s\S]*if \(released\) return false/);
+  assert.match(pleos, /override fun startSpeechRecognition\([\s\S]*if \(released\) return false/);
   assert.match(pleos, /RawRouteCoordinate\.fromOrNull\(location\.longitude, location\.latitude\) \?: return/);
   assert.match(pleos, /BoundedRouteBuffer\(MAX_ROUTE_POINTS\)/);
 });
