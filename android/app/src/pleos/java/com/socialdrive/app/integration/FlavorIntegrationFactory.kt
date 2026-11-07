@@ -15,6 +15,8 @@ import ai.pleos.playground.vehicle.constant.PleosPermission
 import ai.pleos.playground.vehicle.constant.control.VehicleGear
 import ai.pleos.playground.vehicle.listener.GearSelectionListener
 import ai.pleos.playground.location.fused.FusedLocation
+import ai.pleos.playground.location.fused.listener.FusedLocationListener
+import ai.pleos.playground.location.fused.model.LocationData
 import ai.pleos.playground.tts.TextToSpeech
 import ai.pleos.playground.tts.constant.Mode as TtsMode
 import ai.pleos.playground.tts.listener.OnInitializeListener as TtsInitializeListener
@@ -23,6 +25,10 @@ import ai.pleos.playground.stt.constant.Mode as SttMode
 import ai.pleos.playground.stt.listener.OnInitializeListener as SttInitializeListener
 import ai.pleos.playground.stt.listener.ResultListener
 import com.socialdrive.app.domain.AuxiliaryCapabilitySource
+import com.socialdrive.app.domain.FutureRouteCollector
+import com.socialdrive.app.domain.NormalizedRoutePoint
+import com.socialdrive.app.domain.RawRouteCoordinate
+import com.socialdrive.app.domain.RouteNormalizer
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.IntegrationBundle
@@ -49,14 +55,18 @@ import java.util.IdentityHashMap
 import java.util.concurrent.CopyOnWriteArraySet
 
 object FlavorIntegrationFactory {
-    fun create(context: Context): IntegrationBundle = IntegrationBundle(
-        vehicleMotionSource = PleosVehicleMotionSource(context.applicationContext),
-        navigationGateway = PleosNavigationGateway(context.applicationContext),
-        auxiliaryCapabilitySource = PleosAuxiliaryCapabilitySource(context.applicationContext),
-    )
+    fun create(context: Context): IntegrationBundle {
+        val auxiliary = PleosAuxiliaryCapabilitySource(context.applicationContext)
+        return IntegrationBundle(
+            vehicleMotionSource = PleosVehicleMotionSource(context.applicationContext),
+            navigationGateway = PleosNavigationGateway(context.applicationContext),
+            auxiliaryCapabilitySource = auxiliary,
+            routeCollector = auxiliary,
+        )
+    }
 }
 
-private class PleosAuxiliaryCapabilitySource(context: Context) : AuxiliaryCapabilitySource {
+private class PleosAuxiliaryCapabilitySource(private val context: Context) : AuxiliaryCapabilitySource, FutureRouteCollector {
     private val fusedLocation = FusedLocation(context)
     private val tts = TextToSpeech(context, TtsMode.ON_DEVICE)
     private val stt = SpeechToText(context, SttMode.ON_DEVICE)
@@ -66,6 +76,21 @@ private class PleosAuxiliaryCapabilitySource(context: Context) : AuxiliaryCapabi
     private val mutableLocation = MutableStateFlow(checking)
     private val mutableTts = MutableStateFlow(checking)
     private val mutableStt = MutableStateFlow(checking)
+    private val locationLock = Any()
+    private val rawLocations = ArrayList<RawRouteCoordinate>()
+    private var locationCollecting = false
+    private val locationListener = object : FusedLocationListener {
+        override fun onChanged(location: LocationData?) {
+            location ?: return
+            if (!location.latitude.isFinite() || !location.longitude.isFinite()) return
+            synchronized(locationLock) {
+                if (locationCollecting && rawLocations.size < MAX_ROUTE_POINTS) {
+                    rawLocations += RawRouteCoordinate(location.longitude, location.latitude)
+                }
+            }
+        }
+        override fun onError(error: Exception) = Unit
+    }
     @Volatile private var recognitionCallback: ((String, Boolean) -> Unit)? = null
     private val recognitionListener = object : ResultListener {
         override fun onUpdated(text: String, isFinal: Boolean) {
@@ -82,13 +107,18 @@ private class PleosAuxiliaryCapabilitySource(context: Context) : AuxiliaryCapabi
     override val location: StateFlow<CapabilityStatus> = mutableLocation.asStateFlow()
     override val textToSpeech: StateFlow<CapabilityStatus> = mutableTts.asStateFlow()
     override val speechToText: StateFlow<CapabilityStatus> = mutableStt.asStateFlow()
+    override val locationPermission: String = FUSED_LOCATION_PERMISSION
 
     override suspend fun initialize() {
         runCatching {
             fusedLocation.initialize()
             fusedLocation.isSupported()
         }.onSuccess { supported ->
-            mutableLocation.value = if (supported) available("실차 · SDK 지원") else unavailable("실차 · 위치 미지원")
+            mutableLocation.value = when {
+                !supported -> unavailable("실차 · 위치 미지원")
+                !hasLocationPermission() -> CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, "실차 · 권한 필요")
+                else -> available("실차 · 위치 사용 가능")
+            }
         }.onFailure { mutableLocation.value = unavailable("실차 · 초기화 실패") }
         runCatching {
             tts.initialize(object : TtsInitializeListener {
@@ -129,7 +159,43 @@ private class PleosAuxiliaryCapabilitySource(context: Context) : AuxiliaryCapabi
         runCatching { stt.stop() }
     }
 
+    override fun refreshLocationPermission() {
+        mutableLocation.value = if (hasLocationPermission() && runCatching { fusedLocation.isSupported() }.getOrDefault(false)) {
+            available("실차 · 위치 사용 가능")
+        } else {
+            CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, "실차 · 권한 필요")
+        }
+    }
+
+    override suspend fun start() {
+        check(mutableLocation.value.capability == CapabilityState.Available)
+        val shouldRegister = synchronized(locationLock) {
+            if (locationCollecting) false else { locationCollecting = true; true }
+        }
+        if (!shouldRegister) return
+        fusedLocation.registerFusedLocationCallback(locationListener)
+    }
+
+    override suspend fun beginRecording() {
+        synchronized(locationLock) { rawLocations.clear() }
+    }
+
+    override suspend fun snapshotAndClear(): List<NormalizedRoutePoint> {
+        val snapshot = synchronized(locationLock) { rawLocations.toList().also { rawLocations.clear() } }
+        return RouteNormalizer.normalize(snapshot)
+    }
+
+    override suspend fun stopAndAwait() {
+        synchronized(locationLock) { locationCollecting = false; rawLocations.clear() }
+        runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
+    }
+
+    private fun hasLocationPermission(): Boolean =
+        context.checkSelfPermission(FUSED_LOCATION_PERMISSION) == PackageManager.PERMISSION_GRANTED
+
     override fun release() {
+        synchronized(locationLock) { locationCollecting = false; rawLocations.clear() }
+        runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
         stopSpeechRecognition()
         runCatching { stt.removeListener(recognitionListener) }
         runCatching { fusedLocation.release() }
@@ -137,6 +203,9 @@ private class PleosAuxiliaryCapabilitySource(context: Context) : AuxiliaryCapabi
         runCatching { stt.release() }
     }
 }
+
+private const val FUSED_LOCATION_PERMISSION = "pleos.car.permission.FUSED_LOCATION"
+private const val MAX_ROUTE_POINTS = 5_000
 
 private class PleosVehicleMotionSource(context: Context) : VehicleMotionSource {
     private val actualUnavailable = CapabilityStatus(

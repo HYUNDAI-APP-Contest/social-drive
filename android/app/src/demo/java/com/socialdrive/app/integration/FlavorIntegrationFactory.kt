@@ -4,6 +4,8 @@ import android.content.Context
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.AuxiliaryCapabilitySource
+import com.socialdrive.app.domain.FutureRouteCollector
+import com.socialdrive.app.domain.NormalizedRoutePoint
 import com.socialdrive.app.domain.IntegrationBundle
 import com.socialdrive.app.domain.IntegrationSource
 import com.socialdrive.app.domain.MotionState
@@ -26,6 +28,7 @@ object FlavorIntegrationFactory {
         vehicleMotionSource = DemoVehicleMotionSource(),
         navigationGateway = DemoNavigationGateway(),
         auxiliaryCapabilitySource = DemoAuxiliaryCapabilitySource(),
+        routeCollector = DemoRouteCollector,
     )
 }
 
@@ -34,11 +37,20 @@ private class DemoAuxiliaryCapabilitySource : AuxiliaryCapabilitySource {
     override val location: StateFlow<CapabilityStatus> = demo.asStateFlow()
     override val textToSpeech: StateFlow<CapabilityStatus> = demo.asStateFlow()
     override val speechToText: StateFlow<CapabilityStatus> = demo.asStateFlow()
+    override val locationPermission: String? = null
     override suspend fun initialize() = Unit
     override fun speakFeedback(message: String): Boolean = false
     override fun startSpeechRecognition(onText: (String, Boolean) -> Unit): Boolean = false
     override fun stopSpeechRecognition() = Unit
+    override fun refreshLocationPermission() = Unit
     override fun release() = Unit
+}
+
+private object DemoRouteCollector : FutureRouteCollector {
+    override suspend fun start() = Unit
+    override suspend fun beginRecording() = Unit
+    override suspend fun snapshotAndClear(): List<NormalizedRoutePoint> = emptyList()
+    override suspend fun stopAndAwait() = Unit
 }
 
 private class DemoVehicleMotionSource : VehicleMotionSource {

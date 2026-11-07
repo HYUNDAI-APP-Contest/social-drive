@@ -96,11 +96,13 @@ interface AuxiliaryCapabilitySource {
     val location: StateFlow<CapabilityStatus>
     val textToSpeech: StateFlow<CapabilityStatus>
     val speechToText: StateFlow<CapabilityStatus>
+    val locationPermission: String?
 
     suspend fun initialize()
     fun speakFeedback(message: String): Boolean
     fun startSpeechRecognition(onText: (text: String, isFinal: Boolean) -> Unit): Boolean
     fun stopSpeechRecognition()
+    fun refreshLocationPermission()
     fun release()
 }
 
@@ -108,6 +110,7 @@ data class IntegrationBundle(
     val vehicleMotionSource: VehicleMotionSource,
     val navigationGateway: NavigationGateway,
     val auxiliaryCapabilitySource: AuxiliaryCapabilitySource,
+    val routeCollector: FutureRouteCollector,
 )
 
 object SpeechRecognitionPolicy {

@@ -62,6 +62,7 @@ fun SettingsScreen(
     ),
     privacyMessage: String? = null,
     onWithdrawConsent: () -> Unit = {},
+    onEnableLiveRoute: () -> Unit = {},
     hasPublishedDraft: Boolean = false,
     deleteRequestState: DeleteRequestState? = null,
     onConfirmPublishedDelete: () -> Unit = {},
@@ -109,6 +110,7 @@ fun SettingsScreen(
                         PrivacySection(
                             routePrivacy, motion, privacyMessage, hasPublishedDraft,
                             deleteRequestState, onWithdrawConsent,
+                            onEnableLiveRoute,
                             onDeleteRequest = { showDeleteConfirmation = true },
                         )
                     }
@@ -129,6 +131,7 @@ fun SettingsScreen(
                     PrivacySection(
                         routePrivacy, motion, privacyMessage, hasPublishedDraft,
                         deleteRequestState, onWithdrawConsent,
+                        onEnableLiveRoute,
                         onDeleteRequest = { showDeleteConfirmation = true },
                     )
                     IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus)
@@ -162,6 +165,7 @@ private fun PrivacySection(
     hasPublishedDraft: Boolean,
     deleteRequestState: DeleteRequestState?,
     onWithdrawConsent: () -> Unit,
+    onEnableLiveRoute: () -> Unit,
     onDeleteRequest: () -> Unit,
 ) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
@@ -170,18 +174,25 @@ private fun PrivacySection(
                 Text("경로 데이터 및 동의", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                 RouteSourceBadge(routePrivacy.displayedSource)
             }
-            Text("현재 데모 경로만 사용 · 실시간 위치 미사용")
+            Text(if (routePrivacy.displayedSource == RouteSource.LiveAvailable) "실시간 경로 사용 · 원본 좌표 미저장" else "현재 데모 경로만 사용 · 실시간 위치 미사용")
             Text(
-                "실시간 경로: ${routePrivacy.liveSource.reason.userLabel()}",
+                "실시간 경로: ${routePrivacy.liveSource.userLabel()}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("실시간 경로 SDK 준비 중", style = MaterialTheme.typography.titleMedium)
+                    Text(if (routePrivacy.liveSource == RouteSource.LiveAvailable) "PLEOS 위치 SDK 사용 가능" else "PLEOS 위치 권한 필요", style = MaterialTheme.typography.titleMedium)
                     Text(routeConsentStorageLabel(routePrivacy.consentState), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (routePrivacy.consentState != RouteConsentState.Granted) {
+                    Button(
+                        onClick = onEnableLiveRoute,
+                        enabled = motion == MotionState.Parked,
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) { Text("실시간 경로 켜기") }
+                }
                 if (routePrivacy.consentState == RouteConsentState.Granted) {
                     Button(
                         onClick = onWithdrawConsent,
@@ -301,6 +312,12 @@ private fun LiveUnavailableReason.userLabel() = when (this) {
     LiveUnavailableReason.SDK_COMING_SOON -> "SDK 준비 중 · 향후 제공 예정"
     LiveUnavailableReason.PERMISSION_DENIED -> "권한이 거부됨"
     LiveUnavailableReason.CAPABILITY_MISSING -> "차량 기능 미지원"
+}
+
+private fun RouteSource.userLabel() = when (this) {
+    RouteSource.LiveAvailable -> "사용 가능"
+    is RouteSource.LiveUnavailable -> reason.userLabel()
+    RouteSource.DemoPreset -> "데모 경로"
 }
 
 private fun DeleteRequestState.buttonLabel() = when (this) {

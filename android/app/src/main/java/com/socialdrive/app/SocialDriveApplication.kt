@@ -42,7 +42,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
     val navigationGateway get() = integrationBundle.navigationGateway
     val auxiliaryCapabilitySource get() = integrationBundle.auxiliaryCapabilitySource
     val parkedExecutionGate by lazy { ParkedExecutionGate(vehicleMotionSource.status.value.motion) }
-    val recordingRepository: RecordingRepository by lazy { RecordingRepository(database) }
+    val recordingRepository: RecordingRepository by lazy { RecordingRepository(database, routeCollector = integrationBundle.routeCollector) }
     val draftRepository: DraftRepository by lazy { DraftRepository(database) }
     val publishQueueRepository: PublishQueueRepository by lazy { PublishQueueRepository(database) }
     val routePrivacyRepository: RoutePrivacyRepository by lazy {
@@ -52,6 +52,8 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
                 WorkManager.getInstance(this).cancelAllWorkByTag(PublishScheduler.ROUTE_UPLOAD_TAG)
             },
             currentMotion = { vehicleMotionSource.status.value.motion },
+            locationCapability = auxiliaryCapabilitySource.location,
+            collector = integrationBundle.routeCollector,
             onDeletePending = { draftId ->
                 WorkManager.getInstance(this).cancelUniqueWork(PublishScheduler.uniqueName(draftId))
                 deleteWorkScheduler.enqueue(draftId)
@@ -96,6 +98,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
             vehicleMotionSource.initialize()
             navigationGateway.initialize()
             auxiliaryCapabilitySource.initialize()
+            routePrivacyRepository.restoreCollectionIfConsented()
         }
         applicationScope.launch {
             vehicleMotionSource.status.collect { status ->

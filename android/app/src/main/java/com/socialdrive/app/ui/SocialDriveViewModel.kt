@@ -67,6 +67,9 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     val locationCapability = app.auxiliaryCapabilitySource.location
     val textToSpeechCapability = app.auxiliaryCapabilitySource.textToSpeech
     val speechToTextCapability = app.auxiliaryCapabilitySource.speechToText
+    val locationPermission: String? get() = app.auxiliaryCapabilitySource.locationPermission
+
+    fun refreshLocationPermission() = app.auxiliaryCapabilitySource.refreshLocationPermission()
 
     val routePrivacy: StateFlow<RoutePrivacyStatus> = app.routePrivacyRepository.status
         .stateIn(

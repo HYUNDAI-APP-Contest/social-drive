@@ -18,8 +18,12 @@ import com.socialdrive.app.domain.RoutePrivacyMutationStore
 import com.socialdrive.app.domain.RoutePrivacyStatus
 import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.WithdrawalReceipt
+import com.socialdrive.app.domain.CapabilityState
+import com.socialdrive.app.domain.CapabilityStatus
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -27,23 +31,34 @@ class RoutePrivacyRepository(
     private val database: SocialDriveDatabase,
     private val pendingUploads: PendingRouteUploadCanceller,
     private val currentMotion: () -> MotionState,
-    private val collector: FutureRouteCollector = UnavailableFutureRouteCollector,
+    private val locationCapability: StateFlow<CapabilityStatus> = MutableStateFlow(
+        CapabilityStatus(CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "사용 불가"),
+    ),
+    private val collector: FutureRouteCollector = UnavailableRouteCollector,
     private val clock: () -> Long = System::currentTimeMillis,
     private val onDeletePending: (String) -> Unit = {},
 ) {
-    private val liveUnavailable = RouteSource.LiveUnavailable(LiveUnavailableReason.SDK_COMING_SOON)
     private val mutationMutex = Mutex()
 
-    val status: Flow<RoutePrivacyStatus> = database.routePrivacyDao().observe().map { entity ->
+    val status: Flow<RoutePrivacyStatus> = combine(database.routePrivacyDao().observe(), locationCapability) { entity, capability ->
+        val liveSource = capability.toRouteSource()
         RoutePrivacyStatus(
-            displayedSource = RouteSource.DemoPreset,
-            liveSource = liveUnavailable,
+            displayedSource = if (entity?.consentState == RouteConsentState.Granted.name && liveSource == RouteSource.LiveAvailable) {
+                RouteSource.LiveAvailable
+            } else RouteSource.DemoPreset,
+            liveSource = liveSource,
             consentState = entity?.consentState?.toConsentState() ?: RouteConsentState.NotAsked,
         )
     }
 
     suspend fun requestLiveConsent(): RouteConsentDecision = mutationMutex.withLock {
-        coordinator().grant(liveUnavailable)
+        coordinator().grant(locationCapability.value.toRouteSource())
+    }
+
+    suspend fun restoreCollectionIfConsented(): Boolean = mutationMutex.withLock {
+        val consent = database.routePrivacyDao().find()?.consentState?.toConsentState()
+        if (consent != RouteConsentState.Granted) return@withLock false
+        coordinator().grant(locationCapability.value.toRouteSource()).shouldPersist
     }
 
     suspend fun withdraw(): WithdrawalReceipt = mutationMutex.withLock { coordinator().withdraw() }
@@ -67,9 +82,17 @@ class RoutePrivacyRepository(
     }
 }
 
-private object UnavailableFutureRouteCollector : FutureRouteCollector {
-    override suspend fun start(): Nothing = error("Live route collection is unavailable")
+private object UnavailableRouteCollector : FutureRouteCollector {
+    override suspend fun start() = Unit
+    override suspend fun beginRecording() = Unit
+    override suspend fun snapshotAndClear() = emptyList<com.socialdrive.app.domain.NormalizedRoutePoint>()
     override suspend fun stopAndAwait() = Unit
+}
+
+private fun CapabilityStatus.toRouteSource(): RouteSource = when (capability) {
+    CapabilityState.Available -> RouteSource.LiveAvailable
+    CapabilityState.PermissionDenied -> RouteSource.LiveUnavailable(LiveUnavailableReason.PERMISSION_DENIED)
+    CapabilityState.Unavailable -> RouteSource.LiveUnavailable(LiveUnavailableReason.CAPABILITY_MISSING)
 }
 
 private class RoomRoutePrivacyMutationStore(
@@ -119,8 +142,8 @@ private class RoomRoutePrivacyMutationStore(
 
 private fun RouteConsentState.entity(now: Long) = RoutePrivacyEntity(
     consentState = name,
-    routeSource = "DemoPreset",
-    unavailableReason = LiveUnavailableReason.SDK_COMING_SOON.name,
+    routeSource = if (this == RouteConsentState.Granted) "LiveAvailable" else "DemoPreset",
+    unavailableReason = null,
     updatedAtEpochMs = now,
 )
 

@@ -5,7 +5,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlinx.coroutines.runBlocking
 
-@OptIn(TestOnlyLiveRouteCapability::class)
 class RoutePrivacyTest {
     @Test
     fun `unavailable source never persists or displays granted consent`() = runBlocking {
@@ -42,12 +41,26 @@ class RoutePrivacyTest {
     }
 
     @Test
+    fun `raw coordinates become bounded normalized artwork points`() {
+        val normalized = RouteNormalizer.normalize(
+            listOf(
+                RawRouteCoordinate(126.9, 37.4),
+                RawRouteCoordinate(127.0, 37.5),
+                RawRouteCoordinate(127.1, 37.6),
+            ),
+        )
+        assertEquals(listOf(0f, .5f, 1f), normalized.map { it.horizontal })
+        assertEquals(listOf(1f, .5f, 0f), normalized.map { it.vertical })
+        assertEquals(listOf(0, 1, 2), normalized.map { it.sequence })
+    }
+
+    @Test
     fun `future fake collector receives zero points before explicit consent`() = runBlocking {
         val harness = Harness()
         harness.collector.offer(NormalizedRoutePoint(0, .2f, .3f))
         assertEquals(0, harness.collector.points.size)
 
-        val source = RouteSource.LiveAvailable(LiveRouteCapabilityToken.issueForTest())
+        val source = RouteSource.LiveAvailable
         harness.coordinator.grant(source)
         harness.collector.offer(NormalizedRoutePoint(0, .2f, .3f))
         assertEquals(1, harness.collector.points.size)
@@ -56,7 +69,7 @@ class RoutePrivacyTest {
     @Test
     fun `withdrawal stops collector then atomically purges and tombstones before cancel`() = runBlocking {
         val harness = Harness()
-        harness.coordinator.grant(RouteSource.LiveAvailable(LiveRouteCapabilityToken.issueForTest()))
+        harness.coordinator.grant(RouteSource.LiveAvailable)
         harness.collector.offer(NormalizedRoutePoint(0, .2f, .3f))
         val receipt = harness.coordinator.withdraw()
 
@@ -69,7 +82,7 @@ class RoutePrivacyTest {
     @Test
     fun `late fake point after withdrawal is ignored`() = runBlocking {
         val harness = Harness()
-        harness.coordinator.grant(RouteSource.LiveAvailable(LiveRouteCapabilityToken.issueForTest()))
+        harness.coordinator.grant(RouteSource.LiveAvailable)
         harness.coordinator.withdraw()
         harness.collector.offer(NormalizedRoutePoint(1, .4f, .6f))
         assertEquals(0, harness.collector.points.size)
@@ -145,6 +158,8 @@ class RoutePrivacyTest {
         var active = false
         val points = mutableListOf<NormalizedRoutePoint>()
         override suspend fun start() { active = true; events += "collector:start" }
+        override suspend fun beginRecording() { points.clear() }
+        override suspend fun snapshotAndClear(): List<NormalizedRoutePoint> = points.toList().also { points.clear() }
         override suspend fun stopAndAwait() { active = false; events += "collector:stop" }
         fun offer(point: NormalizedRoutePoint) { if (active) points += point }
     }

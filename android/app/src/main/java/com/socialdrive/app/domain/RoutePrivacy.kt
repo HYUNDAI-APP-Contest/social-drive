@@ -5,26 +5,10 @@ import kotlinx.coroutines.sync.withLock
 
 enum class LiveUnavailableReason { SDK_COMING_SOON, PERMISSION_DENIED, CAPABILITY_MISSING }
 
-@RequiresOptIn(
-    level = RequiresOptIn.Level.ERROR,
-    message = "Live route capability is test-only until an approved location SDK and permission flow exist.",
-)
-@Retention(AnnotationRetention.BINARY)
-annotation class TestOnlyLiveRouteCapability
-
-@TestOnlyLiveRouteCapability
-class LiveRouteCapabilityToken private constructor() {
-    companion object {
-        fun issueForTest(): LiveRouteCapabilityToken = LiveRouteCapabilityToken()
-    }
-}
-
 sealed interface RouteSource {
     data object DemoPreset : RouteSource
     data class LiveUnavailable(val reason: LiveUnavailableReason) : RouteSource
-
-    @TestOnlyLiveRouteCapability
-    class LiveAvailable internal constructor(val capability: LiveRouteCapabilityToken) : RouteSource
+    data object LiveAvailable : RouteSource
 }
 
 enum class RouteConsentState { NotAsked, Granted, Withdrawn }
@@ -32,7 +16,7 @@ enum class RouteConsentAction { Grant, Withdraw }
 
 data class RoutePrivacyStatus(
     val displayedSource: RouteSource,
-    val liveSource: RouteSource.LiveUnavailable,
+    val liveSource: RouteSource,
     val consentState: RouteConsentState,
 )
 
@@ -42,7 +26,6 @@ data class RouteConsentDecision(
     val unavailableReason: LiveUnavailableReason? = null,
 )
 
-@OptIn(TestOnlyLiveRouteCapability::class)
 object RouteConsentReducer {
     fun reduce(
         current: RouteConsentState,
@@ -56,7 +39,7 @@ object RouteConsentReducer {
                 unavailableReason = source.reason,
             )
             RouteSource.DemoPreset -> RouteConsentDecision(RouteConsentState.Granted, shouldPersist = true)
-            is RouteSource.LiveAvailable -> RouteConsentDecision(RouteConsentState.Granted, shouldPersist = true)
+            RouteSource.LiveAvailable -> RouteConsentDecision(RouteConsentState.Granted, shouldPersist = true)
         }
         RouteConsentAction.Withdraw -> RouteConsentDecision(RouteConsentState.Withdrawn, shouldPersist = true)
     }
@@ -74,8 +57,34 @@ data class NormalizedRoutePoint(
     }
 }
 
+data class RawRouteCoordinate(val longitude: Double, val latitude: Double) {
+    init { require(longitude.isFinite() && latitude.isFinite()) }
+}
+
+object RouteNormalizer {
+    fun normalize(points: List<RawRouteCoordinate>): List<NormalizedRoutePoint> {
+        if (points.isEmpty()) return emptyList()
+        val minX = points.minOf(RawRouteCoordinate::longitude)
+        val maxX = points.maxOf(RawRouteCoordinate::longitude)
+        val minY = points.minOf(RawRouteCoordinate::latitude)
+        val maxY = points.maxOf(RawRouteCoordinate::latitude)
+        return points.mapIndexed { index, point ->
+            NormalizedRoutePoint(
+                sequence = index,
+                horizontal = scale(point.longitude, minX, maxX),
+                vertical = 1f - scale(point.latitude, minY, maxY),
+            )
+        }
+    }
+
+    private fun scale(value: Double, minimum: Double, maximum: Double): Float =
+        if (maximum == minimum) .5f else ((value - minimum) / (maximum - minimum)).toFloat().coerceIn(0f, 1f)
+}
+
 interface FutureRouteCollector {
     suspend fun start()
+    suspend fun beginRecording()
+    suspend fun snapshotAndClear(): List<NormalizedRoutePoint>
     suspend fun stopAndAwait()
 }
 
@@ -106,7 +115,6 @@ sealed interface PublishedDeleteDecision {
     data object IdentityUnavailable : PublishedDeleteDecision
 }
 
-@OptIn(TestOnlyLiveRouteCapability::class)
 class RoutePrivacyCoordinator(
     initialConsent: RouteConsentState,
     private val collector: FutureRouteCollector,
@@ -122,7 +130,7 @@ class RoutePrivacyCoordinator(
         if (!decision.shouldPersist) return@withLock decision
         store.persistConsent(decision.state)
         consentState = decision.state
-        if (source is RouteSource.LiveAvailable) collector.start()
+        if (source == RouteSource.LiveAvailable) collector.start()
         decision
     }
 

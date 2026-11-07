@@ -1,6 +1,8 @@
 package com.socialdrive.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -77,6 +79,18 @@ fun SocialDriveApp(
     var demoUploadState by rememberSaveable { mutableStateOf<UploadState?>(null) }
     var stopConfirmationRequested by rememberSaveable { mutableStateOf(false) }
     var privacyMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    val locationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        offlineViewModel.refreshLocationPermission()
+        if (granted) {
+            scope.launch {
+                val decision = offlineViewModel.requestLiveRouteConsent()
+                privacyMessage = if (decision.shouldPersist) "실시간 경로 수집에 동의했습니다. 원본 좌표는 저장하지 않습니다."
+                else "차량 위치 기능을 사용할 수 없습니다."
+            }
+        } else {
+            privacyMessage = "위치 권한이 거부되어 실시간 경로를 수집하지 않습니다."
+        }
+    }
 
     LaunchedEffect(persistedUploadState) {
         if (persistedUploadState != UploadState.Draft) demoUploadState = null
@@ -292,6 +306,11 @@ fun SocialDriveApp(
                                 val result = offlineViewModel.withdrawRouteConsent()
                                 privacyMessage = "동의를 철회하고 미게시 경로 ${result.purgedUnpublishedPointCount}개를 삭제했어요."
                             }
+                        },
+                        onEnableLiveRoute = {
+                            val permission = offlineViewModel.locationPermission
+                            if (permission != null) locationPermissionLauncher.launch(permission)
+                            else privacyMessage = "이 실행 모드에서는 실제 위치를 수집하지 않습니다."
                         },
                         hasPublishedDraft = latestDraft?.state == LocalState.PUBLISHED,
                         deleteRequestState = deleteRequestState,

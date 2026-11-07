@@ -6,6 +6,8 @@ import com.socialdrive.app.data.local.LocalState
 import com.socialdrive.app.data.local.RecordingEntity
 import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.local.UploadQueueEntity
+import com.socialdrive.app.data.local.NormalizedRoutePointEntity
+import com.socialdrive.app.domain.FutureRouteCollector
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.UploadState
 import java.util.UUID
@@ -33,32 +35,43 @@ class RecordingRepository(
     private val database: SocialDriveDatabase,
     private val ids: IdFactory = RandomIdFactory,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val routeCollector: FutureRouteCollector? = null,
 ) {
     val active: Flow<RecordingEntity?> = database.recordingDao().observeActive()
 
-    suspend fun start(): RecordingEntity = database.withTransaction {
-        database.recordingDao().findActive()?.let { return@withTransaction it }
-        RecordingEntity(
-            id = ids.create(),
-            state = LocalState.RECORDING,
-            startedAtEpochMs = clock(),
-            endedAtEpochMs = null,
-            highlightCount = 0,
-        ).also { database.recordingDao().insert(it) }
+    suspend fun start(): RecordingEntity {
+        var created = false
+        val recording = database.withTransaction {
+            database.recordingDao().findActive()?.let { return@withTransaction it }
+            RecordingEntity(
+                id = ids.create(),
+                state = LocalState.RECORDING,
+                startedAtEpochMs = clock(),
+                endedAtEpochMs = null,
+                highlightCount = 0,
+            ).also {
+                database.recordingDao().insert(it)
+                created = true
+            }
+        }
+        if (created) routeCollector?.beginRecording()
+        return recording
     }
 
     suspend fun addHighlight(id: String) {
         database.recordingDao().incrementHighlight(id)
     }
 
-    suspend fun finishAsDraft(id: String): DraftSnapshot? = database.withTransaction {
-        database.draftDao().findByRecording(id)?.toSnapshot(
-            database.recordingDao().find(id)?.highlightCount ?: 0,
-        )?.let { return@withTransaction it }
-        val recording = database.recordingDao().find(id) ?: return@withTransaction null
-        val now = clock()
-        database.recordingDao().update(recording.copy(state = LocalState.DRAFTED, endedAtEpochMs = now))
-        val draft = DraftEntity(
+    suspend fun finishAsDraft(id: String): DraftSnapshot? {
+        database.draftDao().findByRecording(id)?.let { existing ->
+            return existing.toSnapshot(database.recordingDao().find(id)?.highlightCount ?: 0)
+        }
+        val normalizedPoints = routeCollector?.snapshotAndClear().orEmpty()
+        return database.withTransaction {
+            val recording = database.recordingDao().find(id) ?: return@withTransaction null
+            val now = clock()
+            database.recordingDao().update(recording.copy(state = LocalState.DRAFTED, endedAtEpochMs = now))
+            val draft = DraftEntity(
             id = ids.create(),
             recordingId = recording.id,
             clientRequestId = "drive-${ids.create()}",
@@ -72,9 +85,15 @@ class RecordingRepository(
             createdAtEpochMs = now,
             updatedAtEpochMs = now,
             publishedAtEpochMs = null,
-        )
-        database.draftDao().insert(draft)
-        draft.toSnapshot(recording.highlightCount)
+            )
+            database.draftDao().insert(draft)
+            normalizedPoints.forEach { point ->
+                database.routePrivacyDao().insertPoint(
+                    NormalizedRoutePointEntity(recording.id, point.sequence, point.horizontal, point.vertical, "UNPUBLISHED"),
+                )
+            }
+            draft.toSnapshot(recording.highlightCount)
+        }
     }
 
     suspend fun finishActiveAsDraft(): DraftSnapshot? =
