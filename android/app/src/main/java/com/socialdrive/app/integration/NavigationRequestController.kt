@@ -65,11 +65,7 @@ internal class NavigationRequestController(
 
     @Synchronized
     fun routeStarted(token: RequestToken): ControllerUpdate =
-        if (matchesActive(token) && active?.pendingTerminal == null) {
-            ControllerUpdate.Awaiting
-        } else {
-            ControllerUpdate.Ignored
-        }
+        markTerminalPending(token, NavigationState.Active(active?.label.orEmpty()))
 
     @Synchronized
     fun routingCompleted(token: RequestToken): ControllerUpdate =

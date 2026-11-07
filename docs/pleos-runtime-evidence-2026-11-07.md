@@ -27,6 +27,10 @@ NaviHelper onRouteStarted
 
 5. PLEOS Navigation 화면에 목적지 `공개 데모 목적지`, 추천 경로, `안내 시작`이 표시되는지 확인한다.
 
+PLEOS AVD는 이 흐름에서 `onRoutingCompleted` 없이 `onRouteStarted`를 보냈다. 앱은 `onRouteStarted`를 안내 인계 성공의 종결 증거로 처리하고 요청 타임아웃을 취소한다. 15초를 지난 뒤 앱으로 돌아와도 `차량 내비게이션에서 경로를 시작했어요.`가 유지되고 잘못된 시간 초과가 표시되지 않는 것을 재검증했다.
+
+상세 화면에서 system Back을 입력했을 때 앱의 홈 화면으로 복귀하고 `MainActivity`가 focused/resumed 상태를 유지하는 것도 AVD 멀티윈도우에서 확인했다.
+
 ## 위치 저장 검증
 
 에뮬레이터에 서로 다른 GPS 좌표를 입력하고 녹화를 저장한 뒤 user 10의 Room DB/WAL을 함께 읽었다. `normalized_route_points`에는 0~1 범위의 `horizontal`, `vertical`, 연속 `sequence`, `UNPUBLISHED`만 존재했다. 원본 `latitude`/`longitude` 열은 스키마에 없다. 녹화 종료 후 설정 화면은 `현재 수집하지 않음 · 기존 동의 저장됨`으로 돌아왔다.
@@ -36,6 +40,6 @@ NaviHelper onRouteStarted
 - 실제 차량에서의 GNSS 품질, 장시간 주행, 오디오 입력·출력 품질
 - 실제 AWS 계정의 Cognito 로그인, API Gateway authorizer, S3 업로드 E2E
 - 제출용 승인 인증서로 서명한 release APK
-- 물리 PLEOS 장치의 system Back 및 멀티윈도우 수용 시험
+- 물리 PLEOS 장치의 system Back 및 멀티윈도우 수용 시험(AVD system Back은 통과)
 
 AWS 배포·IAM 변경·운영 데이터 변경과 실차 검증은 별도 승인 및 외부 환경이 필요하다.
