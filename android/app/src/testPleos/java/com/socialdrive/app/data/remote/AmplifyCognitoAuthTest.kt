@@ -133,15 +133,23 @@ class AmplifyCognitoAuthTest {
     }
 
     @Test
-    fun `유효한 저장 세션만 연결 완료로 표시한다`() {
+    fun `유효한 저장 세션만 연결 완료로 표시하고 설치 실패는 초기화 재시도를 제공한다`() {
         assertEquals(
             CloudAuthState(CloudAuthPhase.SIGNED_IN, "AWS 계정 연결됨"),
             restoredCognitoSessionState(isSignedIn = true, sessionInstalled = true),
         )
         assertEquals(
-            CloudAuthPhase.ERROR,
+            CloudAuthPhase.INITIALIZATION_ERROR,
             restoredCognitoSessionState(isSignedIn = true, sessionInstalled = false).phase,
         )
+    }
+
+    @Test
+    fun `초기화 취소는 처리 중에 머물지 않고 재시도를 제공한다`() {
+        val state = cancelledCognitoInitializationState()
+
+        assertEquals(CloudAuthPhase.INITIALIZATION_ERROR, state.phase)
+        assertTrue(state.message.contains("다시"))
     }
 
     @Test

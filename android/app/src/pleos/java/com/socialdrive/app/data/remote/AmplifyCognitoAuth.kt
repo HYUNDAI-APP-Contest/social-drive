@@ -39,6 +39,7 @@ internal class AmplifyCognitoAuth(
         val configuration = PleosCloudRuntime.configuration ?: return
         if (!operationGate.tryEnter()) return
         try {
+            mutableState.value = CloudAuthState(CloudAuthPhase.WORKING, "AWS 인증 다시 확인 중")
             try {
                 sdkInitialization.ensureConfigured(
                     addPlugin = { Amplify.addPlugin(AWSCognitoAuthPlugin()) },
@@ -51,6 +52,7 @@ internal class AmplifyCognitoAuth(
                 }
                 mutableState.value = restoredCognitoSessionState(session.isSignedIn, restored)
             } catch (cancelled: CancellationException) {
+                mutableState.value = cancelledCognitoInitializationState()
                 throw cancelled
             } catch (_: Throwable) {
                 PleosCloudRuntime.reportAuthenticationFailure("AWS · 인증 초기화 실패")
@@ -300,8 +302,16 @@ internal class AmplifyCognitoAuth(
 internal fun restoredCognitoSessionState(isSignedIn: Boolean, sessionInstalled: Boolean): CloudAuthState = when {
     !isSignedIn -> CloudAuthState(CloudAuthPhase.SIGNED_OUT, "AWS 계정에 로그인해 주세요")
     sessionInstalled -> CloudAuthState(CloudAuthPhase.SIGNED_IN, "AWS 계정 연결됨")
-    else -> CloudAuthState(CloudAuthPhase.ERROR, "저장된 AWS 세션을 다시 확인해 주세요")
+    else -> CloudAuthState(
+        CloudAuthPhase.INITIALIZATION_ERROR,
+        "저장된 AWS 세션을 다시 확인해 주세요",
+    )
 }
+
+internal fun cancelledCognitoInitializationState(): CloudAuthState = CloudAuthState(
+    CloudAuthPhase.INITIALIZATION_ERROR,
+    "AWS 인증 확인이 중단됐습니다. 다시 확인해 주세요",
+)
 
 internal fun invalidatedCognitoSessionState(current: CloudAuthState): CloudAuthState =
     if (current.phase == CloudAuthPhase.SIGNED_IN) {
