@@ -160,10 +160,23 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     }
 
     override fun refreshLocationPermission() {
-        mutableLocation.value = if (hasLocationPermission() && runCatching { fusedLocation.isSupported() }.getOrDefault(false)) {
+        val permitted = hasLocationPermission()
+        val supported = runCatching { fusedLocation.isSupported() }.getOrDefault(false)
+        mutableLocation.value = if (permitted && supported) {
             available("실차 · 위치 사용 가능")
         } else {
-            CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, "실차 · 권한 필요")
+            if (!permitted) {
+                val wasCollecting = synchronized(locationLock) {
+                    val active = locationCollecting
+                    locationCollecting = false
+                    rawLocations.clear()
+                    active
+                }
+                if (wasCollecting) runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
+                CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, "실차 · 권한 필요")
+            } else {
+                unavailable("실차 · 위치 미지원")
+            }
         }
     }
 

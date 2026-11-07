@@ -23,6 +23,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.compose.runtime.DisposableEffect
 import com.socialdrive.app.data.EnqueueResult
 import com.socialdrive.app.data.fake.FakeDriveRepository
 import com.socialdrive.app.data.local.LocalState
@@ -56,6 +60,7 @@ fun SocialDriveApp(
 ) {
     val defaultStoryDrive = remember(repository) { requireNotNull(repository.drive("demo-coast")) }
     val scope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
     val activeRecording by offlineViewModel.activeRecording.collectAsStateWithLifecycle()
     val latestDraft by offlineViewModel.latestDraft.collectAsStateWithLifecycle()
     val persistedUploadState by offlineViewModel.uploadState.collectAsStateWithLifecycle()
@@ -91,6 +96,14 @@ fun SocialDriveApp(
         } else {
             privacyMessage = "위치 권한이 거부되어 실시간 경로를 수집하지 않습니다."
         }
+    }
+
+    DisposableEffect(lifecycleOwner, offlineViewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) offlineViewModel.refreshLocationPermission()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(persistedUploadState) {
