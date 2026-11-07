@@ -90,13 +90,20 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    suspend fun startRecording() = app.recordingRepository.start()
-
-    suspend fun addHighlight() {
-        activeRecording.value?.let { app.recordingRepository.addHighlight(it.id) }
+    suspend fun startRecording() = app.recordingRepository.start().also {
+        app.auxiliaryCapabilitySource.speakFeedback("드라이브 기록을 시작합니다")
     }
 
-    suspend fun finishActiveRecording(): DraftSnapshot? = app.recordingRepository.finishActiveAsDraft()
+    suspend fun addHighlight() {
+        activeRecording.value?.let {
+            app.recordingRepository.addHighlight(it.id)
+            app.auxiliaryCapabilitySource.speakFeedback("하이라이트를 저장했습니다")
+        }
+    }
+
+    suspend fun finishActiveRecording(): DraftSnapshot? = app.recordingRepository.finishActiveAsDraft().also { draft ->
+        if (draft != null) app.auxiliaryCapabilitySource.speakFeedback("드라이브 기록을 완료했습니다")
+    }
 
     suspend fun updateDraftCopy(title: String, description: String): Boolean =
         latestDraft.value?.let { app.draftRepository.updateCopy(it.id, title, description) } ?: false

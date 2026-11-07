@@ -98,6 +98,7 @@ interface AuxiliaryCapabilitySource {
     val speechToText: StateFlow<CapabilityStatus>
 
     suspend fun initialize()
+    fun speakFeedback(message: String): Boolean
     fun release()
 }
 

@@ -94,6 +94,11 @@ private class PleosAuxiliaryCapabilitySource(context: Context) : AuxiliaryCapabi
         }.onFailure { mutableStt.value = unavailable("실차 · 초기화 실패") }
     }
 
+    override fun speakFeedback(message: String): Boolean {
+        if (mutableTts.value.capability != CapabilityState.Available || message.isBlank()) return false
+        return runCatching { tts.speak(message, false) }.isSuccess
+    }
+
     override fun release() {
         runCatching { fusedLocation.release() }
         runCatching { tts.release() }
