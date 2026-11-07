@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.domain.CapabilityState
+import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.SpeechRecognitionState
@@ -70,6 +71,7 @@ fun PublishScreen(
     onDictateTitle: () -> Boolean = { false },
     onDictateDescription: () -> Boolean = { false },
     onCancelDictation: () -> Unit = {},
+    publicationBlockReason: String? = null,
 ) {
     var title by remember(initialTitle) { mutableStateOf(initialTitle) }
     var description by remember(initialDescription) { mutableStateOf(initialDescription) }
@@ -94,6 +96,9 @@ fun PublishScreen(
             RouteSourceBadge(routeSource, Modifier.padding(start = 10.dp))
         }
         if (!canEdit) SafetyRestrictionBanner(editingRestriction, Modifier.padding(vertical = 12.dp))
+        if (publicationBlockReason != null) {
+            SafetyRestrictionBanner(publicationBlockReason, Modifier.padding(vertical = 12.dp))
+        }
         Row(
             Modifier.fillMaxSize().padding(top = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(24.dp),
@@ -194,10 +199,10 @@ fun PublishScreen(
                 when (uploadState) {
                     UploadState.Published -> Button(onClick = onDone, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("피드에서 확인하기") }
                     UploadState.Uploading -> Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("안전하게 업로드 중…") }
-                    UploadState.Failed -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canAct && consent, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("업로드 다시 시도") }
+                    UploadState.Failed -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canAct && consent && publicationBlockReason == null, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("업로드 다시 시도") }
                     UploadState.NeedsConflictReview -> Button(onClick = onReviewConflict, enabled = canAct, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("서버 버전 검토") }
                     UploadState.Queued -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = false, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("네트워크 연결을 기다리는 중") }
-                    UploadState.Draft -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canEdit && consent, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("안전하게 게시하기") }
+                    UploadState.Draft -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canEdit && consent && publicationBlockReason == null, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("안전하게 게시하기") }
                 }
             }
         }
@@ -210,6 +215,11 @@ internal fun speechRecognitionMessage(state: SpeechRecognitionState): String? = 
     SpeechRecognitionState.NoResult -> "인식된 음성이 없어요. 다시 시도해 주세요."
     SpeechRecognitionState.Cancelled -> "음성 입력을 취소했어요."
     SpeechRecognitionState.Failed -> "음성 인식을 시작하지 못했어요. 잠시 후 다시 시도해 주세요."
+}
+
+internal fun cloudPublicationBlockReason(isLocalDraft: Boolean, status: CapabilityStatus): String? {
+    if (!isLocalDraft || status.capability == CapabilityState.Available) return null
+    return "${status.label}. 설정에서 AWS 연결 상태를 확인해 주세요."
 }
 
 internal fun publishCoverPrivacyLabel(source: RouteSource): String =

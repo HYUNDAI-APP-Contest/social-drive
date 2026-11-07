@@ -50,6 +50,7 @@ import com.socialdrive.app.ui.screens.PublishScreen
 import com.socialdrive.app.ui.screens.RecordingScreen
 import com.socialdrive.app.ui.screens.RecordingStopDialog
 import com.socialdrive.app.ui.screens.SettingsScreen
+import com.socialdrive.app.ui.screens.cloudPublicationBlockReason
 import com.socialdrive.app.ui.components.memoryPaletteFor
 import com.socialdrive.app.ui.theme.SocialDriveTheme
 import kotlinx.coroutines.launch
@@ -323,6 +324,10 @@ fun SocialDriveApp(
                                 displayedDraft != null && offlineViewModel.requestDescriptionDictation()
                             },
                             onCancelDictation = offlineViewModel::cancelDictation,
+                            publicationBlockReason = cloudPublicationBlockReason(
+                                isLocalDraft = displayedDraft != null,
+                                status = cloudConnectionCapability,
+                            ),
                             memoryPalette = memoryPaletteFor(presentedStory.id),
                         )
                     }
