@@ -7,7 +7,7 @@
 2026-11-02 현재 Android 앱 PR #2의 병합 커밋 `dcffaad`가 이 작업공간 HEAD의 조상이며 `android/` 소스가 통합돼 있습니다. 제출용 서명 release APK와 clean-install 증거는 승인된 signing material 및 PLEOS AVD 검증 전이므로 아직 없습니다.
 
 - Vehicle SDK 2.3.2와 NaviHelper 3.0.5 adapter의 최초 구현 커밋은 `6475287`이며 1차 독립 검토에서 `CHANGES_REQUIRED`였습니다.
-- Issue #28 NaviHelper 경계 구현 커밋 `dd916733a528d933b7804f195d3a00ac4f6e1ba4`에서 static 50/50, Kotlin core 91/91, Demo unit 121/121, Pleos unit 109/109과 양 debug APK 재조립이 통과했습니다. Exact opt-in connected smoke는 `emulator-5554`가 연결되지 않아 instrumentation 전에 실패했으므로 실제 route callback이나 runtime 성공을 주장하지 않습니다. 이 커밋은 로컬 `origin/main` `8a068c3b72cf081d59f41686fa0e15d02e398a7b`를 포함하지만, worker가 원격 최신성을 확인한 것은 아닙니다.
+- Issue #28 NaviHelper 경계 구현 커밋 `dd916733a528d933b7804f195d3a00ac4f6e1ba4`에서 static 50/50, Kotlin core 91/91, Demo unit 121/121, Pleos unit 109/109과 양 debug APK 재조립이 통과했습니다. Exact opt-in connected smoke는 Pleos Connect 2.1.0/API 34 AVD가 연결된 상태에서 두 번 시도했지만 Android package service가 준비되지 않아 APK 설치 전 `0 tests`로 실패했으므로 실제 route callback이나 runtime 성공을 주장하지 않습니다. 이 커밋은 로컬 `origin/main` `8a068c3b72cf081d59f41686fa0e15d02e398a7b`를 포함하지만, worker가 원격 최신성을 확인한 것은 아닙니다.
 - 최신 Android 검토 HEAD는 `4f2b559116fd98ee3fe05e05fc6431b59888d0d6`입니다. PLEOS Connect Emulator 2.1.0(Android 14, user 10)에서 instrumentation 51/51, SDK-independent Kotlin 74/74, 정적 계약 29/29이 통과했습니다.
 - Gradle clean, Demo/Pleos 단위 테스트, Demo release lint, Demo Debug/Release, Pleos Debug와 Pleos AndroidTest 조립이 179개 task로 성공했습니다. Demo release 산출물은 unsigned이므로 공모전 제출용 서명·설치 검증은 아직 남아 있습니다.
 - Room v6에는 durable 409 conflict review와 parked-only published-delete tombstone, bounded retry가 구현돼 있습니다. Pleos/production cloud factory는 승인된 Cognito/API 설정과 concrete transport가 없으면 fail closed합니다.
@@ -112,7 +112,7 @@ bash scripts/build-submission-release.sh
 | Gradle | 프로젝트 wrapper 8.9 | clean/unit/lint/assemble 179 tasks 성공 |
 | Emulator | Pleos Connect Emulator 2.1.0, Android 14, user 10 | 앱 설치·UI 8/8·비UI 43/43 성공. physical system Back은 미검증 |
 | Vehicle | Vehicle SDK 2.3.2 / Vehicle Service 대응 버전 | 초기화·release 수명주기와 fail-closed Unknown 실행. 실제 permissioned state callback은 미검증 |
-| Navigation | NaviHelper 3.0.5 | permission·초기화·request·terminal·listener 제거·release의 privacy-safe 계약과 opt-in PLEOS 계측 테스트는 빌드/코어 검증. 연결 기기가 없어 실제 route callback 실기 증거는 미완료 |
+| Navigation | NaviHelper 3.0.5 | permission·초기화·request·terminal·listener 제거·release의 privacy-safe 계약과 opt-in PLEOS 계측 테스트는 빌드/코어 검증. 연결 AVD의 package service가 준비되지 않아 instrumentation은 `0 tests`; 실제 route callback 실기 증거는 미완료 |
 | AWS | Cognito JWT, DynamoDB, private S3 기반 목표 | backend `ddbd61f` 계약 포함. concrete Cognito/API host·no-redirect HTTP adapter 설정 부재로 actual cloud unavailable; AWS E2E 미실행 |
 
 P0-3A bootstrap/doctor의 과거 차단은 해소되어 build·emulator·debug APK 증거가 생겼습니다. signing secret과 keystore는 조회하지 않았고, 제출용 signed release와 actual cloud는 여전히 별도 승인·검증 경계입니다.
