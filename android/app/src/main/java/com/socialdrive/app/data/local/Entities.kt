@@ -58,6 +58,7 @@ data class UploadQueueEntity(
 data class RoutePrivacyEntity(
     @PrimaryKey val id: Int = 1,
     val consentState: String,
+    val consentPolicyVersion: String?,
     val routeSource: String,
     val unavailableReason: String?,
     val updatedAtEpochMs: Long,

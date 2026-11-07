@@ -14,6 +14,7 @@ import com.socialdrive.app.domain.PublishedDeleteDecision
 import com.socialdrive.app.domain.RouteConsentDecision
 import com.socialdrive.app.domain.RouteConsentState
 import com.socialdrive.app.domain.RoutePrivacyCoordinator
+import com.socialdrive.app.domain.RouteLocationConsentPolicy
 import com.socialdrive.app.domain.RoutePrivacyMutationStore
 import com.socialdrive.app.domain.RoutePrivacyStatus
 import com.socialdrive.app.domain.RouteSource
@@ -42,12 +43,13 @@ class RoutePrivacyRepository(
 
     val status: Flow<RoutePrivacyStatus> = combine(database.routePrivacyDao().observe(), locationCapability) { entity, capability ->
         val liveSource = capability.toRouteSource()
+        val consentState = entity.effectiveConsentState()
         RoutePrivacyStatus(
-            displayedSource = if (entity?.consentState == RouteConsentState.Granted.name && liveSource == RouteSource.LiveAvailable) {
+            displayedSource = if (consentState == RouteConsentState.Granted && liveSource == RouteSource.LiveAvailable) {
                 RouteSource.LiveAvailable
             } else RouteSource.DemoPreset,
             liveSource = liveSource,
-            consentState = entity?.consentState?.toConsentState() ?: RouteConsentState.NotAsked,
+            consentState = consentState,
         )
     }
 
@@ -56,7 +58,11 @@ class RoutePrivacyRepository(
     }
 
     suspend fun restoreCollectionIfConsented(): Boolean = mutationMutex.withLock {
-        val consent = database.routePrivacyDao().find()?.consentState?.toConsentState()
+        val entity = database.routePrivacyDao().find()
+        val consent = entity.effectiveConsentState()
+        if (entity?.consentState == RouteConsentState.Granted.name && consent != RouteConsentState.Granted) {
+            database.routePrivacyDao().upsert(RouteConsentState.NotAsked.entity(clock()))
+        }
         if (consent != RouteConsentState.Granted) return@withLock false
         coordinator().grant(locationCapability.value.toRouteSource()).shouldPersist
     }
@@ -77,7 +83,7 @@ class RoutePrivacyRepository(
     }
 
     private suspend fun coordinator(): RoutePrivacyCoordinator {
-        val initial = database.routePrivacyDao().find()?.consentState?.toConsentState() ?: RouteConsentState.NotAsked
+        val initial = database.routePrivacyDao().find().effectiveConsentState()
         return RoutePrivacyCoordinator(initial, collector, RoomRoutePrivacyMutationStore(database, clock), pendingUploads)
     }
 }
@@ -142,6 +148,7 @@ private class RoomRoutePrivacyMutationStore(
 
 private fun RouteConsentState.entity(now: Long) = RoutePrivacyEntity(
     consentState = name,
+    consentPolicyVersion = if (this == RouteConsentState.Granted) RouteLocationConsentPolicy.VERSION else null,
     routeSource = if (this == RouteConsentState.Granted) "LiveAvailable" else "DemoPreset",
     unavailableReason = null,
     updatedAtEpochMs = now,
@@ -149,3 +156,14 @@ private fun RouteConsentState.entity(now: Long) = RoutePrivacyEntity(
 
 private fun String.toConsentState(): RouteConsentState =
     RouteConsentState.entries.firstOrNull { it.name == this } ?: RouteConsentState.NotAsked
+
+private fun RoutePrivacyEntity?.effectiveConsentState(): RouteConsentState {
+    return effectiveRouteConsentState(this?.consentState, this?.consentPolicyVersion)
+}
+
+internal fun effectiveRouteConsentState(rawState: String?, policyVersion: String?): RouteConsentState {
+    val state = rawState?.toConsentState() ?: return RouteConsentState.NotAsked
+    return if (state == RouteConsentState.Granted && policyVersion != RouteLocationConsentPolicy.VERSION) {
+        RouteConsentState.NotAsked
+    } else state
+}

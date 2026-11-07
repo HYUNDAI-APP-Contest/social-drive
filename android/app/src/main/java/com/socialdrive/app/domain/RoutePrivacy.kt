@@ -8,6 +8,10 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
+object RouteLocationConsentPolicy {
+    const val VERSION = "2026-11-07.v1"
+}
+
 enum class LiveUnavailableReason { SDK_COMING_SOON, PERMISSION_DENIED, CAPABILITY_MISSING }
 
 sealed interface RouteSource {

@@ -17,7 +17,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PublishedDeleteRequestEntity::class,
         PublishConflictEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 abstract class SocialDriveDatabase : RoomDatabase() {
@@ -176,6 +176,17 @@ object RoomMigrations {
         }
     }
 
+    val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("ALTER TABLE route_privacy_state ADD COLUMN consentPolicyVersion TEXT")
+            database.execSQL("""
+                UPDATE route_privacy_state
+                SET consentState = 'NotAsked', routeSource = 'DemoPreset'
+                WHERE consentState = 'Granted'
+            """.trimIndent())
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -183,5 +194,6 @@ object RoomMigrations {
         MIGRATION_4_5,
         MIGRATION_5_6,
         MIGRATION_6_7,
+        MIGRATION_7_8,
     )
 }

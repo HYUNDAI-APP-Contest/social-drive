@@ -167,6 +167,23 @@ class RoomMigrationTest {
     }
 
     @Test
+    fun migrateSevenToEightInvalidatesUnversionedLocationConsent() {
+        helper.createDatabase(PRIVACY_POLICY_DATABASE, 7).apply {
+            execSQL("UPDATE route_privacy_state SET consentState='Granted', routeSource='LiveAvailable', updatedAtEpochMs=123 WHERE id=1")
+            close()
+        }
+
+        helper.runMigrationsAndValidate(PRIVACY_POLICY_DATABASE, 8, true, RoomMigrations.MIGRATION_7_8).use { database ->
+            database.query("SELECT consentState, consentPolicyVersion, routeSource FROM route_privacy_state WHERE id=1").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("NotAsked", cursor.getString(0))
+                assertNull(cursor.getString(1))
+                assertEquals("DemoPreset", cursor.getString(2))
+            }
+        }
+    }
+
+    @Test
     fun migrateFourToFiveBackfillsReviewableAndUnreviewableConflictsWithoutChangingDrafts() {
         helper.createDatabase(CONFLICT_DATABASE, 4).apply {
             execSQL("INSERT INTO drive_drafts VALUES ('reviewable','rec-1','request-1','local title','local body','route-memory-default','local-recording://rec-1','QUEUED','drive-remote-1',4,100,200,NULL)")
@@ -258,6 +275,7 @@ class RoomMigrationTest {
         private const val DATABASE = "migration-test"
         private const val FAILED_DATABASE = "migration-failed-repair-test"
         private const val PRIVACY_DATABASE = "migration-route-privacy-test"
+        private const val PRIVACY_POLICY_DATABASE = "migration-route-policy-test"
         private const val CONFLICT_DATABASE = "migration-conflict-review-test"
         private const val DELETE_DATABASE = "migration-delete-lifecycle-test"
         private const val DISTANCE_DATABASE = "migration-distance-test"

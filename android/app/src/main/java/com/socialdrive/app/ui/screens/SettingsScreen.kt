@@ -42,6 +42,7 @@ import com.socialdrive.app.domain.ThemeMode
 import com.socialdrive.app.domain.LiveUnavailableReason
 import com.socialdrive.app.domain.RouteConsentState
 import com.socialdrive.app.domain.RoutePrivacyStatus
+import com.socialdrive.app.domain.RouteLocationConsentPolicy
 import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.DeleteRequestState
 import com.socialdrive.app.domain.IntegrationSource
@@ -261,6 +262,33 @@ private fun PrivacySection(
     onEnableLiveRoute: () -> Unit,
     onDeleteRequest: () -> Unit,
 ) {
+    var showLiveRouteConsent by remember { mutableStateOf(false) }
+    if (showLiveRouteConsent) {
+        AlertDialog(
+            onDismissRequest = { showLiveRouteConsent = false },
+            title = { Text("실시간 경로 수집에 동의할까요?") },
+            text = {
+                Text(
+                    "기록 중에만 PLEOS 위치 SDK로 현재 위치를 처리합니다. " +
+                        "원본 위도·경도는 저장하거나 업로드하지 않고, 정규화된 경로 모양과 거리만 기기에 보관합니다. " +
+                        "설정에서 언제든 동의를 철회하고 미게시 경로를 삭제할 수 있습니다. " +
+                        "동의 정책 ${RouteLocationConsentPolicy.VERSION}",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { showLiveRouteConsent = false; onEnableLiveRoute() },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("동의하고 권한 확인") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showLiveRouteConsent = false },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("동의하지 않음") }
+            },
+        )
+    }
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -281,7 +309,7 @@ private fun PrivacySection(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 if (routePrivacy.consentState != RouteConsentState.Granted) {
                     Button(
-                        onClick = onEnableLiveRoute,
+                        onClick = { showLiveRouteConsent = true },
                         enabled = motion == MotionState.Parked,
                         modifier = Modifier.heightIn(min = 48.dp),
                     ) { Text("실시간 경로 켜기") }

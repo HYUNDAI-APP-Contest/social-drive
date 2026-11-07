@@ -49,7 +49,7 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   const database = read("app/src/main/java/com/socialdrive/app/data/local/SocialDriveDatabase.kt");
   for (const table of ["recording_sessions", "drive_drafts", "upload_queue"]) assert.match(entities, new RegExp(table));
   assert.match(database, /exportSchema\s*=\s*true/);
-  assert.match(database, /version\s*=\s*7/);
+  assert.match(database, /version\s*=\s*8/);
   assert.match(database, /Migration\(1, 2\)/);
   assert.match(database, /Migration\(2, 3\)/);
   assert.match(database, /Migration\(3, 4\)/);
@@ -69,6 +69,7 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   const schema5 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/5.json"));
   const schema6 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/6.json"));
   const schema7 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/7.json"));
+  const schema8 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/8.json"));
   assert.equal(schema1.database.version, 1);
   assert.equal(schema2.database.version, 2);
   assert.equal(schema3.database.version, 3);
@@ -76,6 +77,7 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   assert.equal(schema5.database.version, 5);
   assert.equal(schema6.database.version, 6);
   assert.equal(schema7.database.version, 7);
+  assert.equal(schema8.database.version, 8);
   const queue1 = schema1.database.entities.find((entity) => entity.tableName === "upload_queue");
   const queue2 = schema2.database.entities.find((entity) => entity.tableName === "upload_queue");
   assert.equal(queue1.fields.some((field) => field.columnName === "lastErrorCode"), false);
@@ -116,6 +118,11 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   assert.equal(distance.defaultValue, "0");
   assert.match(database, /Migration\(6, 7\)/);
   assert.match(migrationTest, /migrateSixToSevenAddsPrivacySafeAggregateDistance/);
+  const privacy8 = schema8.database.entities.find((entity) => entity.tableName === "route_privacy_state");
+  assert.ok(privacy8.fields.some((field) => field.columnName === "consentPolicyVersion"));
+  assert.match(database, /Migration\(7, 8\)/);
+  assert.match(database, /SET consentState = 'NotAsked', routeSource = 'DemoPreset'/);
+  assert.match(migrationTest, /migrateSevenToEightInvalidatesUnversionedLocationConsent/);
 });
 
 test("publish queue is stable restart-safe and keeps ephemeral credentials out of Room", () => {
