@@ -22,6 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -72,6 +73,9 @@ fun DetailScreen(
     onRequestNavigation: (NavigationRequest) -> Unit,
     onBack: () -> Unit,
     onPublish: () -> Unit,
+    remoteDetailLoading: Boolean = false,
+    remoteDetailMessage: String? = null,
+    onRetryRemoteDetail: () -> Unit = {},
 ) {
     var showCapabilitySheet by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
@@ -126,6 +130,22 @@ fun DetailScreen(
             }
         }
         if (feedback != null) SafetyRestrictionBanner(requireNotNull(feedback), Modifier.padding(horizontal = 24.dp, vertical = 4.dp))
+        if (remoteDetailLoading) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp)) {
+                Text("최신 경로와 대표 장면을 불러오고 있어요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp))
+            }
+        } else if (remoteDetailMessage != null) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SafetyRestrictionBanner(remoteDetailMessage, Modifier.weight(1f))
+                TextButton(onClick = onRetryRemoteDetail, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text("다시 시도")
+                }
+            }
+        }
         Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 24.dp)) {
             Card(Modifier.fillMaxSize(), shape = MaterialTheme.shapes.large) {
                 Box(Modifier.fillMaxSize()) {

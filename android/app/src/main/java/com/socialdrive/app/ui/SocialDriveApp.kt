@@ -104,6 +104,8 @@ fun SocialDriveApp(
     }
     var hydratedDraftId by rememberSaveable { mutableStateOf<String?>(null) }
     var ephemeralCloudDetail by remember { mutableStateOf<DriveSummary?>(null) }
+    var cloudDetailLoading by remember { mutableStateOf(false) }
+    var cloudDetailMessage by remember { mutableStateOf<String?>(null) }
     var demoUploadState by rememberSaveable { mutableStateOf<UploadState?>(null) }
     var stopConfirmationRequested by rememberSaveable { mutableStateOf(false) }
     var privacyMessage by rememberSaveable { mutableStateOf<String?>(null) }
@@ -188,6 +190,24 @@ fun SocialDriveApp(
             if (destination == AppDestination.Publish) offlineViewModel.cancelDictationIfActive()
             blockedMessage = decision.reason
             destination = AppDestination.Home
+        }
+    }
+
+    fun requestCloudDetail(id: String) {
+        if (!id.startsWith("cloud-")) return
+        cloudDetailLoading = true
+        cloudDetailMessage = null
+        scope.launch {
+            val detailed = offlineViewModel.loadDriveDetail(id)
+            if (memoryStory.driveId != id) return@launch
+            cloudDetailLoading = false
+            if (detailed == null) {
+                cloudDetailMessage = "최신 상세 정보를 불러오지 못했어요. 저장된 요약을 표시합니다."
+            } else {
+                ephemeralCloudDetail = detailed
+                cloudDetailMessage = null
+                memoryStory = memoryStory.select(detailed)
+            }
         }
     }
 
@@ -279,20 +299,13 @@ fun SocialDriveApp(
                         onDetail = { id ->
                             homeDrives.firstOrNull { it.id == id }?.let { drive ->
                                 ephemeralCloudDetail = null
+                                cloudDetailLoading = false
+                                cloudDetailMessage = null
                                 if (id.startsWith("local-")) {
                                     offlineViewModel.selectDraft(id.removePrefix("local-"))
                                 }
                                 memoryStory = memoryStory.select(drive)
-                                if (id.startsWith("cloud-")) {
-                                    scope.launch {
-                                        offlineViewModel.loadDriveDetail(id)?.let { detailed ->
-                                            if (memoryStory.driveId == id) {
-                                                ephemeralCloudDetail = detailed
-                                                memoryStory = memoryStory.select(detailed)
-                                            }
-                                        }
-                                    }
-                                }
+                                requestCloudDetail(id)
                             }
                             navigate(AppDestination.Detail)
                         },
@@ -319,6 +332,9 @@ fun SocialDriveApp(
                         },
                         onBack = { navigate(AppDestination.Home) },
                         onPublish = { navigate(AppDestination.Publish) },
+                        remoteDetailLoading = cloudDetailLoading,
+                        remoteDetailMessage = cloudDetailMessage,
+                        onRetryRemoteDetail = { requestCloudDetail(presentedStory.id) },
                     )
                     AppDestination.Recording -> RecordingScreen(
                         snapshot = RecordingSnapshot(
