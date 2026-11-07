@@ -86,6 +86,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private val mutableRecognitionActive = MutableStateFlow(false)
     private val mutableRecognitionState = MutableStateFlow(SpeechRecognitionState.Idle)
     private val locationLock = Any()
+    private val locationOperationLock = Any()
     private val recognitionLock = Any()
     private val speechOperationLock = Any()
     private val rawLocations = BoundedRouteBuffer(MAX_ROUTE_POINTS)
@@ -243,6 +244,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     }
 
     override fun refreshLocationPermission() {
+        if (released) return
         val permitted = hasLocationPermission()
         val supported = runCatching { fusedLocation.isSupported() }.getOrDefault(false)
         if (permitted && supported) {
@@ -260,7 +262,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
                 rawLocations.clear()
                 active
             }
-            if (wasCollecting) runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
+            if (wasCollecting) unregisterLocationCallback()
             mutableLocation.value = if (!permitted) {
                 CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, "실차 · 권한 필요")
             } else {
@@ -329,6 +331,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     }
 
     override suspend fun start() {
+        if (released) return
         check(mutableLocation.value.capability == CapabilityState.Available)
         val shouldRegister = synchronized(locationLock) {
             collectionAuthorized = true
@@ -340,6 +343,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     }
 
     override suspend fun beginRecording() {
+        if (released) return
         val shouldRegister = synchronized(locationLock) {
             rawLocations.clear()
             recordingRequested = true
@@ -360,7 +364,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             locationCollecting = false
             points to active
         }
-        if (wasCollecting) runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
+        if (wasCollecting) unregisterLocationCallback()
         val plausibleTrack = RouteDistance.plausibleTrack(snapshot)
         return CollectedRoute(
             points = RouteNormalizer.normalize(plausibleTrack),
@@ -369,20 +373,31 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     }
 
     override suspend fun stopAndAwait() {
+        if (released) return
         synchronized(locationLock) {
             collectionAuthorized = false
             recordingRequested = false
             locationCollecting = false
             rawLocations.clear()
         }
-        runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
+        unregisterLocationCallback()
     }
 
     private fun registerLocationCallback() {
-        runCatching { fusedLocation.registerFusedLocationCallback(locationListener) }
+        val result = synchronized(locationOperationLock) {
+            if (released) return
+            runCatching { fusedLocation.registerFusedLocationCallback(locationListener) }
+        }
+        result
             .onFailure {
                 deactivateLocationCollection("실차 · 위치 연결 실패", unregister = false)
             }
+    }
+
+    private fun unregisterLocationCallback() {
+        synchronized(locationOperationLock) {
+            runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
+        }
     }
 
     private fun deactivateLocationCollection(label: String, unregister: Boolean = true) {
@@ -394,7 +409,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         }
         mutableLocation.value = unavailable(label)
         if (unregister && wasCollecting) {
-            lifecycleScope.launch { runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) } }
+            lifecycleScope.launch { unregisterLocationCallback() }
         }
     }
 
@@ -408,6 +423,13 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, label)
 
     override fun release() {
+        val shouldRelease = synchronized(speechOperationLock) {
+            if (released) false else {
+                released = true
+                true
+            }
+        }
+        if (!shouldRelease) return
         lifecycleJob.cancel()
         synchronized(locationLock) {
             collectionAuthorized = false
@@ -415,15 +437,16 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             locationCollecting = false
             rawLocations.clear()
         }
-        runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
+        unregisterLocationCallback()
         synchronized(speechOperationLock) {
-            released = true
             stopSpeechRecognition()
             runCatching { stt.removeListener(recognitionListener) }
             runCatching { tts.release() }
             runCatching { stt.release() }
         }
-        runCatching { fusedLocation.release() }
+        synchronized(locationOperationLock) {
+            runCatching { fusedLocation.release() }
+        }
     }
 }
 
