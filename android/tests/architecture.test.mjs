@@ -438,6 +438,16 @@ test("a new publish session clears stale speech recognition feedback", () => {
   assert.match(app, /target == AppDestination\.Publish[\s\S]*resetDictationFeedback\(\)/);
 });
 
+test("speech recognition stops whenever the publish surface loses ownership", () => {
+  const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");
+  const app = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
+  assert.match(viewModel, /fun cancelDictationIfActive\(\)[\s\S]*speechRecognitionActive\.value[\s\S]*stopSpeechRecognition\(\)/);
+  assert.match(app, /Lifecycle\.Event\.ON_STOP[\s\S]*cancelDictationIfActive\(\)/);
+  assert.match(app, /destination == AppDestination\.Publish && target != AppDestination\.Publish[\s\S]*cancelDictationIfActive\(\)/);
+  assert.match(app, /LaunchedEffect\(motion\)[\s\S]*destination == AppDestination\.Publish[\s\S]*cancelDictationIfActive\(\)/);
+  assert.match(app, /BackHandler[\s\S]*destination == AppDestination\.Publish[\s\S]*cancelDictationIfActive\(\)/);
+});
+
 test("actual adapters fail closed and never fall back to demo state", () => {
   const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
   const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");

@@ -114,6 +114,8 @@ fun SocialDriveApp(
             if (event == Lifecycle.Event.ON_RESUME) {
                 offlineViewModel.refreshLocationPermission()
                 offlineViewModel.refreshSpeechPermissions()
+            } else if (event == Lifecycle.Event.ON_STOP) {
+                offlineViewModel.cancelDictationIfActive()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -131,6 +133,7 @@ fun SocialDriveApp(
     LaunchedEffect(activeRecording?.id) {
         val recovered = recoverRecordingDestination(destination, activeRecording != null)
         if (recovered != destination) {
+            if (destination == AppDestination.Publish) offlineViewModel.cancelDictationIfActive()
             blockedMessage = null
             destination = recovered
         }
@@ -153,6 +156,7 @@ fun SocialDriveApp(
     }
     LaunchedEffect(motion) {
         if (motion != MotionState.Parked && destination !in setOf(AppDestination.Home, AppDestination.Recording)) {
+            if (destination == AppDestination.Publish) offlineViewModel.cancelDictationIfActive()
             blockedMessage = "주차 상태를 확인할 수 없어 안전 화면으로 돌아왔어요."
             destination = AppDestination.Home
         }
@@ -160,10 +164,14 @@ fun SocialDriveApp(
     fun navigate(target: AppDestination) {
         val decision = SafetyPolicy.canNavigate(target, motion)
         if (decision.allowed) {
+            if (destination == AppDestination.Publish && target != AppDestination.Publish) {
+                offlineViewModel.cancelDictationIfActive()
+            }
             if (target == AppDestination.Publish) offlineViewModel.resetDictationFeedback()
             blockedMessage = null
             destination = target
         } else {
+            if (destination == AppDestination.Publish) offlineViewModel.cancelDictationIfActive()
             blockedMessage = decision.reason
             destination = AppDestination.Home
         }
@@ -194,7 +202,10 @@ fun SocialDriveApp(
 
     BackHandler(destination != AppDestination.Home) {
         if (destination == AppDestination.Recording) stopConfirmationRequested = true
-        else destination = AppDestination.Home
+        else {
+            if (destination == AppDestination.Publish) offlineViewModel.cancelDictationIfActive()
+            destination = AppDestination.Home
+        }
     }
 
     SocialDriveTheme(theme) {
