@@ -458,6 +458,13 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     }
 
     private fun registerLocationCallback() {
+        if (!hasLocationPermission()) {
+            deactivateLocationCollection(
+                label = "실차 · 권한 필요",
+                status = CapabilityState.PermissionDenied,
+            )
+            return
+        }
         var attemptedListener: FusedLocationListener? = null
         val result = synchronized(locationOperationLock) {
             if (released) return
@@ -503,8 +510,22 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             override fun onChanged(location: LocationData?) {
                 location ?: return
                 val coordinate = RawRouteCoordinate.fromOrNull(location.longitude, location.latitude) ?: return
-                synchronized(locationLock) {
-                    if (registeredLocationListener === listener && locationCollecting) rawLocations.offer(coordinate)
+                val permissionGranted = hasLocationPermission()
+                val accepted = synchronized(locationLock) {
+                    locationSampleAccepted(
+                        listenerMatches = registeredLocationListener === listener,
+                        collecting = locationCollecting,
+                        authorized = collectionAuthorized,
+                        recording = recordingRequested,
+                        permissionGranted = permissionGranted,
+                    ).also { if (it) rawLocations.offer(coordinate) }
+                }
+                if (!accepted && !permissionGranted) {
+                    deactivateLocationCollection(
+                        label = "실차 · 권한 필요",
+                        status = CapabilityState.PermissionDenied,
+                        expectedListener = listener,
+                    )
                 }
             }
 
@@ -517,6 +538,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
 
     private fun deactivateLocationCollection(
         label: String,
+        status: CapabilityState = CapabilityState.Unavailable,
         unregister: Boolean = true,
         expectedListener: FusedLocationListener? = null,
     ) {
@@ -526,7 +548,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             rawLocations.clear()
             detachLocationListenerLocked()
         }
-        mutableLocation.value = unavailable(label)
+        mutableLocation.value = CapabilityStatus(status, IntegrationSource.Actual, label)
         if (unregister && listener != null) {
             lifecycleScope.launch { unregisterLocationCallback(listener) }
         }
@@ -570,6 +592,14 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         }
     }
 }
+
+internal fun locationSampleAccepted(
+    listenerMatches: Boolean,
+    collecting: Boolean,
+    authorized: Boolean,
+    recording: Boolean,
+    permissionGranted: Boolean,
+): Boolean = listenerMatches && collecting && authorized && recording && permissionGranted
 
 private const val FUSED_LOCATION_PERMISSION = "pleos.car.permission.FUSED_LOCATION"
 private const val TTS_PERMISSION = "pleos.car.permission.TTS_SERVICE"
