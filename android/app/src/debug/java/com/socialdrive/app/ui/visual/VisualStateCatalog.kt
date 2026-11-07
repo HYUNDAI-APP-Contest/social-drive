@@ -12,9 +12,12 @@ import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.ContentState
 import com.socialdrive.app.domain.IntegrationSource
+import com.socialdrive.app.domain.LiveUnavailableReason
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.NavigationState
 import com.socialdrive.app.domain.RecordingSnapshot
+import com.socialdrive.app.domain.RouteConsentState
+import com.socialdrive.app.domain.RoutePrivacyStatus
 import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.ThemeMode
 import com.socialdrive.app.domain.UploadState
@@ -80,6 +83,11 @@ fun VisualScenarioFixture(
                         theme = theme,
                         vehicleStatus = demoVehicle,
                         navigationStatus = unavailableNavigation,
+                        routePrivacy = RoutePrivacyStatus(
+                            displayedSource = RouteSource.DemoPreset,
+                            liveSource = RouteSource.LiveUnavailable(LiveUnavailableReason.PERMISSION_DENIED),
+                            consentState = RouteConsentState.Granted,
+                        ),
                         onThemeChange = {},
                         onBack = {},
                     )
