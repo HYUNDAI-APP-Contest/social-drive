@@ -7,6 +7,26 @@ import org.junit.Test
 
 class AmplifyCognitoAuthTest {
     @Test
+    fun `저장된 세션이 없으면 오류가 아닌 로그인 대기로 표시한다`() {
+        assertEquals(
+            CloudAuthState(CloudAuthPhase.SIGNED_OUT, "AWS 계정에 로그인해 주세요"),
+            restoredCognitoSessionState(isSignedIn = false, sessionInstalled = false),
+        )
+    }
+
+    @Test
+    fun `유효한 저장 세션만 연결 완료로 표시한다`() {
+        assertEquals(
+            CloudAuthState(CloudAuthPhase.SIGNED_IN, "AWS 계정 연결됨"),
+            restoredCognitoSessionState(isSignedIn = true, sessionInstalled = true),
+        )
+        assertEquals(
+            CloudAuthPhase.ERROR,
+            restoredCognitoSessionState(isSignedIn = true, sessionInstalled = false).phase,
+        )
+    }
+
+    @Test
     fun `TOTP와 문자 MFA를 사용자에게 구분해서 안내한다`() {
         assertEquals("인증 앱 코드", AuthSignInStep.CONFIRM_SIGN_IN_WITH_TOTP_CODE.challengeLabel())
         assertEquals("문자 인증코드", AuthSignInStep.CONFIRM_SIGN_IN_WITH_SMS_MFA_CODE.challengeLabel())

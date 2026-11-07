@@ -28,15 +28,11 @@ internal class AmplifyCognitoAuth(
             Amplify.addPlugin(AWSCognitoAuthPlugin())
             Amplify.configure(amplifyConfiguration(configuration.cognito), context)
             val session = fetchCognitoSession()
-            if (session.isSignedIn) {
-                val restored = PleosCloudRuntime.installSessionSource(this)
-                mutableState.value = if (restored) signedInState() else {
-                    CloudAuthState(CloudAuthPhase.ERROR, "저장된 AWS 세션을 다시 확인해 주세요")
-                }
-            } else {
+            val restored = session.isSignedIn && PleosCloudRuntime.installSessionSource(this)
+            if (!session.isSignedIn) {
                 PleosCloudRuntime.clearSessionSource()
-                mutableState.value = signedOutState()
             }
+            mutableState.value = restoredCognitoSessionState(session.isSignedIn, restored)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
@@ -192,8 +188,14 @@ internal class AmplifyCognitoAuth(
         CloudAuthState(CloudAuthPhase.WORKING, "AWS 인증 준비 중")
     }
 
-    private fun signedOutState() = CloudAuthState(CloudAuthPhase.SIGNED_OUT, "AWS 계정에 로그인해 주세요")
+    private fun signedOutState() = restoredCognitoSessionState(isSignedIn = false, sessionInstalled = false)
     private fun signedInState() = CloudAuthState(CloudAuthPhase.SIGNED_IN, "AWS 계정 연결됨")
+}
+
+internal fun restoredCognitoSessionState(isSignedIn: Boolean, sessionInstalled: Boolean): CloudAuthState = when {
+    !isSignedIn -> CloudAuthState(CloudAuthPhase.SIGNED_OUT, "AWS 계정에 로그인해 주세요")
+    sessionInstalled -> CloudAuthState(CloudAuthPhase.SIGNED_IN, "AWS 계정 연결됨")
+    else -> CloudAuthState(CloudAuthPhase.ERROR, "저장된 AWS 세션을 다시 확인해 주세요")
 }
 
 internal fun AuthSignInStep.challengeLabel(): String? = when (this) {
