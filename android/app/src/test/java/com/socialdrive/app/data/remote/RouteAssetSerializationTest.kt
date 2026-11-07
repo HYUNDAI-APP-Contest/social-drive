@@ -6,8 +6,24 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import java.security.MessageDigest
 
 class RouteAssetSerializationTest {
+    @Test
+    fun `대표 이미지는 피드에서 렌더링할 수 있는 유효 JPEG 자산이다`() {
+        val cover = draft(emptyList()).assetUploads().single { it.kind == AssetKind.COVER }
+
+        assertEquals("image/jpeg", cover.contentType)
+        assertTrue(cover.content.size > 1_024)
+        assertEquals(0xff.toByte(), cover.content[0])
+        assertEquals(0xd8.toByte(), cover.content[1])
+        assertEquals(0xff.toByte(), cover.content[cover.content.lastIndex - 1])
+        assertEquals(0xd9.toByte(), cover.content.last())
+        val checksum = MessageDigest.getInstance("SHA-256").digest(cover.content)
+            .joinToString("") { "%02x".format(it) }
+        assertEquals(checksum, cover.checksumSha256Hex)
+    }
+
     @Test
     fun `정규화 경로만 업로드 문서에 직렬화한다`() {
         val draft = draft(

@@ -40,7 +40,7 @@ data class RemotePublishAck(val version: Int)
 
 fun DraftSnapshot.assetUploads(): List<AssetUploadCommand> {
     // Contest-safe placeholders contain no original local reference, coordinate, or raw vehicle field.
-    val cover = byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0xd9.toByte())
+    val cover = PublicationCover.bytes()
     val route = routeDocument().toByteArray(Charsets.UTF_8)
     return listOf(
         uploadCommand(AssetKind.COVER, "route-memory-cover-v1", "image/jpeg", cover),
