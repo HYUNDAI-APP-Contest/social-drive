@@ -38,7 +38,6 @@ import com.socialdrive.app.domain.ConflictReviewDecision
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.NavigationRequestResult
 import com.socialdrive.app.domain.RecordingSnapshot
-import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.ThemeMode
 import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.domain.PublishedDeleteDecision
@@ -136,8 +135,9 @@ fun SocialDriveApp(
     LaunchedEffect(latestDraft?.id, latestDraft?.highlightCount, activeRecording?.id) {
         val draft = latestDraft
         if (activeRecording == null && draft != null && hydratedDraftId != draft.id) {
-            val recoveredStory = repository.drive(draft.storyId) ?: defaultStoryDrive
-            memoryStory = MemoryStoryPresentation.browsing(recoveredStory).finishDraft(draft.highlightCount)
+            val fallback = repository.drive(draft.storyId) ?: defaultStoryDrive
+            val localStory = draft.toLocalDriveSummary(fallback)
+            memoryStory = MemoryStoryPresentation.browsing(localStory).finishDraft(draft.highlightCount)
             hydratedDraftId = draft.id
         }
     }
@@ -167,7 +167,9 @@ fun SocialDriveApp(
                 destination = AppDestination.Home
                 return@launch
             }
-            memoryStory = memoryStory.finishDraft(draft.highlightCount)
+            val fallback = repository.drive(draft.storyId) ?: defaultStoryDrive
+            memoryStory = MemoryStoryPresentation.browsing(draft.toLocalDriveSummary(fallback))
+                .finishDraft(draft.highlightCount)
             hydratedDraftId = draft.id
             demoUploadState = null
             if (motion == MotionState.Parked) {
@@ -187,12 +189,15 @@ fun SocialDriveApp(
     SocialDriveTheme(theme) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
             Box(Modifier.fillMaxSize()) {
-                val storyBase = repository.drive(memoryStory.driveId) ?: defaultStoryDrive
+                val localDraftDrive = latestDraft?.let { draft ->
+                    draft.toLocalDriveSummary(repository.drive(draft.storyId) ?: defaultStoryDrive)
+                }
+                val homeDrives = listOfNotNull(localDraftDrive) + repository.drives()
+                val storyBase = localDraftDrive?.takeIf { it.id == memoryStory.driveId }
+                    ?: repository.drive(memoryStory.driveId)
+                    ?: defaultStoryDrive
                 val presentedStory = memoryStory.present(storyBase)
-                val displayedRoute = latestDraft?.routePoints
-                    ?.takeIf { it.size >= 2 }
-                    ?.map { RoutePoint(it.horizontal, it.vertical) }
-                    ?: presentedStory.route
+                val displayedRoute = presentedStory.route
                 if (destination == AppDestination.Recording && stopConfirmationRequested) {
                     RecordingStopDialog(
                         motion = motion,
@@ -207,12 +212,12 @@ fun SocialDriveApp(
                 ) { activeDestination ->
                 when (activeDestination) {
                     AppDestination.Home -> HomeScreen(
-                        state = ContentState.Content(repository.drives()),
+                        state = ContentState.Content(homeDrives),
                         motion = motion,
                         vehicleStatus = vehicleMotion.integration,
                         blockedMessage = blockedMessage,
                         onDetail = { id ->
-                            repository.drive(id)?.let { memoryStory = memoryStory.select(it) }
+                            homeDrives.firstOrNull { it.id == id }?.let { memoryStory = memoryStory.select(it) }
                             navigate(AppDestination.Detail)
                         },
                         onRecord = {
@@ -290,8 +295,8 @@ fun SocialDriveApp(
                             },
                             routeSource = routePrivacy.displayedSource,
                             onReviewConflict = { navigate(AppDestination.ConflictReview) },
-                            route = displayedRoute,
-                            highlightCount = presentedStory.highlights,
+                            route = localDraftDrive?.route ?: displayedRoute,
+                            highlightCount = latestDraft?.highlightCount ?: presentedStory.highlights,
                             speechRecognition = speechToTextCapability.capability,
                             speechRecognitionActive = speechRecognitionActive,
                             onDictateTitle = offlineViewModel::requestTitleDictation,

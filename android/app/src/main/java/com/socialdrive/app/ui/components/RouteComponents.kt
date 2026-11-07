@@ -242,6 +242,7 @@ fun DriveSummaryCard(
                 palette = memoryPaletteFor(drive.id),
                 momentCount = drive.highlights,
                 compact = true,
+                routeSource = drive.routeSource,
                 modifier = Modifier.fillMaxSize(),
             )
             Column(
@@ -295,9 +296,9 @@ private fun Metric(icon: androidx.compose.ui.graphics.vector.ImageVector, text: 
 }
 
 @Composable
-fun DemoDataBadge(modifier: Modifier = Modifier) {
+fun DemoDataBadge(label: String = "데모 데이터", modifier: Modifier = Modifier) {
     Surface(modifier, shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = .86f)) {
-        Text("데모 데이터", Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+        Text(label, Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
     }
 }
 

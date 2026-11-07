@@ -133,6 +133,7 @@ fun DetailScreen(
                         palette = memoryPaletteFor(drive.id),
                         momentCount = drive.moments.size,
                         selectedMomentIndex = selectedMomentIndex.takeIf { drive.moments.isNotEmpty() },
+                        routeSource = drive.routeSource,
                         modifier = Modifier.fillMaxSize(),
                     )
                     Surface(
@@ -143,7 +144,11 @@ fun DetailScreen(
                         Column(Modifier.padding(16.dp)) {
                             RouteSourceBadge(drive.routeSource)
                             Text(
-                                "개인 위치를 제거한 비정밀 경로 아트워크",
+                                if (drive.routeSource == com.socialdrive.app.domain.RouteSource.LiveAvailable) {
+                                    "원본 위치를 제거한 정규화 경로 아트워크"
+                                } else {
+                                    "개인 위치를 제거한 비정밀 경로 아트워크"
+                                },
                                 Modifier.padding(top = 8.dp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

@@ -145,8 +145,10 @@ android {
 }
 
 afterEvaluate {
-    tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileDemoDebugScreenshotTestKotlin") {
-        kotlinOptions.freeCompilerArgs += "-Xskip-metadata-version-check"
+    listOf("Demo", "Pleos").forEach { flavor ->
+        tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compile${flavor}DebugScreenshotTestKotlin") {
+            kotlinOptions.freeCompilerArgs += "-Xskip-metadata-version-check"
+        }
     }
 }
 

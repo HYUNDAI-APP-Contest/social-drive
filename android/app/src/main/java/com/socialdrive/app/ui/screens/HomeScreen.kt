@@ -63,6 +63,11 @@ fun HomeScreen(
         return
     }
     var selectedFilter by rememberSaveable { mutableStateOf(DriveFilter.All) }
+    val hasLocalDrive = when (state) {
+        is ContentState.Content -> state.value.any { it.id.startsWith("local-") }
+        is ContentState.Offline -> state.cached.any { it.id.startsWith("local-") }
+        else -> false
+    }
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier
@@ -76,7 +81,7 @@ fun HomeScreen(
                 Text("오늘의 드라이브", style = MaterialTheme.typography.headlineLarge)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("좋았던 길과 순간을 안전하게 남겨요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    DemoDataBadge()
+                    DemoDataBadge(if (hasLocalDrive) "기기 기록 · 데모 데이터" else "데모 데이터")
                 }
             }
             Button(
