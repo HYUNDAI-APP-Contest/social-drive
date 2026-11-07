@@ -665,6 +665,7 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
 
 test("PLEOS cloud build gate validates all public deployment outputs without secret fields", () => {
   const build = read("app/build.gradle.kts");
+  const runtimeConfig = read("app/src/main/java/com/socialdrive/app/data/remote/CloudRuntimeConfiguration.kt");
   const handoff = read("../docs/aws-app-connection.md");
   const auth = read("app/src/pleos/java/com/socialdrive/app/data/remote/AmplifyCognitoAuth.kt");
   const inputPolicy = read("app/src/main/java/com/socialdrive/app/data/remote/CloudAuthInputPolicy.kt");
@@ -676,6 +677,9 @@ test("PLEOS cloud build gate validates all public deployment outputs without sec
     "apiBaseUrl", "uploadHosts", "consentPolicyVersion", "cognitoRegion", "cognitoUserPoolId", "cognitoClientId",
   ]) assert.ok(build.includes(`\"${marker}\"`), marker);
   assert.match(build, /PLEOS cloud public configuration verified/);
+  assert.match(build, /approvedConsentPolicyVersion = "2026-11-07\.v1"/);
+  assert.match(build, /policy != approvedConsentPolicyVersion/);
+  assert.match(runtimeConfig, /consentPolicyVersion != RouteLocationConsentPolicy\.VERSION/);
   assert.match(build, /!isValidCloudHost\(apiUri\.host\.lowercase\(\)\)/);
   assert.doesNotMatch(build, /cloud.*(?:secret|password|accessKey)/i);
   assert.match(auth, /CloudAuthInputPolicy\.acceptsCredentials/);

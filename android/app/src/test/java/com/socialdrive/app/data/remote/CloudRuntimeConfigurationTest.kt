@@ -10,7 +10,7 @@ class CloudRuntimeConfigurationTest {
         val config = CloudRuntimeConfiguration.parse(
             "https://api.example.com/v1",
             "upload-a.example.com, upload-b.example.com",
-            "2026-11-07",
+            "2026-11-07.v1",
             "ap-northeast-2",
             "ap-northeast-2_AbCdEf123",
             "1234567890abcdefghijklmnop",
@@ -42,16 +42,23 @@ class CloudRuntimeConfigurationTest {
         assertNull(valid(cognitoClientId = "secret-is-not-a-client-id"))
     }
 
+    @Test
+    fun `앱에서 동의한 정책과 다른 클라우드 정책은 거부한다`() {
+        assertNull(valid(consentPolicyVersion = "2026-11-07"))
+        assertNull(valid(consentPolicyVersion = "2026-11-08.v1"))
+    }
+
     private fun valid(
         apiBaseUrl: String = "https://api.example.com/prod",
         uploadHosts: String = "upload.example.com",
         cognitoRegion: String = "ap-northeast-2",
         cognitoUserPoolId: String = "ap-northeast-2_AbCdEf123",
         cognitoClientId: String = "1234567890abcdefghijklmnop",
+        consentPolicyVersion: String = "2026-11-07.v1",
     ) = CloudRuntimeConfiguration.parse(
         apiBaseUrl,
         uploadHosts,
-        "2026-11-07",
+        consentPolicyVersion,
         cognitoRegion,
         cognitoUserPoolId,
         cognitoClientId,

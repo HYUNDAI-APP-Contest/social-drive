@@ -16,8 +16,8 @@ Parameters:
     MinValue: 1
   ConsentPolicyVersion:
     Type: String
-    Default: '2026-11-07'
-    AllowedPattern: '^[A-Za-z0-9._-]{1,32}$'
+    Default: '2026-11-07.v1'
+    AllowedValues: ['2026-11-07.v1']
 
 Conditions:
   CreateBudget: !Not [!Equals [!Ref BudgetEmail, '']]
@@ -36,6 +36,7 @@ Globals:
         MEDIA_BUCKET: !Ref MediaBucket
         UPLOAD_URL_TTL_SECONDS: '600'
         READ_URL_TTL_SECONDS: '300'
+        CONSENT_POLICY_VERSION: !Ref ConsentPolicyVersion
 
 Resources:
   UserPool:

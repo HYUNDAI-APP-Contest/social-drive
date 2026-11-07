@@ -72,7 +72,8 @@ const logger = {
   warn(value) { logs.push({ requestId: value.requestId, routeKey: value.routeKey, status: value.status, errorCode: value.errorCode }); },
 };
 const handler = createHandler({
-  repository, assets, clock: () => new Date(NOW), ids: { driveId: () => DRIVE_ID, cursor: () => "contract_cursor_000000000000000000000000" }, logger,
+  repository, assets, consentPolicyVersion: "2026-11-01", clock: () => new Date(NOW),
+  ids: { driveId: () => DRIVE_ID, cursor: () => "contract_cursor_000000000000000000000000" }, logger,
 });
 
 function header(headers, name) {

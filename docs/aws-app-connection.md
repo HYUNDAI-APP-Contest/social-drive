@@ -18,13 +18,13 @@
 ```text
 -PsocialDrive.cloud.apiBaseUrl=https://.../prod
 -PsocialDrive.cloud.uploadHosts=bucket.s3.ap-northeast-2.amazonaws.com
--PsocialDrive.cloud.consentPolicyVersion=2026-11-07
+-PsocialDrive.cloud.consentPolicyVersion=2026-11-07.v1
 -PsocialDrive.cloud.cognitoRegion=ap-northeast-2
 -PsocialDrive.cloud.cognitoUserPoolId=ap-northeast-2_XXXXXXXXX
 -PsocialDrive.cloud.cognitoClientId=xxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-출력값을 받은 뒤 APK를 만들기 전에 같은 `-P` 인자와 함께 다음 게이트를 실행한다. 이 작업은 값을 로그에 출력하지 않고 누락, HTTP URL, 스킴이 포함된 업로드 호스트, 리전이 다른 User Pool, 잘못된 모바일 Client ID를 거부한다.
+출력값을 받은 뒤 APK를 만들기 전에 같은 `-P` 인자와 함께 다음 게이트를 실행한다. 이 작업은 값을 로그에 출력하지 않고 누락, HTTP URL, 스킴이 포함된 업로드 호스트, 앱 동의 정책과 다른 정책 버전, 리전이 다른 User Pool, 잘못된 모바일 Client ID를 거부한다. API도 `2026-11-07.v1`과 다른 동의 버전의 초안 생성을 거부한다.
 
 ```text
 ./gradlew verifyPleosCloudConfiguration

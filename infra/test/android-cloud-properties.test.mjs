@@ -7,7 +7,7 @@ const outputs = {
     Outputs: [
       { OutputKey: "ApiUrl", OutputValue: "https://api.example.com/dev" },
       { OutputKey: "UploadHost", OutputValue: "uploads.example.com" },
-      { OutputKey: "ConsentPolicyVersion", OutputValue: "2026-11-07" },
+      { OutputKey: "ConsentPolicyVersion", OutputValue: "2026-11-07.v1" },
       { OutputKey: "CloudRegion", OutputValue: "ap-northeast-2" },
       { OutputKey: "UserPoolId", OutputValue: "ap-northeast-2_Abc123XYZ" },
       { OutputKey: "UserPoolClientId", OutputValue: "abcdefghijklmnopqrstuvwxyz" },
@@ -21,7 +21,7 @@ test("converts approved stack outputs to the six Android public properties", () 
   assert.deepEqual(rendered.trim().split("\n"), [
     "socialDrive.cloud.apiBaseUrl=https://api.example.com/dev",
     "socialDrive.cloud.uploadHosts=uploads.example.com",
-    "socialDrive.cloud.consentPolicyVersion=2026-11-07",
+    "socialDrive.cloud.consentPolicyVersion=2026-11-07.v1",
     "socialDrive.cloud.cognitoRegion=ap-northeast-2",
     "socialDrive.cloud.cognitoUserPoolId=ap-northeast-2_Abc123XYZ",
     "socialDrive.cloud.cognitoClientId=abcdefghijklmnopqrstuvwxyz",
@@ -45,6 +45,7 @@ test("rejects malformed or internally inconsistent public cloud outputs", () => 
     ["ApiUrl", " https://api.example.com/dev", /ApiUrl/],
     ["UploadHost", "https://uploads.example.com/path", /UploadHost/],
     ["ConsentPolicyVersion", "policy version", /ConsentPolicyVersion/],
+    ["ConsentPolicyVersion", "2026-11-07", /ConsentPolicyVersion/],
     ["CloudRegion", "ap-northeast-1", /Cognito/],
     ["UserPoolId", "ap-northeast-2_too-short", /Cognito/],
     ["UserPoolClientId", "too-short", /Cognito/],

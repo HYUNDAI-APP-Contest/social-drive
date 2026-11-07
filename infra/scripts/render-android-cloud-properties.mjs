@@ -11,6 +11,7 @@ const mappings = Object.freeze([
 ]);
 
 const regionPattern = /^[a-z]{2}(?:-gov)?-[a-z]+-\d$/;
+const approvedConsentPolicyVersion = "2026-11-07.v1";
 
 function isValidCloudHost(value) {
   if (typeof value !== "string" || value.length < 4 || value.length > 253 ||
@@ -41,7 +42,7 @@ function validatePublicConfiguration(values) {
   if (uploadHosts.length === 0 || uploadHosts.some((host) => host !== host.toLowerCase() || !isValidCloudHost(host))) {
     throw new Error("Invalid public output: UploadHost");
   }
-  if (!/^[A-Za-z0-9._-]{1,32}$/.test(values.get("ConsentPolicyVersion"))) {
+  if (values.get("ConsentPolicyVersion") !== approvedConsentPolicyVersion) {
     throw new Error("Invalid public output: ConsentPolicyVersion");
   }
 

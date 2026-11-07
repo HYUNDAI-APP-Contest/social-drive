@@ -38,6 +38,7 @@ test("exports every non-secret Android cloud build input", () => {
     assert.ok(template.includes(output), `missing ${output}`);
   }
   assert.match(template, /Value: !Sub \$\{MediaBucket\}\.s3\.\$\{AWS::Region\}\.\$\{AWS::URLSuffix\}/);
-  assert.match(template, /AllowedPattern: '\^\[A-Za-z0-9\._-\]\{1,32\}\$'/);
+  assert.match(template, /Default: '2026-11-07\.v1'[\s\S]*AllowedValues: \['2026-11-07\.v1'\]/);
+  assert.match(template, /CONSENT_POLICY_VERSION: !Ref ConsentPolicyVersion/);
 });
 

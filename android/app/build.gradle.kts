@@ -32,6 +32,7 @@ val cloudConsentPolicyVersion = providers.gradleProperty("socialDrive.cloud.cons
 val cloudCognitoRegion = providers.gradleProperty("socialDrive.cloud.cognitoRegion").orElse("")
 val cloudCognitoUserPoolId = providers.gradleProperty("socialDrive.cloud.cognitoUserPoolId").orElse("")
 val cloudCognitoClientId = providers.gradleProperty("socialDrive.cloud.cognitoClientId").orElse("")
+val approvedConsentPolicyVersion = "2026-11-07.v1"
 
 fun isValidCloudHost(value: String): Boolean {
     if (value.length !in 4..253 || value.startsWith('.') || value.endsWith('.')) return false
@@ -73,8 +74,8 @@ tasks.register("verifyPleosCloudConfiguration") {
             throw GradleException("PLEOS cloud upload hosts must be lowercase host names without schemes or paths.")
         }
         val policy = values.getValue("consentPolicyVersion")
-        if (!policy.matches(Regex("[A-Za-z0-9._-]{1,32}"))) {
-            throw GradleException("PLEOS cloud consent policy version has an invalid format.")
+        if (policy != approvedConsentPolicyVersion) {
+            throw GradleException("PLEOS cloud consent policy version does not match the app policy.")
         }
         val region = values.getValue("cognitoRegion").trim().lowercase()
         val pool = values.getValue("cognitoUserPoolId").trim()

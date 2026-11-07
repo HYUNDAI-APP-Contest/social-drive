@@ -2,6 +2,7 @@ package com.socialdrive.app.data.remote
 
 import java.net.URI
 import com.socialdrive.app.domain.CapabilityStatus
+import com.socialdrive.app.domain.RouteLocationConsentPolicy
 import kotlinx.coroutines.flow.StateFlow
 
 interface CloudConnectionStatusSource {
@@ -23,7 +24,7 @@ data class CloudRuntimeConfiguration(
             cognitoClientId: String,
         ): CloudRuntimeConfiguration? {
             if (apiBaseUrl.isBlank() || uploadHosts.isBlank() || consentPolicyVersion.isBlank()) return null
-            if (!consentPolicyVersion.matches(Regex("[A-Za-z0-9._-]{1,32}"))) return null
+            if (consentPolicyVersion != RouteLocationConsentPolicy.VERSION) return null
             val cognito = CognitoRuntimeConfiguration.parse(cognitoRegion, cognitoUserPoolId, cognitoClientId)
                 ?: return null
             val hosts = uploadHosts.split(',')

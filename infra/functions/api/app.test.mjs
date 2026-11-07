@@ -5,10 +5,11 @@ import { MemoryAssets, MemoryRepository } from "./memory-adapters.mjs";
 
 const digest = "a".repeat(64);
 const deleteKey = "d".repeat(64);
+const consentPolicyVersion = "2026-11-07.v1";
 const draft = (clientDraftId = "client-draft-001") => ({
   clientDraftId, schemaVersion: 1, title: "데모 바닷길", summary: "공개에 동의한 데모 경로",
   visibility: "PUBLIC", distanceMeters: 12000, durationSeconds: 1800, highlightCount: 2,
-  consent: { routeShare: true, coverShare: true, policyVersion: "2026-11-01" },
+  consent: { routeShare: true, coverShare: true, policyVersion: consentPolicyVersion },
   assets: [
     { kind: "COVER", contentType: "image/jpeg", sizeBytes: 1024, sha256: digest },
     { kind: "ROUTE", contentType: "application/json", sizeBytes: 2048, sha256: digest },
@@ -30,7 +31,7 @@ function harness() {
   const repository = new MemoryRepository(); const assets = new MemoryAssets(); const logs = [];
   let driveSequence = 0;
   const handler = createHandler({
-    repository, assets,
+    repository, assets, consentPolicyVersion,
     clock: () => new Date("2026-11-01T10:00:00.000Z"),
     ids: { driveId: () => `drive-demo-${String(++driveSequence).padStart(3, "0")}`, cursor: () => "cursor_demo_token_12345678901234567890" },
     logger: { info: (entry) => logs.push(entry), warn: (entry) => logs.push(entry) },
@@ -73,6 +74,14 @@ test("rejects reusing an idempotency key with a different payload", async () => 
   const changed = draft(); changed.title = "다른 제목";
   const second = await createDrive(ctx, { payload: changed });
   assert.equal(second.result.statusCode, 409); assert.equal(second.body.error.code, "IDEMPOTENCY_CONFLICT");
+});
+
+test("rejects a draft whose consent policy differs from the deployed policy", async () => {
+  const ctx = harness(); const payload = draft(); payload.consent.policyVersion = "2026-11-07";
+  const rejected = await createDrive(ctx, { payload });
+  assert.equal(rejected.result.statusCode, 422);
+  assert.deepEqual(rejected.body.error.fields, ["consent"]);
+  assert.equal(ctx.repository.drives.size, 0);
 });
 
 test("refreshes only exact expected upload manifests", async () => {
