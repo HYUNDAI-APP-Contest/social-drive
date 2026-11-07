@@ -90,3 +90,19 @@ class UnavailableRemoteDriveApi : RemoteDriveApi {
     override suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>) = unavailable()
     override suspend fun publishDrive(remoteDriveId: String, expectedVersion: Int, clientRequestId: String): RemotePublishAck = unavailable()
 }
+
+/** Resolves the authenticated adapter for every stage so login/logout does not stale WorkManager dependencies. */
+class SessionAwareRemoteDriveApi(
+    private val current: () -> RemoteDriveApi?,
+) : RemoteDriveApi {
+    private fun delegate(): RemoteDriveApi = current() ?: UnavailableRemoteDriveApi()
+
+    override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): RemoteDraftRef =
+        delegate().createDrive(clientRequestId, draft)
+
+    override suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>) =
+        delegate().uploadAssets(remoteDriveId, commands)
+
+    override suspend fun publishDrive(remoteDriveId: String, expectedVersion: Int, clientRequestId: String): RemotePublishAck =
+        delegate().publishDrive(remoteDriveId, expectedVersion, clientRequestId)
+}

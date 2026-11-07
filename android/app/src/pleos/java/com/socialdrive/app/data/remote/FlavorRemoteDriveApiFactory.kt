@@ -5,9 +5,9 @@ package com.socialdrive.app.data.remote
  * [CloudRemoteDriveApi] after Cognito mobile client and API host settings are approved.
  */
 object FlavorRemoteDriveApiFactory {
-    fun create(): RemoteDriveApi {
-        val client = PleosCloudRuntime.clientOrNull() ?: return UnavailableRemoteDriveApi()
-        val policyVersion = PleosCloudRuntime.configuration?.consentPolicyVersion ?: return UnavailableRemoteDriveApi()
-        return CloudRemoteDriveApi(client, policyVersion)
+    fun create(): RemoteDriveApi = SessionAwareRemoteDriveApi {
+        val client = PleosCloudRuntime.clientOrNull() ?: return@SessionAwareRemoteDriveApi null
+        val policy = PleosCloudRuntime.configuration?.consentPolicyVersion ?: return@SessionAwareRemoteDriveApi null
+        CloudRemoteDriveApi(client, policy)
     }
 }
