@@ -81,8 +81,10 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     val cloudConnectionCapability = app.cloudConnectionStatusSource.status
     val cloudAuthState = app.cloudAuth.state
     val locationPermission: String? get() = app.auxiliaryCapabilitySource.locationPermission
+    val speechPermissions: List<String> get() = app.auxiliaryCapabilitySource.speechPermissions
 
     fun refreshLocationPermission() = app.auxiliaryCapabilitySource.refreshLocationPermission()
+    fun refreshSpeechPermissions() = app.auxiliaryCapabilitySource.refreshSpeechPermissions()
 
     fun signInToCloud(username: String, password: CharArray) = viewModelScope.launch {
         app.cloudAuth.signIn(username, password)

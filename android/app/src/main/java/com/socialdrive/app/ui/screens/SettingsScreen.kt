@@ -38,6 +38,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.CapabilityStatus
+import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.ThemeMode
 import com.socialdrive.app.domain.LiveUnavailableReason
 import com.socialdrive.app.domain.RouteConsentState
@@ -76,6 +77,7 @@ fun SettingsScreen(
     privacyMessage: String? = null,
     onWithdrawConsent: () -> Unit = {},
     onEnableLiveRoute: () -> Unit = {},
+    onRequestSpeechPermissions: () -> Unit = {},
     hasPublishedDraft: Boolean = false,
     deleteRequestState: DeleteRequestState? = null,
     onConfirmPublishedDelete: () -> Unit = {},
@@ -131,7 +133,7 @@ fun SettingsScreen(
                         Modifier.weight(1f).verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus, cloudConnectionStatus)
+                        IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus, cloudConnectionStatus, onRequestSpeechPermissions)
                         CloudAuthSection(motion, cloudAuthState, onCloudSignIn, onCloudConfirm, onCloudSignOut)
                         IntegrationBoundaryNotice(vehicleStatus.source == IntegrationSource.Actual)
                     }
@@ -148,7 +150,7 @@ fun SettingsScreen(
                         onEnableLiveRoute,
                         onDeleteRequest = { showDeleteConfirmation = true },
                     )
-                    IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus, cloudConnectionStatus)
+                    IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus, cloudConnectionStatus, onRequestSpeechPermissions)
                     CloudAuthSection(motion, cloudAuthState, onCloudSignIn, onCloudConfirm, onCloudSignOut)
                     IntegrationBoundaryNotice(vehicleStatus.source == IntegrationSource.Actual)
                 }
@@ -352,6 +354,7 @@ private fun IntegrationSection(
     textToSpeechStatus: CapabilityStatus,
     speechToTextStatus: CapabilityStatus,
     cloudConnectionStatus: CapabilityStatus,
+    onRequestSpeechPermissions: () -> Unit,
 ) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -361,6 +364,15 @@ private fun IntegrationSection(
             IntegrationRow("위치 연동", locationStatus)
             IntegrationRow("음성 안내", textToSpeechStatus)
             IntegrationRow("음성 인식", speechToTextStatus)
+            if (
+                textToSpeechStatus.capability == CapabilityState.PermissionDenied ||
+                speechToTextStatus.capability == CapabilityState.PermissionDenied
+            ) {
+                TextButton(
+                    onClick = onRequestSpeechPermissions,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("음성 권한 다시 확인") }
+            }
             IntegrationRow("AWS 클라우드", cloudConnectionStatus)
             StatusRow("차량 제어", "안전 정책 · 읽기 전용")
             StatusRow("오프라인 초안", "기기에 보존")

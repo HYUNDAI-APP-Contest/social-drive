@@ -68,6 +68,12 @@ FusedLocation 1.1.3 콜백을 재검증하는 동안 앱 프로세스가 아닌 
 
 이 검증은 SRP 클라이언트 초기화·미로그인 UX·fail-closed 설정까지만 증명한다. 실제 서명된 Cognito JWT, API Gateway authorizer, private S3 업로드는 아래의 미검증 범위로 유지한다.
 
+## TTS/STT 권한과 재연결 검증
+
+PLEOS 음성 권한을 Manifest 선언에만 의존하지 않도록 `TTS_SERVICE`와 `STT_SERVICE`를 각각 초기화 전에 확인하고, 거부 시 SDK 호출을 차단하는 fail-closed 경계를 추가했다. 설정 화면은 둘 중 하나라도 거부되면 `음성 권한 다시 확인`을 제공하며, 앱 복귀 시 권한을 다시 읽는다. 재허용 뒤에는 아직 초기화되지 않은 서비스만 초기화해 STT 리스너 중복 등록을 피한다.
+
+새 PLEOS debug APK를 데이터 유지 설치한 뒤 user 10에서 재실행했다. `dumpsys package`는 `pleos.car.permission.TTS_SERVICE`와 `pleos.car.permission.STT_SERVICE`가 모두 `granted=true`임을 보였고, 설정 화면은 각각 `PLEOS 연결됨 · 음성 안내`, `PLEOS 연결됨 · 음성 인식`을 표시했다. 앱 PID의 error log에는 앱 크래시나 SDK 권한 오류가 없었으며 AVD OpenGL swap 경고 1건만 있었다. 이는 AVD의 권한·초기화·상태 표시는 증명하지만 실제 차량의 마이크 인식률과 오디오 출력 품질은 증명하지 않는다.
+
 ## 아직 증명하지 않은 범위
 
 - 실제 차량에서의 GNSS 품질, 장시간 주행, 오디오 입력·출력 품질

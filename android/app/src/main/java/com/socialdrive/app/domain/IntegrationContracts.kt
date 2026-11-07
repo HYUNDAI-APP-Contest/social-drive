@@ -99,12 +99,14 @@ interface AuxiliaryCapabilitySource {
     val speechRecognitionActive: StateFlow<Boolean>
     val speechRecognitionState: StateFlow<SpeechRecognitionState>
     val locationPermission: String?
+    val speechPermissions: List<String>
 
     suspend fun initialize()
     fun speakFeedback(message: String): Boolean
     fun startSpeechRecognition(onText: (text: String, isFinal: Boolean) -> Unit): Boolean
     fun stopSpeechRecognition()
     fun refreshLocationPermission()
+    fun refreshSpeechPermissions()
     fun release()
 }
 

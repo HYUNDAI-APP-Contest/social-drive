@@ -403,6 +403,22 @@ test("Pleos dependencies permissions and flavors are least-privilege isolated", 
   }
 });
 
+test("PLEOS TTS and STT permissions fail closed and remain recoverable", () => {
+  const contracts = read("app/src/main/java/com/socialdrive/app/domain/IntegrationContracts.kt");
+  const app = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
+  const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
+  const pleos = read("app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
+  assert.match(contracts, /val speechPermissions: List<String>/);
+  assert.match(contracts, /fun refreshSpeechPermissions\(\)/);
+  assert.match(app, /RequestMultiplePermissions\(\)/);
+  assert.match(app, /Lifecycle\.Event\.ON_RESUME[\s\S]*refreshSpeechPermissions\(\)/);
+  assert.match(settings, /음성 권한 다시 확인/);
+  assert.match(pleos, /TTS_PERMISSION[\s\S]*STT_PERMISSION/);
+  assert.match(pleos, /if \(!hasPermission\(TTS_PERMISSION\)\)[\s\S]*permissionDenied/);
+  assert.match(pleos, /if \(!hasPermission\(STT_PERMISSION\)\)[\s\S]*permissionDenied/);
+  assert.match(pleos, /ttsInitialized[\s\S]*sttInitialized/);
+});
+
 test("actual adapters fail closed and never fall back to demo state", () => {
   const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
   const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");

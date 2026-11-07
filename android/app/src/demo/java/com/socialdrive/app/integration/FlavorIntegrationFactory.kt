@@ -43,11 +43,13 @@ private class DemoAuxiliaryCapabilitySource : AuxiliaryCapabilitySource {
     override val speechRecognitionState: StateFlow<SpeechRecognitionState> =
         MutableStateFlow(SpeechRecognitionState.Idle).asStateFlow()
     override val locationPermission: String? = null
+    override val speechPermissions: List<String> = emptyList()
     override suspend fun initialize() = Unit
     override fun speakFeedback(message: String): Boolean = false
     override fun startSpeechRecognition(onText: (String, Boolean) -> Unit): Boolean = false
     override fun stopSpeechRecognition() = Unit
     override fun refreshLocationPermission() = Unit
+    override fun refreshSpeechPermissions() = Unit
     override fun release() = Unit
 }
 

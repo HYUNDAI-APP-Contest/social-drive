@@ -90,6 +90,8 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private var collectionAuthorized = false
     private var recordingRequested = false
     private var locationCollecting = false
+    @Volatile private var ttsInitialized = false
+    @Volatile private var sttInitialized = false
     @Volatile private var released = false
     private val locationListener = object : FusedLocationListener {
         override fun onChanged(location: LocationData?) {
@@ -138,6 +140,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     override val speechRecognitionActive: StateFlow<Boolean> = mutableRecognitionActive.asStateFlow()
     override val speechRecognitionState: StateFlow<SpeechRecognitionState> = mutableRecognitionState.asStateFlow()
     override val locationPermission: String = FUSED_LOCATION_PERMISSION
+    override val speechPermissions: List<String> = listOf(TTS_PERMISSION, STT_PERMISSION)
 
     override suspend fun initialize() {
         runCatching {
@@ -150,30 +153,16 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
                 else -> available("실차 · 위치 사용 가능")
             }
         }.onFailure { mutableLocation.value = unavailable("실차 · 초기화 실패") }
-        runCatching {
-            tts.initialize(object : TtsInitializeListener {
-                override fun onSuccess() {
-                    if (!released) mutableTts.value = available("실차 · 온디바이스")
-                }
-                override fun onFailure(error: ai.pleos.playground.tts.constant.ErrorType) {
-                    if (!released) mutableTts.value = unavailable("실차 · 초기화 실패")
-                }
-            })
-        }.onFailure { mutableTts.value = unavailable("실차 · 초기화 실패") }
-        scheduleInitializationTimeout(mutableTts)
-        runCatching {
-            stt.initialize(object : SttInitializeListener {
-                override fun onSuccess() {
-                    if (released) return
-                    stt.addListener(recognitionListener)
-                    mutableStt.value = available("실차 · 온디바이스")
-                }
-                override fun onFailure(error: ai.pleos.playground.stt.constant.ErrorType) {
-                    if (!released) mutableStt.value = unavailable("실차 · 초기화 실패")
-                }
-            })
-        }.onFailure { mutableStt.value = unavailable("실차 · 초기화 실패") }
-        scheduleInitializationTimeout(mutableStt)
+        initializeSpeechServices()
+    }
+
+    private fun initializeSpeechServices() {
+        if (!hasPermission(TTS_PERMISSION)) {
+            mutableTts.value = permissionDenied("실차 · TTS 권한 필요")
+        } else initializeTts()
+        if (!hasPermission(STT_PERMISSION)) {
+            mutableStt.value = permissionDenied("실차 · STT 권한 필요")
+        } else initializeStt()
     }
 
     private fun scheduleInitializationTimeout(status: MutableStateFlow<CapabilityStatus>): Job = lifecycleScope.launch {
@@ -184,11 +173,19 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     }
 
     override fun speakFeedback(message: String): Boolean {
+        if (!hasPermission(TTS_PERMISSION)) {
+            mutableTts.value = permissionDenied("실차 · TTS 권한 필요")
+            return false
+        }
         if (mutableTts.value.capability != CapabilityState.Available || message.isBlank()) return false
         return runCatching { tts.speak(message, false) }.isSuccess
     }
 
     override fun startSpeechRecognition(onText: (String, Boolean) -> Unit): Boolean {
+        if (!hasPermission(STT_PERMISSION)) {
+            mutableStt.value = permissionDenied("실차 · STT 권한 필요")
+            return false
+        }
         if (mutableStt.value.capability != CapabilityState.Available) return false
         val session = synchronized(recognitionLock) {
             if (recognitionCallback != null) return false
@@ -265,6 +262,65 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         }
     }
 
+    override fun refreshSpeechPermissions() {
+        if (released) return
+        val ttsGranted = hasPermission(TTS_PERMISSION)
+        val sttGranted = hasPermission(STT_PERMISSION)
+        if (!ttsGranted) mutableTts.value = permissionDenied("실차 · TTS 권한 필요")
+        if (!sttGranted) {
+            stopSpeechRecognition()
+            mutableStt.value = permissionDenied("실차 · STT 권한 필요")
+        }
+        if (ttsGranted && mutableTts.value.capability == CapabilityState.PermissionDenied) {
+            if (ttsInitialized) mutableTts.value = available("실차 · 온디바이스")
+            else {
+                mutableTts.value = checking
+                initializeTts()
+            }
+        }
+        if (sttGranted && mutableStt.value.capability == CapabilityState.PermissionDenied) {
+            if (sttInitialized) mutableStt.value = available("실차 · 온디바이스")
+            else {
+                mutableStt.value = checking
+                initializeStt()
+            }
+        }
+    }
+
+    private fun initializeTts() {
+        runCatching {
+            tts.initialize(object : TtsInitializeListener {
+                override fun onSuccess() {
+                    if (!released) {
+                        ttsInitialized = true
+                        mutableTts.value = available("실차 · 온디바이스")
+                    }
+                }
+                override fun onFailure(error: ai.pleos.playground.tts.constant.ErrorType) {
+                    if (!released) mutableTts.value = unavailable("실차 · 초기화 실패")
+                }
+            })
+        }.onFailure { mutableTts.value = unavailable("실차 · 초기화 실패") }
+        scheduleInitializationTimeout(mutableTts)
+    }
+
+    private fun initializeStt() {
+        runCatching {
+            stt.initialize(object : SttInitializeListener {
+                override fun onSuccess() {
+                    if (released) return
+                    sttInitialized = true
+                    stt.addListener(recognitionListener)
+                    mutableStt.value = available("실차 · 온디바이스")
+                }
+                override fun onFailure(error: ai.pleos.playground.stt.constant.ErrorType) {
+                    if (!released) mutableStt.value = unavailable("실차 · 초기화 실패")
+                }
+            })
+        }.onFailure { mutableStt.value = unavailable("실차 · 초기화 실패") }
+        scheduleInitializationTimeout(mutableStt)
+    }
+
     override suspend fun start() {
         check(mutableLocation.value.capability == CapabilityState.Available)
         val shouldRegister = synchronized(locationLock) {
@@ -337,7 +393,13 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     }
 
     private fun hasLocationPermission(): Boolean =
-        context.checkSelfPermission(FUSED_LOCATION_PERMISSION) == PackageManager.PERMISSION_GRANTED
+        hasPermission(FUSED_LOCATION_PERMISSION)
+
+    private fun hasPermission(permission: String): Boolean =
+        context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+
+    private fun permissionDenied(label: String) =
+        CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, label)
 
     override fun release() {
         released = true
@@ -358,6 +420,8 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
 }
 
 private const val FUSED_LOCATION_PERMISSION = "pleos.car.permission.FUSED_LOCATION"
+private const val TTS_PERMISSION = "pleos.car.permission.TTS_SERVICE"
+private const val STT_PERMISSION = "pleos.car.permission.STT_SERVICE"
 private const val MAX_ROUTE_POINTS = 5_000
 internal const val AUXILIARY_INITIALIZATION_TIMEOUT_MILLIS = 10_000L
 internal const val SPEECH_RECOGNITION_TIMEOUT_MILLIS = 30_000L

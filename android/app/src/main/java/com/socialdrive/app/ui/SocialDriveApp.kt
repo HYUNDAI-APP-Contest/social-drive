@@ -105,10 +105,16 @@ fun SocialDriveApp(
             privacyMessage = "위치 권한이 거부되어 실시간 경로를 수집하지 않습니다."
         }
     }
+    val speechPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        offlineViewModel.refreshSpeechPermissions()
+    }
 
     DisposableEffect(lifecycleOwner, offlineViewModel) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) offlineViewModel.refreshLocationPermission()
+            if (event == Lifecycle.Event.ON_RESUME) {
+                offlineViewModel.refreshLocationPermission()
+                offlineViewModel.refreshSpeechPermissions()
+            }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -390,6 +396,10 @@ fun SocialDriveApp(
                             val permission = offlineViewModel.locationPermission
                             if (permission != null) locationPermissionLauncher.launch(permission)
                             else privacyMessage = "이 실행 모드에서는 실제 위치를 수집하지 않습니다."
+                        },
+                        onRequestSpeechPermissions = {
+                            val permissions = offlineViewModel.speechPermissions
+                            if (permissions.isNotEmpty()) speechPermissionLauncher.launch(permissions.toTypedArray())
                         },
                         hasPublishedDraft = selectedDraft?.state == LocalState.PUBLISHED,
                         deleteRequestState = deleteRequestState,
