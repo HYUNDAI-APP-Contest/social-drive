@@ -54,7 +54,10 @@ internal class AmplifyCognitoAuth(
                 throw cancelled
             } catch (_: Throwable) {
                 PleosCloudRuntime.reportAuthenticationFailure("AWS · 인증 초기화 실패")
-                mutableState.value = CloudAuthState(CloudAuthPhase.ERROR, "AWS 인증을 초기화하지 못했습니다")
+                mutableState.value = CloudAuthState(
+                    CloudAuthPhase.INITIALIZATION_ERROR,
+                    "AWS 인증을 초기화하지 못했습니다",
+                )
             }
         } finally {
             PleosCloudRuntime.markAuthenticationInitialized()

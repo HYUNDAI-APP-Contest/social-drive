@@ -171,6 +171,8 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     fun refreshLocationPermission() = app.auxiliaryCapabilitySource.refreshLocationPermission()
     fun refreshSpeechPermissions() = app.auxiliaryCapabilitySource.refreshSpeechPermissions()
 
+    fun retryCloudInitialization() = viewModelScope.launch { app.cloudAuth.initialize() }
+
     fun signInToCloud(username: String, password: CharArray) = viewModelScope.launch(start = CoroutineStart.UNDISPATCHED) {
         try {
             app.cloudAuth.signIn(username, password)

@@ -471,6 +471,7 @@ fun SocialDriveApp(
                         speechToTextStatus = speechToTextCapability,
                         cloudConnectionStatus = cloudConnectionCapability,
                         cloudAuthState = cloudAuthState,
+                        onCloudInitializationRetry = offlineViewModel::retryCloudInitialization,
                         onCloudSignIn = offlineViewModel::signInToCloud,
                         onCloudConfirm = offlineViewModel::confirmCloudSignIn,
                         onCloudSignOut = offlineViewModel::signOutFromCloud,

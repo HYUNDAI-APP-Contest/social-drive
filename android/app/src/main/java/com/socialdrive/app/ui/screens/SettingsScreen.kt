@@ -66,6 +66,7 @@ fun SettingsScreen(
     speechToTextStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "사용 불가"),
     cloudConnectionStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "설정 필요"),
     cloudAuthState: CloudAuthState = CloudAuthState(CloudAuthPhase.UNAVAILABLE, "AWS 로그인을 사용할 수 없습니다"),
+    onCloudInitializationRetry: () -> Unit = {},
     onCloudSignIn: (String, CharArray) -> Unit = { _, secret -> secret.fill('\u0000') },
     onCloudConfirm: (CharArray) -> Unit = { secret -> secret.fill('\u0000') },
     onCloudSignOut: () -> Unit = {},
@@ -136,7 +137,7 @@ fun SettingsScreen(
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus, cloudConnectionStatus, onRequestSpeechPermissions)
-                        CloudAuthSection(motion, cloudAuthState, onCloudSignIn, onCloudConfirm, onCloudSignOut)
+                        CloudAuthSection(motion, cloudAuthState, onCloudInitializationRetry, onCloudSignIn, onCloudConfirm, onCloudSignOut)
                         IntegrationBoundaryNotice(vehicleStatus.source == IntegrationSource.Actual)
                     }
                 }
@@ -153,7 +154,7 @@ fun SettingsScreen(
                         onDeleteRequest = { showDeleteConfirmation = true },
                     )
                     IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus, cloudConnectionStatus, onRequestSpeechPermissions)
-                    CloudAuthSection(motion, cloudAuthState, onCloudSignIn, onCloudConfirm, onCloudSignOut)
+                    CloudAuthSection(motion, cloudAuthState, onCloudInitializationRetry, onCloudSignIn, onCloudConfirm, onCloudSignOut)
                     IntegrationBoundaryNotice(vehicleStatus.source == IntegrationSource.Actual)
                 }
             }
@@ -165,6 +166,7 @@ fun SettingsScreen(
 private fun CloudAuthSection(
     motion: MotionState,
     authState: CloudAuthState,
+    onInitializationRetry: () -> Unit,
     onSignIn: (String, CharArray) -> Unit,
     onConfirm: (CharArray) -> Unit,
     onSignOut: () -> Unit,
@@ -215,6 +217,11 @@ private fun CloudAuthSection(
                         modifier = Modifier.heightIn(min = 48.dp),
                     ) { Text("추가 인증") }
                 }
+                CloudAuthPhase.INITIALIZATION_ERROR -> Button(
+                    onClick = onInitializationRetry,
+                    enabled = editable,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("AWS 연결 다시 확인") }
                 CloudAuthPhase.UNAVAILABLE -> Unit
                 else -> {
                     OutlinedTextField(
