@@ -27,12 +27,17 @@ import com.socialdrive.app.domain.VehicleMotionStatus
 import com.socialdrive.app.domain.SpeechRecognitionPolicy
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+internal fun selectVisibleDraft(items: List<DraftSnapshot>, selectedId: String?): DraftSnapshot? =
+    items.firstOrNull { it.id == selectedId } ?: items.firstOrNull()
 
 class SocialDriveViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as SocialDriveApplication
@@ -40,17 +45,21 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     val activeRecording: StateFlow<RecordingEntity?> = app.recordingRepository.active
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
-    val latestDraft: StateFlow<DraftSnapshot?> = app.draftRepository.drafts
-        .map { it.firstOrNull() }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+    val drafts: StateFlow<List<DraftSnapshot>> = app.draftRepository.drafts
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    private val selectedDraftId = MutableStateFlow<String?>(null)
+    val selectedDraft: StateFlow<DraftSnapshot?> = combine(drafts, selectedDraftId) { items, selectedId ->
+        selectVisibleDraft(items, selectedId)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val uploadState: StateFlow<UploadState> = latestDraft
+    val uploadState: StateFlow<UploadState> = selectedDraft
         .flatMapLatest { draft -> draft?.let { app.publishQueueRepository.observeState(it.id) } ?: flowOf(UploadState.Draft) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UploadState.Draft)
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val conflictReview: StateFlow<ConflictReviewUiState> = latestDraft
+    val conflictReview: StateFlow<ConflictReviewUiState> = selectedDraft
         .flatMapLatest { draft ->
             draft?.let { app.conflictReviewRepository.observe(it.id) }
                 ?: flowOf(ConflictReviewUiState(ConflictUiPhase.Hidden))
@@ -85,7 +94,7 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
         )
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val deleteRequestState: StateFlow<DeleteRequestState?> = latestDraft
+    val deleteRequestState: StateFlow<DeleteRequestState?> = selectedDraft
         .flatMapLatest { draft ->
             draft?.let {
                 app.database.publishedDeleteDao().observe(it.id).map { request ->
@@ -109,11 +118,20 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     suspend fun finishActiveRecording(): DraftSnapshot? = app.recordingRepository.finishActiveAsDraft().also { draft ->
-        if (draft != null) app.auxiliaryCapabilitySource.speakFeedback("드라이브 기록을 완료했습니다")
+        if (draft != null) {
+            selectedDraftId.value = draft.id
+            app.auxiliaryCapabilitySource.speakFeedback("드라이브 기록을 완료했습니다")
+        }
+    }
+
+    fun selectDraft(id: String): Boolean {
+        if (drafts.value.none { it.id == id }) return false
+        selectedDraftId.value = id
+        return true
     }
 
     suspend fun updateDraftCopy(title: String, description: String): Boolean =
-        latestDraft.value?.let { app.draftRepository.updateCopy(it.id, title, description) } ?: false
+        selectedDraft.value?.let { app.draftRepository.updateCopy(it.id, title, description) } ?: false
 
     fun requestTitleDictation(): Boolean = requestDictation { draft, text ->
         app.draftRepository.updateCopy(draft.id, text.take(40), draft.description)
@@ -127,7 +145,7 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
 
     private fun requestDictation(update: suspend (DraftSnapshot, String) -> Unit): Boolean {
         if (!SpeechRecognitionPolicy.canStart(vehicleMotion.value.motion, speechToTextCapability.value)) return false
-        val draft = latestDraft.value ?: return false
+        val draft = selectedDraft.value ?: return false
         return app.auxiliaryCapabilitySource.startSpeechRecognition { text, isFinal ->
             if (SpeechRecognitionPolicy.shouldCommit(text, isFinal)) {
                 viewModelScope.launch { update(draft, text.trim()) }
@@ -136,16 +154,16 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     suspend fun enqueuePublish(motionState: MotionState): EnqueueResult =
-        latestDraft.value?.let { app.publishScheduler.enqueue(it.id, motionState) } ?: EnqueueResult.MissingDraft
+        selectedDraft.value?.let { app.publishScheduler.enqueue(it.id, motionState) } ?: EnqueueResult.MissingDraft
 
     suspend fun fetchConflictLatest(): ConflictReviewDecision =
-        latestDraft.value?.let { app.conflictReviewRepository.fetchLatest(it.id) } ?: ConflictReviewDecision.Missing
+        selectedDraft.value?.let { app.conflictReviewRepository.fetchLatest(it.id) } ?: ConflictReviewDecision.Missing
 
     suspend fun keepConflictLocal(): ConflictReviewDecision =
-        latestDraft.value?.let { app.conflictReviewRepository.keepLocal(it.id) } ?: ConflictReviewDecision.Missing
+        selectedDraft.value?.let { app.conflictReviewRepository.keepLocal(it.id) } ?: ConflictReviewDecision.Missing
 
     suspend fun adoptConflictLatest(): ConflictReviewDecision =
-        latestDraft.value?.let { app.conflictReviewRepository.adoptLatestAndReplay(it.id) } ?: ConflictReviewDecision.Missing
+        selectedDraft.value?.let { app.conflictReviewRepository.adoptLatestAndReplay(it.id) } ?: ConflictReviewDecision.Missing
 
     suspend fun requestDemoMotion(motionState: MotionState): Boolean =
         app.vehicleMotionSource.requestSimulation(motionState)
@@ -162,6 +180,6 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     suspend fun withdrawRouteConsent(): WithdrawalReceipt = app.routePrivacyRepository.withdraw()
 
     suspend fun requestPublishedDelete(confirmed: Boolean): PublishedDeleteDecision =
-        latestDraft.value?.let { app.routePrivacyRepository.requestPublishedDelete(it.id, confirmed) }
+        selectedDraft.value?.let { app.routePrivacyRepository.requestPublishedDelete(it.id, confirmed) }
             ?: PublishedDeleteDecision.NotPublished
 }
