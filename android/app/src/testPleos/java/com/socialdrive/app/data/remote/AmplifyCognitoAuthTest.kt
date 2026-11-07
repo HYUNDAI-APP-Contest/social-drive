@@ -1,11 +1,26 @@
 package com.socialdrive.app.data.remote
 
 import com.amplifyframework.auth.result.step.AuthSignInStep
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AmplifyCognitoAuthTest {
+    @Test
+    fun `Cognito SDK 콜백 대기는 유한하다`() = runTest {
+        assertEquals(20_000L, COGNITO_OPERATION_TIMEOUT_MILLIS)
+        var timedOut = false
+        try {
+            withCognitoOperationTimeout(timeoutMillis = 100L) { awaitCancellation() }
+        } catch (_: CognitoOperationTimeoutException) {
+            timedOut = true
+        }
+        assertTrue(timedOut)
+    }
+
     @Test
     fun `저장된 세션이 없으면 오류가 아닌 로그인 대기로 표시한다`() {
         assertEquals(

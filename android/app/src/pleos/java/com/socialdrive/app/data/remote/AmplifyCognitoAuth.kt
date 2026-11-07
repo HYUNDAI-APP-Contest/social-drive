@@ -10,10 +10,14 @@ import com.amplifyframework.core.AmplifyConfiguration
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
+
+internal const val COGNITO_OPERATION_TIMEOUT_MILLIS = 20_000L
 
 /** Cognito SRP adapter. Credentials and tokens never leave SDK/process memory through this class. */
 internal class AmplifyCognitoAuth(
@@ -27,7 +31,7 @@ internal class AmplifyCognitoAuth(
         try {
             Amplify.addPlugin(AWSCognitoAuthPlugin())
             Amplify.configure(amplifyConfiguration(configuration.cognito), context)
-            val session = fetchCognitoSession()
+            val session = withCognitoOperationTimeout { fetchCognitoSession() }
             val restored = session.isSignedIn && PleosCloudRuntime.installSessionSource(this)
             if (!session.isSignedIn) {
                 PleosCloudRuntime.clearSessionSource()
@@ -56,7 +60,7 @@ internal class AmplifyCognitoAuth(
         val secret = password.concatToString()
         password.fill('\u0000')
         try {
-            val result = awaitSignIn(normalizedUsername, secret)
+            val result = withCognitoOperationTimeout { awaitSignIn(normalizedUsername, secret) }
             applySignInResult(result)
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -73,7 +77,7 @@ internal class AmplifyCognitoAuth(
         val secret = response.concatToString()
         response.fill('\u0000')
         try {
-            applySignInResult(awaitConfirmSignIn(secret))
+            applySignInResult(withCognitoOperationTimeout { awaitConfirmSignIn(secret) })
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
@@ -83,9 +87,15 @@ internal class AmplifyCognitoAuth(
 
     override suspend fun signOut() {
         mutableState.value = CloudAuthState(CloudAuthPhase.WORKING, "로그아웃 중")
-        clearAmplifySession()
-        PleosCloudRuntime.clearSessionSource()
-        mutableState.value = signedOutState()
+        try {
+            withCognitoOperationTimeout { clearAmplifySession() }
+            PleosCloudRuntime.clearSessionSource()
+            mutableState.value = signedOutState()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            mutableState.value = CloudAuthState(CloudAuthPhase.SIGNED_IN, "로그아웃을 완료하지 못했습니다. 다시 시도해 주세요")
+        }
     }
 
     private suspend fun clearAmplifySession() {
@@ -97,7 +107,7 @@ internal class AmplifyCognitoAuth(
     }
 
     override suspend fun freshAccessToken(): String {
-        val session = fetchCognitoSession()
+        val session = withCognitoOperationTimeout { fetchCognitoSession() }
         val token = session.takeIf { it.isSignedIn }
             ?.userPoolTokensResult?.value?.accessToken
         return token?.takeIf(String::isNotBlank)
@@ -197,6 +207,17 @@ internal fun restoredCognitoSessionState(isSignedIn: Boolean, sessionInstalled: 
     sessionInstalled -> CloudAuthState(CloudAuthPhase.SIGNED_IN, "AWS 계정 연결됨")
     else -> CloudAuthState(CloudAuthPhase.ERROR, "저장된 AWS 세션을 다시 확인해 주세요")
 }
+
+internal suspend fun <T> withCognitoOperationTimeout(
+    timeoutMillis: Long = COGNITO_OPERATION_TIMEOUT_MILLIS,
+    block: suspend () -> T,
+): T = try {
+    withTimeout(timeoutMillis) { block() }
+} catch (_: TimeoutCancellationException) {
+    throw CognitoOperationTimeoutException()
+}
+
+internal class CognitoOperationTimeoutException : Exception("Cognito operation timed out")
 
 internal fun AuthSignInStep.challengeLabel(): String? = when (this) {
     AuthSignInStep.CONFIRM_SIGN_IN_WITH_SMS_MFA_CODE -> "문자 인증코드"
