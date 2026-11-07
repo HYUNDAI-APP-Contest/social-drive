@@ -39,10 +39,10 @@ class IntegrationStatusLabelTest {
         val signedIn = CapabilityStatus(
             CapabilityState.Available,
             IntegrationSource.Actual,
-            "AWS · 로그인 연결됨",
+            "AWS · 로그인 검증됨",
         )
 
         assertEquals("AWS · 로그인 필요", integrationStatusLabel(signedOut, "AWS 클라우드"))
-        assertEquals("AWS · 로그인 연결됨", integrationStatusLabel(signedIn, "AWS 클라우드"))
+        assertEquals("AWS · 로그인 검증됨", integrationStatusLabel(signedIn, "AWS 클라우드"))
     }
 }

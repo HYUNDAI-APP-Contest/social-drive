@@ -24,14 +24,14 @@
 -PsocialDrive.cloud.cognitoClientId=xxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-로그인 어댑터는 `PleosCloudRuntime.configuration.cognito`의 검증된 공개 식별자를 사용한다. 현재 액세스 토큰을 매 요청마다 반환하는 `CognitoSessionSource`를 구현하고 로그인 성공 뒤 `PleosCloudRuntime.installSessionSource(source)`에 등록한다. 로그아웃 때는 `PleosCloudRuntime.clearSessionSource()`를 호출한다. 토큰은 Room, WorkManager 입력, 로그에 저장하지 않는다.
+로그인 어댑터는 `PleosCloudRuntime.configuration.cognito`의 검증된 공개 식별자를 사용한다. 현재 액세스 토큰을 매 요청마다 반환하는 `CognitoSessionSource`를 구현하고 로그인 성공 뒤 coroutine에서 `PleosCloudRuntime.installSessionSource(source)`를 호출한다. 이 함수가 `true`를 반환해야 설정 화면이 `AWS · 로그인 검증됨`으로 바뀐다. 잘못된 토큰 또는 예외를 반환한 공급자는 저장하지 않는다. 로그아웃 때도 coroutine에서 `PleosCloudRuntime.clearSessionSource()`를 호출한다. 토큰은 Room, WorkManager 입력, 로그에 저장하지 않는다.
 
 클라이언트는 API 요청 직전에 JWT의 `iss`, `client_id`, `token_use=access`, `iat`, `exp`를 검증한다. 승인된 User Pool·모바일 Client ID와 다르거나 만료가 30초 이내인 토큰은 네트워크로 보내지 않고 `AUTH_SESSION_UNAVAILABLE`로 중단한다. JWT 서명 검증은 Cognito JWT authorizer가 담당하며 앱은 서명 검증 성공을 주장하지 않는다.
 
 ## 승인 후 검증
 
 1. 설정 화면에 `AWS · 로그인 필요`가 표시되는지 확인한다.
-2. Cognito 로그인 뒤 `AWS · 로그인 연결됨`으로 바뀌는지 확인한다.
+2. Cognito 로그인 뒤 설치 함수가 `true`를 반환하고 `AWS · 로그인 검증됨`으로 바뀌는지 확인한다.
 3. 게시 생성, COVER/ROUTE 업로드, publish ACK 순서가 성공하는지 확인한다.
 4. 업로드된 ROUTE JSON에 `horizontal`, `vertical`, `progress` 외 원본 위치 키가 없는지 확인한다.
 5. 로그아웃 뒤 게시 요청이 `CONFIGURATION` 또는 인증 실패로 안전하게 중단되는지 확인한다.

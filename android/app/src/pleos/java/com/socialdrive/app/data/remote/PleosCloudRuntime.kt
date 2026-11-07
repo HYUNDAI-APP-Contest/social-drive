@@ -7,6 +7,8 @@ import com.socialdrive.app.domain.IntegrationSource
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * Process-local bridge for the approved Cognito mobile login component.
@@ -15,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 object PleosCloudRuntime : CloudConnectionStatusSource {
     @Volatile
     private var sessionSource: CognitoSessionSource? = null
+    private val sessionMutex = Mutex()
 
     val configuration: CloudRuntimeConfiguration? by lazy {
         CloudRuntimeConfiguration.parse(
@@ -29,14 +32,26 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
     private val mutableStatus = MutableStateFlow(configurationStatus())
     override val status: StateFlow<CapabilityStatus> = mutableStatus.asStateFlow()
 
-    fun installSessionSource(source: CognitoSessionSource) {
-        sessionSource = source
-        mutableStatus.value = if (configuration != null) {
-            CapabilityStatus(CapabilityState.Available, IntegrationSource.Actual, "AWS · 로그인 연결됨")
-        } else configurationStatus()
+    suspend fun installSessionSource(source: CognitoSessionSource): Boolean = sessionMutex.withLock {
+        val configured = configuration
+        if (configured == null) {
+            sessionSource = null
+            mutableStatus.value = configurationStatus()
+            return@withLock false
+        }
+        val valid = runCatching {
+            CognitoAccessTokenPolicy(configured.cognito).isValid(source.freshAccessToken())
+        }.getOrDefault(false)
+        sessionSource = source.takeIf { valid }
+        mutableStatus.value = if (valid) {
+            CapabilityStatus(CapabilityState.Available, IntegrationSource.Actual, "AWS · 로그인 검증됨")
+        } else {
+            CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, "AWS · 로그인 검증 실패")
+        }
+        valid
     }
 
-    fun clearSessionSource() {
+    suspend fun clearSessionSource() = sessionMutex.withLock {
         sessionSource = null
         mutableStatus.value = configurationStatus()
     }
