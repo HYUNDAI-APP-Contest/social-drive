@@ -21,6 +21,13 @@ val approvedReleaseSigning = releaseSigningValues
     .takeIf { values -> values.values.all { it != null } }
     ?.mapValues { (_, value) -> value!! }
 
+fun quotedBuildConfig(value: String): String = "\"" +
+    value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+val cloudApiBaseUrl = providers.gradleProperty("socialDrive.cloud.apiBaseUrl").orElse("")
+val cloudUploadHosts = providers.gradleProperty("socialDrive.cloud.uploadHosts").orElse("")
+val cloudConsentPolicyVersion = providers.gradleProperty("socialDrive.cloud.consentPolicyVersion").orElse("")
+
 // Inspect the resolved graph, not the user-supplied task spelling. This catches Gradle
 // abbreviations and lifecycle tasks whose dependencies create a release artifact.
 gradle.taskGraph.whenReady {
@@ -80,6 +87,9 @@ android {
         create("pleos") {
             dimension = "integration"
             buildConfigField("String", "INTEGRATION_MODE", "\"pleos\"")
+            buildConfigField("String", "CLOUD_API_BASE_URL", quotedBuildConfig(cloudApiBaseUrl.get()))
+            buildConfigField("String", "CLOUD_UPLOAD_HOSTS", quotedBuildConfig(cloudUploadHosts.get()))
+            buildConfigField("String", "CLOUD_CONSENT_POLICY_VERSION", quotedBuildConfig(cloudConsentPolicyVersion.get()))
         }
     }
 
@@ -157,6 +167,7 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     "pleosImplementation"("ai.pleos.playground:Vehicle:2.3.2")
     "pleosImplementation"("ai.pleos.playground:NaviHelper:3.0.5")
     "pleosImplementation"("ai.pleos.playground:FusedLocation:1.1.3")
