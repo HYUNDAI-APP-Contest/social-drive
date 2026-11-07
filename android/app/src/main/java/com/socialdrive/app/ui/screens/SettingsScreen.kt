@@ -44,6 +44,7 @@ import com.socialdrive.app.domain.RouteConsentState
 import com.socialdrive.app.domain.RoutePrivacyStatus
 import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.DeleteRequestState
+import com.socialdrive.app.domain.IntegrationSource
 import com.socialdrive.app.data.remote.CloudAuthPhase
 import com.socialdrive.app.data.remote.CloudAuthState
 import com.socialdrive.app.ui.components.IntegrationStatusChip
@@ -131,7 +132,7 @@ fun SettingsScreen(
                     ) {
                         IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus, cloudConnectionStatus)
                         CloudAuthSection(motion, cloudAuthState, onCloudSignIn, onCloudConfirm, onCloudSignOut)
-                        DemoBoundaryNotice()
+                        IntegrationBoundaryNotice(vehicleStatus.source == IntegrationSource.Actual)
                     }
                 }
             } else {
@@ -148,7 +149,7 @@ fun SettingsScreen(
                     )
                     IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus, cloudConnectionStatus)
                     CloudAuthSection(motion, cloudAuthState, onCloudSignIn, onCloudConfirm, onCloudSignOut)
-                    DemoBoundaryNotice()
+                    IntegrationBoundaryNotice(vehicleStatus.source == IntegrationSource.Actual)
                 }
             }
         }
@@ -333,7 +334,7 @@ private fun IntegrationSection(
 }
 
 @Composable
-private fun DemoBoundaryNotice() {
+private fun IntegrationBoundaryNotice(actualMode: Boolean) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.secondaryContainer) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
@@ -342,9 +343,16 @@ private fun DemoBoundaryNotice() {
         ) {
             Icon(Icons.Rounded.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("데모 데이터 · 외부 연동 없음", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "AWS 키, 사용자 토큰, 실제 위치는 포함되지 않습니다.",
+                    if (actualMode) "PLEOS 실제 SDK 연동 모드" else "데모 데이터 · 외부 연동 없음",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    if (actualMode) {
+                        "원본 위치와 사용자 토큰은 화면·Room·로그에 저장하지 않습니다."
+                    } else {
+                        "AWS 키, 사용자 토큰, 실제 위치는 포함되지 않습니다."
+                    },
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
