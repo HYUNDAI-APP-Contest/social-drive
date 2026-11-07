@@ -384,19 +384,43 @@ private fun IntegrationSection(
             IntegrationRow("위치 연동", locationStatus)
             IntegrationRow("음성 안내", textToSpeechStatus)
             IntegrationRow("음성 인식", speechToTextStatus)
-            if (
-                textToSpeechStatus.capability == CapabilityState.PermissionDenied ||
-                speechToTextStatus.capability == CapabilityState.PermissionDenied
-            ) {
+            if (speechRecoveryVisible(textToSpeechStatus, speechToTextStatus)) {
                 TextButton(
                     onClick = onRequestSpeechPermissions,
                     modifier = Modifier.heightIn(min = 48.dp),
-                ) { Text("음성 권한 다시 확인") }
+                ) {
+                    Text(
+                        if (speechPermissionDenied(textToSpeechStatus, speechToTextStatus)) {
+                            "음성 권한 다시 확인"
+                        } else {
+                            "음성 서비스 다시 연결"
+                        },
+                    )
+                }
             }
             IntegrationRow("AWS 클라우드", cloudConnectionStatus)
             StatusRow("차량 제어", "안전 정책 · 읽기 전용")
             StatusRow("오프라인 초안", "기기에 보존")
         }
+    }
+}
+
+internal fun speechPermissionDenied(
+    textToSpeechStatus: CapabilityStatus,
+    speechToTextStatus: CapabilityStatus,
+): Boolean = listOf(textToSpeechStatus, speechToTextStatus).any {
+    it.capability == CapabilityState.PermissionDenied
+}
+
+internal fun speechRecoveryVisible(
+    textToSpeechStatus: CapabilityStatus,
+    speechToTextStatus: CapabilityStatus,
+): Boolean {
+    val statuses = listOf(textToSpeechStatus, speechToTextStatus)
+    return speechPermissionDenied(textToSpeechStatus, speechToTextStatus) || statuses.any {
+        it.source == IntegrationSource.Actual &&
+            it.capability == CapabilityState.Unavailable &&
+            it.label != "실차 · 확인 중"
     }
 }
 
