@@ -56,6 +56,6 @@ class CognitoAccessTokenPolicy(
         const val MAX_PAYLOAD_LENGTH = 8_192
         const val EXPIRY_SAFETY_SECONDS = 30L
         const val CLOCK_SKEW_SECONDS = 300L
-        val KEY_ID_PATTERN = Regex("[A-Za-z0-9_-]{1,128}")
+        val KEY_ID_PATTERN = Regex("[A-Za-z0-9_+/=-]{1,128}")
     }
 }

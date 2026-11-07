@@ -18,6 +18,7 @@ class CognitoAccessTokenPolicyTest {
     @Test
     fun `승인된 풀과 클라이언트의 유효한 access token만 허용한다`() {
         assertTrue(policy.isValid(token()))
+        assertTrue(policy.isValid(token(keyId = "AbC+/example_01-=")))
         assertFalse(policy.isValid(token(algorithm = "none")))
         assertFalse(policy.isValid(token(keyId = "bad key id")))
         assertFalse(policy.isValid(token(keyId = "x".repeat(129))))
@@ -44,7 +45,7 @@ class CognitoAccessTokenPolicyTest {
         expiresAt: Long = now.epochSecond + 3_600L,
         extra: String = "",
         algorithm: String = "RS256",
-        keyId: String = "test-key_01",
+        keyId: String = "1234example=",
     ): String {
         val header = encode("{\"alg\":\"$algorithm\",\"kid\":\"$keyId\"}")
         val payload = encode(
@@ -57,5 +58,5 @@ class CognitoAccessTokenPolicyTest {
         .encodeToString(value.toByteArray())
 
     private fun rawPayload(payload: String): String =
-        "${encode("{\"alg\":\"RS256\",\"kid\":\"test-key_01\"}")}.${encode(payload)}.signature"
+        "${encode("{\"alg\":\"RS256\",\"kid\":\"1234example=\"}")}.${encode(payload)}.signature"
 }
