@@ -9,11 +9,11 @@
 - Vehicle SDK 2.3.2와 NaviHelper 3.0.5 adapter의 최초 구현 커밋은 `6475287`이며 1차 독립 검토에서 `CHANGES_REQUIRED`였습니다.
 - 최신 Android 검토 HEAD는 `4f2b559116fd98ee3fe05e05fc6431b59888d0d6`입니다. PLEOS Connect Emulator 2.1.0(Android 14, user 10)에서 instrumentation 51/51, SDK-independent Kotlin 74/74, 정적 계약 29/29이 통과했습니다.
 - Gradle clean, Demo/Pleos 단위 테스트, Demo release lint, Demo Debug/Release, Pleos Debug와 Pleos AndroidTest 조립이 179개 task로 성공했습니다. Demo release 산출물은 unsigned이므로 공모전 제출용 서명·설치 검증은 아직 남아 있습니다.
-- Room v6에는 durable 409 conflict review와 parked-only published-delete tombstone, bounded retry가 구현돼 있습니다. Pleos/production cloud factory는 승인된 Cognito/API 설정과 concrete transport가 없으면 fail closed합니다.
+- Room v7에는 실제 경로 거리와 durable 409 conflict review, parked-only published-delete tombstone, bounded retry가 구현돼 있습니다. PLEOS 클라우드는 공개 Cognito/API 설정이 없으면 fail closed합니다.
 - `88b4938`은 최신 앱 HEAD가 아니라 P0-3A의 재현 가능한 local bootstrap/doctor와 offline zero-network fail-fast를 남긴 **역사적 증거**입니다.
-- Android 소스는 통합됐지만 concrete Cognito/API host 및 no-redirect HTTP adapter 설정이 없어 actual cloud와 AWS E2E는 아직 사용할 수 없습니다. 실제 PLEOS system Back이 embedded child task에 전달되는지는 `UNRESOLVED`이며, 자동 UI 테스트는 resumed `MainActivity` dispatcher에 Back이 전달된 이후의 Compose 계약만 증명합니다.
+- Android에는 no-redirect OkHttp 전송과 Cognito SRP·MFA·세션 복원 어댑터가 연결돼 있습니다. 승인된 실제 스택 출력값과 테스트 사용자가 없어 AWS E2E만 아직 미검증입니다. 실제 PLEOS system Back이 embedded child task에 전달되는지는 `UNRESOLVED`입니다.
 - 최신 코드에는 recording session, `highlightCount`, draft, pending queue, preset reference와 route source·consent/withdraw·로컬 `DELETE_PENDING` 상태가 포함됩니다.
-- 실제 위치·경로점 수집은 여전히 구현되지 않았습니다. 게시물 삭제는 Room v6 tombstone과 network `DELETE`·bounded retry 계약까지 구현·계측됐지만, actual cloud 설정이 없어 demo/fake transport 증거입니다.
+- 실제 위치 권한과 개인정보 동의 기반 PLEOS 경로 수집, 거리 집계, TTS/STT 콜백이 구현됐고 PLEOS AVD에서 검증됐습니다. 원본 위경도는 Room이나 업로드 payload에 저장하지 않습니다. 실제 AWS 호출은 공개 스택 설정 부재로 미검증입니다.
 - Gradle 8.9과 Android platform 35가 준비되어 실제 조립과 PLEOS AVD 계측까지 완료됐습니다. 역사적 `88b4938`의 bootstrap 차단 기록은 현재 상태가 아니라 과거 복구 증거로만 유지합니다.
 - preset route와 fake motion은 실제 차량 데이터가 아닌 데모 데이터입니다.
 
@@ -56,7 +56,8 @@ Social Drive의 목표 흐름은 다음과 같습니다.
 | `앱 구현` | Vehicle/NaviHelper와 cloud production 경계 | vendor 초기화/수명주기와 fail-closed production port는 통합. 실제 Vehicle callback·Navi route callback·actual cloud는 별도 증거 필요 |
 | `데모 데이터` | preset route / fake motion | 실제 위치나 실제 Vehicle callback이 아님 |
 | `미구현` | 실제 위치·경로점 수집, signed submission release APK, actual cloud E2E | release pipeline 코드는 있으나 승인 서명·clean-install 산출물이 없어 제출 release 완료 증거는 없음 |
-| `향후 기능` | FusedLocation, SpeechToText, TextToSpeech, Vehicle Control | 공식 Coming Soon이며 이번 MVP의 실제 기능으로 사용하지 않음 |
+| `실제 연동` | FusedLocation, SpeechToText, TextToSpeech | 현재 PLEOS 공개 SDK를 사용하며 권한·동의 후에만 활성화 |
+| `향후 기능` | Vehicle Control | 안전 정책상 이번 MVP에서 제외 |
 
 SDK 제공 상태는 [Pleos 프로젝트 및 SDK 상태 가이드](https://document.pleos.ai/en/docs/pleos-only/create-my-project)를 기준으로 하며, Vehicle과 NaviHelper의 구현 가능 여부와 앱에서 실제 검증됐는지는 별개입니다.
 
@@ -112,7 +113,7 @@ bash scripts/build-submission-release.sh
 | Emulator | Pleos Connect Emulator 2.1.0, Android 14, user 10 | 앱 설치·UI 8/8·비UI 43/43 성공. physical system Back은 미검증 |
 | Vehicle | Vehicle SDK 2.3.2 / Vehicle Service 대응 버전 | 초기화·release 수명주기와 fail-closed Unknown 실행. 실제 permissioned state callback은 미검증 |
 | Navigation | NaviHelper 3.0.5 | 초기화·request coordinator 계약은 빌드/코어 검증. 실제 route callback 실기 증거는 미완료 |
-| AWS | Cognito JWT, DynamoDB, private S3 기반 목표 | backend `ddbd61f` 계약 포함. concrete Cognito/API host·no-redirect HTTP adapter 설정 부재로 actual cloud unavailable; AWS E2E 미실행 |
+| AWS | Cognito JWT, DynamoDB, private S3 기반 목표 | SRP/MFA/세션 복원과 no-redirect 전송 구현. 실제 스택 출력값·테스트 사용자 부재로 AWS E2E 미실행 |
 
 P0-3A bootstrap/doctor의 과거 차단은 해소되어 build·emulator·debug APK 증거가 생겼습니다. signing secret과 keystore는 조회하지 않았고, 제출용 signed release와 actual cloud는 여전히 별도 승인·검증 경계입니다.
 

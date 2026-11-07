@@ -30,15 +30,17 @@
 ./gradlew verifyPleosCloudConfiguration
 ```
 
-로그인 어댑터는 `PleosCloudRuntime.configuration.cognito`의 검증된 공개 식별자를 사용한다. 현재 액세스 토큰을 매 요청마다 반환하는 `CognitoSessionSource`를 구현하고 로그인 성공 뒤 coroutine에서 `PleosCloudRuntime.installSessionSource(source)`를 호출한다. 이 함수가 `true`를 반환해야 설정 화면이 `AWS · 로그인 검증됨`으로 바뀐다. 잘못된 토큰 또는 예외를 반환한 공급자는 저장하지 않는다. 로그아웃 때도 coroutine에서 `PleosCloudRuntime.clearSessionSource()`를 호출한다. 토큰은 Room, WorkManager 입력, 로그에 저장하지 않는다.
+PLEOS 빌드는 공식 Amplify Android Cognito 플러그인의 SRP 로그인을 사용한다. 앱 시작 시 SDK가 안전하게 관리하는 기존 세션을 복원하고, 설정 화면에서 아이디·비밀번호 로그인과 문자/TOTP 추가 인증 및 로그아웃을 제공한다. 비밀번호와 인증 응답은 Compose 저장 상태, Room, WorkManager 입력, 로그에 넣지 않으며 제출 직후 화면 상태와 전달 배열에서 지운다. SDK 세션에서 얻은 현재 액세스 토큰은 매 API 작업 시 `CognitoSessionSource`를 통해 요청하고 앱 런타임에는 별도로 영속화하지 않는다.
 
 클라이언트는 API 요청 직전에 JWT의 `iss`, `client_id`, `token_use=access`, `iat`, `exp`를 검증한다. 승인된 User Pool·모바일 Client ID와 다르거나 만료가 30초 이내인 토큰은 네트워크로 보내지 않고 `AUTH_SESSION_UNAVAILABLE`로 중단한다. JWT 서명 검증은 Cognito JWT authorizer가 담당하며 앱은 서명 검증 성공을 주장하지 않는다.
 
 ## 승인 후 검증
 
 1. 설정 화면에 `AWS · 로그인 필요`가 표시되는지 확인한다.
-2. Cognito 로그인 뒤 설치 함수가 `true`를 반환하고 `AWS · 로그인 검증됨`으로 바뀌는지 확인한다.
+2. 설정의 `AWS 계정`에서 Cognito 로그인 및 구성된 MFA를 완료한 뒤 `AWS · 로그인 검증됨`과 `AWS 계정 연결됨`으로 바뀌는지 확인한다.
 3. 게시 생성, COVER/ROUTE 업로드, publish ACK 순서가 성공하는지 확인한다.
 4. 업로드된 ROUTE JSON에 `horizontal`, `vertical`, `progress` 외 원본 위치 키가 없는지 확인한다.
 5. 로그아웃 뒤 게시 요청이 `CONFIGURATION` 또는 인증 실패로 안전하게 중단되는지 확인한다.
 6. 다른 User Pool/Client ID, ID token, 만료 임박 access token이 네트워크 요청 전에 거부되는지 확인한다.
+
+실제 E2E에는 승인된 스택 출력값과 테스트 사용자만 필요하다. 앱 빌드나 로그인 검증 과정에서 AWS 자격 증명, Client Secret, IAM 권한은 필요하지 않으며 저장소 작업자가 사용하거나 변경하지 않는다.
