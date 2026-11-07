@@ -419,6 +419,7 @@ fun UploadStateChip(state: UploadState, modifier: Modifier = Modifier) {
         UploadState.Queued -> "오프라인 대기"
         UploadState.Uploading -> "업로드 중"
         UploadState.Failed -> "재시도 필요"
+        UploadState.Rejected -> "게시 불가"
         UploadState.NeedsConflictReview -> "버전 검토 필요"
         UploadState.NeedsConsentRenewal -> "경로 동의 갱신 필요"
         UploadState.Published -> "게시 완료"

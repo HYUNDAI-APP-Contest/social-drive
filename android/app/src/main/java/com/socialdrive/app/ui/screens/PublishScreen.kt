@@ -103,6 +103,12 @@ fun PublishScreen(
         if (publicationBlockReason != null) {
             SafetyRestrictionBanner(publicationBlockReason, Modifier.padding(vertical = 12.dp))
         }
+        if (uploadState == UploadState.Rejected) {
+            SafetyRestrictionBanner(
+                "서버가 이 게시 요청을 영구 거부했습니다. 로컬 기록은 유지되며 새 기록으로 다시 시도해 주세요.",
+                Modifier.padding(vertical = 12.dp),
+            )
+        }
         Row(
             Modifier.fillMaxSize().padding(top = 24.dp),
             horizontalArrangement = Arrangement.spacedBy(24.dp),
@@ -204,6 +210,7 @@ fun PublishScreen(
                     UploadState.Published -> Button(onClick = onDone, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("피드에서 확인하기") }
                     UploadState.Uploading -> Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("안전하게 업로드 중…") }
                     UploadState.Failed -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canAct && consent && publicationBlockReason == null, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("업로드 다시 시도") }
+                    UploadState.Rejected -> Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("게시할 수 없는 기록") }
                     UploadState.NeedsConflictReview -> Button(onClick = onReviewConflict, enabled = canAct, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("서버 버전 검토") }
                     UploadState.NeedsConsentRenewal -> Button(onClick = onRenewRouteConsent, enabled = canAct, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("경로 동의 갱신하기") }
                     UploadState.Queued -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = false, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("네트워크 연결을 기다리는 중") }

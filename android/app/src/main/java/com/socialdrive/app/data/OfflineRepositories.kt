@@ -238,6 +238,7 @@ internal fun queueUploadState(status: String?, lastErrorCode: String?): UploadSt
     LocalState.FAILED -> when (lastErrorCode) {
         LocalState.VERSION_CONFLICT -> UploadState.NeedsConflictReview
         LocalState.CONSENT_RENEWAL_REQUIRED -> UploadState.NeedsConsentRenewal
+        "REJECTED", "NOT_FOUND", "CONFIGURATION" -> UploadState.Rejected
         else -> UploadState.Failed
     }
     LocalState.PUBLISHED -> UploadState.Published

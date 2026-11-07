@@ -13,6 +13,9 @@ class PublishQueuePresentationTest {
             queueUploadState(LocalState.FAILED, LocalState.CONSENT_RENEWAL_REQUIRED),
         )
         assertEquals(UploadState.NeedsConflictReview, queueUploadState(LocalState.FAILED, LocalState.VERSION_CONFLICT))
-        assertEquals(UploadState.Failed, queueUploadState(LocalState.FAILED, "REJECTED"))
+        assertEquals(UploadState.Rejected, queueUploadState(LocalState.FAILED, "REJECTED"))
+        assertEquals(UploadState.Rejected, queueUploadState(LocalState.FAILED, "NOT_FOUND"))
+        assertEquals(UploadState.Rejected, queueUploadState(LocalState.FAILED, "CONFIGURATION"))
+        assertEquals(UploadState.Failed, queueUploadState(LocalState.FAILED, "SERVER_BUSY"))
     }
 }
