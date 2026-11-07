@@ -10,8 +10,11 @@ import java.io.IOException
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.async
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
+import kotlin.test.assertFailsWith
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -27,6 +30,15 @@ class AmplifyCognitoAuthTest {
         gate.leave()
         assertTrue(gate.tryEnter())
         gate.leave()
+    }
+
+    @Test
+    fun `바깥 작업 시간 제한은 Cognito 내부 시간 초과로 바꾸지 않는다`() = runTest {
+        assertFailsWith<TimeoutCancellationException> {
+            withTimeout(100L) {
+                withCognitoOperationTimeout(timeoutMillis = 1_000L) { awaitCancellation() }
+            }
+        }
     }
 
     @Test

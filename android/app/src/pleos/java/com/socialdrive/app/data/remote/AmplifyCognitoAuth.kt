@@ -14,14 +14,13 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.io.IOException
 
@@ -322,11 +321,11 @@ internal fun cancelledCognitoOperationState(): CloudAuthState = CloudAuthState(
 internal suspend fun <T> withCognitoOperationTimeout(
     timeoutMillis: Long = COGNITO_OPERATION_TIMEOUT_MILLIS,
     block: suspend () -> T,
-): T = try {
-    withTimeout(timeoutMillis) { block() }
-} catch (_: TimeoutCancellationException) {
-    throw CognitoOperationTimeoutException()
-}
+): T = withTimeoutOrNull(timeoutMillis) { CognitoOperationResult(block()) }
+    ?.value
+    ?: throw CognitoOperationTimeoutException()
+
+private data class CognitoOperationResult<T>(val value: T)
 
 internal class CognitoOperationTimeoutException : Exception("Cognito operation timed out")
 
