@@ -33,4 +33,17 @@ class SettingsConsentLabelTest {
         assertFalse(routePermissionRecoveryVisible(RouteConsentState.NotAsked, denied))
         assertFalse(routePermissionRecoveryVisible(RouteConsentState.Granted, RouteSource.LiveAvailable))
     }
+
+    @Test
+    fun `위치 권한 거부와 기능 미지원을 구분해서 안내한다`() {
+        assertEquals(
+            "PLEOS 위치 권한 필요",
+            routeCapabilityTitle(RouteSource.LiveUnavailable(LiveUnavailableReason.PERMISSION_DENIED)),
+        )
+        assertEquals(
+            "PLEOS 위치 기능 사용 불가",
+            routeCapabilityTitle(RouteSource.LiveUnavailable(LiveUnavailableReason.CAPABILITY_MISSING)),
+        )
+        assertEquals("PLEOS 위치 SDK 사용 가능", routeCapabilityTitle(RouteSource.LiveAvailable))
+    }
 }

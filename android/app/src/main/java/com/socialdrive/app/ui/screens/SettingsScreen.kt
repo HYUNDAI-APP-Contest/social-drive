@@ -305,7 +305,7 @@ private fun PrivacySection(
             )
             Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(if (routePrivacy.liveSource == RouteSource.LiveAvailable) "PLEOS 위치 SDK 사용 가능" else "PLEOS 위치 권한 필요", style = MaterialTheme.typography.titleMedium)
+                    Text(routeCapabilityTitle(routePrivacy.liveSource), style = MaterialTheme.typography.titleMedium)
                     Text(routeConsentStorageLabel(routePrivacy.consentState), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -414,6 +414,16 @@ internal fun routeConsentStorageLabel(consentState: RouteConsentState): String =
     } else {
         "현재 수집하지 않음 · 동의도 저장하지 않음"
     }
+
+internal fun routeCapabilityTitle(source: RouteSource): String = when (source) {
+    RouteSource.LiveAvailable -> "PLEOS 위치 SDK 사용 가능"
+    RouteSource.DemoPreset -> "데모 경로 모드"
+    is RouteSource.LiveUnavailable -> when (source.reason) {
+        LiveUnavailableReason.PERMISSION_DENIED -> "PLEOS 위치 권한 필요"
+        LiveUnavailableReason.CAPABILITY_MISSING -> "PLEOS 위치 기능 사용 불가"
+        LiveUnavailableReason.SDK_COMING_SOON -> "PLEOS 위치 기능 준비 중"
+    }
+}
 
 internal fun routePermissionRecoveryVisible(consentState: RouteConsentState, liveSource: RouteSource): Boolean =
     consentState == RouteConsentState.Granted &&
