@@ -2,6 +2,7 @@ package com.socialdrive.app.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -10,19 +11,26 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.FiberManualRecord
 import androidx.compose.material.icons.rounded.DirectionsCar
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
@@ -54,6 +62,7 @@ fun HomeScreen(
         DrivingHome(motion, vehicleStatus, blockedMessage, onRecord)
         return
     }
+    var selectedFilter by rememberSaveable { mutableStateOf(DriveFilter.All) }
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier
@@ -83,6 +92,7 @@ fun HomeScreen(
                 Icon(Icons.Rounded.Settings, contentDescription = "설정 열기")
             }
         }
+        HomeFilterBar(selectedFilter, onSelected = { selectedFilter = it })
         if (blockedMessage != null) SafetyRestrictionBanner(blockedMessage, Modifier.padding(horizontal = 28.dp, vertical = 4.dp))
         // Give state content only the remaining viewport. This keeps the header and
         // primary action stable when a state (notably offline cache) fills its area.
@@ -119,7 +129,7 @@ fun HomeScreen(
                     actionLabel = "다시 시도",
                     onAction = onRetry,
                 )
-                is ContentState.Content -> DriveGrid(state.value, onDetail)
+                is ContentState.Content -> DriveGrid(filterDrives(state.value, selectedFilter), onDetail)
                 is ContentState.Offline -> if (state.cached.isEmpty()) {
                     ContentStatePanel(
                         ContentStateKind.Offline,
@@ -130,9 +140,39 @@ fun HomeScreen(
                     )
                 } else Column(Modifier.fillMaxSize()) {
                     OfflineCacheBanner(Modifier.padding(horizontal = 28.dp, vertical = 8.dp))
-                    DriveGrid(state.cached, onDetail, Modifier.weight(1f))
+                    DriveGrid(filterDrives(state.cached, selectedFilter), onDetail, Modifier.weight(1f))
                 }
             }
+        }
+    }
+}
+
+private enum class DriveFilter(val label: String) {
+    All("전체"), Coast("바다"), Mountain("산"), City("도심")
+}
+
+private fun filterDrives(drives: List<DriveSummary>, filter: DriveFilter): List<DriveSummary> = when (filter) {
+    DriveFilter.All -> drives
+    DriveFilter.Coast -> drives.filter { it.id.contains("coast") }
+    DriveFilter.Mountain -> drives.filter { it.id.contains("mountain") }
+    DriveFilter.City -> drives.filter { it.id.contains("city") }
+}
+
+@Composable
+private fun HomeFilterBar(selected: DriveFilter, onSelected: (DriveFilter) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 28.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text("나의 드라이브", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(end = 6.dp))
+        DriveFilter.entries.forEach { filter ->
+            FilterChip(
+                selected = selected == filter,
+                onClick = { onSelected(filter) },
+                label = { Text(filter.label) },
+                modifier = Modifier.heightIn(min = 48.dp).widthIn(min = 48.dp),
+            )
         }
     }
 }
@@ -172,13 +212,29 @@ private fun DriveGrid(
     onDetail: (String) -> Unit,
     modifier: Modifier = Modifier.fillMaxSize(),
 ) {
-    LazyVerticalGrid(
-        columns = GridCells.Adaptive(360.dp),
-        modifier = modifier,
-        contentPadding = PaddingValues(28.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        items(drives, key = { it.id }) { drive -> DriveSummaryCard(drive, { onDetail(drive.id) }) }
+    BoxWithConstraints(modifier) {
+        val roomyAutomotiveViewport = maxHeight >= 760.dp
+        val featuredHeight = if (roomyAutomotiveViewport) 440.dp else 344.dp
+        val supportingHeight = if (roomyAutomotiveViewport) 340.dp else 276.dp
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(520.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 28.dp, vertical = 18.dp),
+            horizontalArrangement = Arrangement.spacedBy(20.dp),
+            verticalArrangement = Arrangement.spacedBy(20.dp),
+        ) {
+            itemsIndexed(
+                items = drives,
+                key = { _, drive -> drive.id },
+                span = { index, _ -> if (index == 0) GridItemSpan(maxLineSpan) else GridItemSpan(1) },
+            ) { index, drive ->
+                DriveSummaryCard(
+                    drive = drive,
+                    onClick = { onDetail(drive.id) },
+                    featured = index == 0,
+                    cardHeight = if (index == 0) featuredHeight else supportingHeight,
+                )
+            }
+        }
     }
 }

@@ -51,7 +51,7 @@ class VisualRegressionTest {
     fun representativeStatesExposeKoreanStatusAndActions() {
         assertScenario(VisualScenario.HomeContent, "오늘의 드라이브")
         assertScenario(VisualScenario.RecordingActive, "데모 경로를 기록하고 있어요")
-        assertScenario(VisualScenario.ConsentLiveUnavailable, "실시간 경로 SDK 준비 중")
+        assertScenario(VisualScenario.ConsentLiveUnavailable, "PLEOS 위치 권한 필요")
         compose.onNodeWithText("실시간 경로 사용 확인").assertDoesNotExist()
         assertScenario(VisualScenario.MemoryDetailDemo, "개인 위치를 제거한 비정밀 경로 아트워크")
         assertScenario(VisualScenario.HomeLoading, "드라이브를 불러오고 있어요")
@@ -62,6 +62,32 @@ class VisualRegressionTest {
         compose.onNodeWithText("기기에 저장된 초안과 기록은 삭제되지 않았습니다.").assertIsDisplayed()
         compose.onNodeWithText("다시 시도").assertIsDisplayed()
         assertScenario(VisualScenario.PublishDraft, "좋았던 순간을 한 장의 이야기로")
+    }
+
+    @Test
+    fun homeCategoryFiltersUpdateTheVisibleDriveCollection() {
+        compose.onNodeWithText("오늘의 드라이브").assertIsDisplayed()
+        compose.onNodeWithText("산").performClick()
+        compose.onNodeWithText("가을, 단풍이 머문 길").assertIsDisplayed()
+        compose.onNodeWithText("빛나는 해안도로의 저녁").assertDoesNotExist()
+        compose.onNodeWithText("도심 속 특별한 저녁").assertDoesNotExist()
+    }
+
+    @Test
+    fun runtimeMemoryFlowOpensDetailAndPublish() {
+        compose.onNodeWithText("빛나는 해안도로의 저녁").performClick()
+        compose.onNodeWithText("개인 위치를 제거한 비정밀 경로 아트워크").assertIsDisplayed()
+        compose.onNodeWithText("이 드라이브 게시하기").performClick()
+        compose.onNodeWithText("드라이브 게시").assertIsDisplayed()
+        compose.onNodeWithText("좋았던 순간을 한 장의 이야기로").assertIsDisplayed()
+    }
+
+    @Test
+    fun runtimeRecordingFlowOpensDistractionMinimizedScreen() {
+        compose.onNodeWithText("기록 시작", substring = true).performClick()
+        compose.onNodeWithText("데모 경로를 기록하고 있어요").assertIsDisplayed()
+        compose.onNodeWithText("방금 좋았어", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("기록 종료", substring = true).assertIsDisplayed()
     }
 
     @Test
@@ -135,7 +161,7 @@ class VisualRegressionTest {
         val expectations = listOf(
             Triple(VisualScenario.HomeContent, "오늘의 드라이브", "기록 시작"),
             Triple(VisualScenario.RecordingActive, "데모 경로를 기록하고 있어요", "기록 종료"),
-            Triple(VisualScenario.ConsentLiveUnavailable, "경로 데이터 및 동의", "실시간 경로 SDK 준비 중"),
+            Triple(VisualScenario.ConsentLiveUnavailable, "경로 데이터 및 동의", "PLEOS 위치 권한 필요"),
             Triple(VisualScenario.MemoryDetailDemo, "빛나는 해안도로의 저녁", "차량 내비게이션 연결 안내"),
             Triple(VisualScenario.HomeLoading, "드라이브를 불러오고 있어요", "저장된 기록을 확인하는 중입니다."),
             Triple(VisualScenario.HomeEmpty, "아직 남긴 드라이브가 없어요", "첫 드라이브 기록하기"),

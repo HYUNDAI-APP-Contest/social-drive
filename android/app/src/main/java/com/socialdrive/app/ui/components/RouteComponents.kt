@@ -1,6 +1,7 @@
 package com.socialdrive.app.ui.components
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +29,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -41,6 +44,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import com.socialdrive.app.R
 import com.socialdrive.app.domain.DriveSummary
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.IntegrationSource
@@ -57,9 +62,15 @@ internal fun memoryPaletteFor(id: String): MemoryPalette = when {
     else -> MemoryPalette.Coast
 }
 
+private fun memoryArtworkRes(palette: MemoryPalette): Int = when (palette) {
+    MemoryPalette.Coast -> R.drawable.drive_coast_night_v1
+    MemoryPalette.Mountain -> R.drawable.drive_mountain_autumn_v1
+    MemoryPalette.City -> R.drawable.drive_city_night_v1
+}
+
 /**
- * Privacy-safe memory artwork made only from normalized route points and theme tokens.
- * It deliberately contains no map tiles, place names, photographs, or raw coordinates.
+ * Privacy-safe memory artwork. Generic editorial backdrops contain no user data, while
+ * the route overlay is derived only from normalized demo points (never raw coordinates).
  */
 @Composable
 fun RouteMemoryArtwork(
@@ -78,6 +89,21 @@ fun RouteMemoryArtwork(
         MemoryPalette.City -> listOf(routeColors.brand, scheme.surfaceVariant, scheme.secondaryContainer)
     }
     Box(modifier.background(Brush.linearGradient(gradient))) {
+        Image(
+            painter = painterResource(memoryArtworkRes(palette)),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0x24000B18), Color(0x52000B18), Color(0xB8000812)),
+                    ),
+                ),
+        )
         Canvas(
             Modifier
                 .fillMaxSize()
@@ -186,14 +212,20 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMemoryRoute(
 }
 
 @Composable
-fun DriveSummaryCard(drive: DriveSummary, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun DriveSummaryCard(
+    drive: DriveSummary,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    featured: Boolean = false,
+    cardHeight: Dp? = null,
+) {
     val largeText = LocalDensity.current.fontScale >= 1.2f
     Card(
         modifier = modifier
             // A concrete height lets the artwork Box own the complete grid item.
             // heightIn(min) left fillMaxSize() measuring only the text content,
             // which produced a visually empty lower half in the judge viewport.
-            .height(232.dp)
+            .height(cardHeight ?: if (featured) 344.dp else 276.dp)
             .clickable(role = Role.Button, onClickLabel = "${drive.title} 상세 보기", onClick = onClick),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -213,16 +245,23 @@ fun DriveSummaryCard(drive: DriveSummary, onClick: () -> Unit, modifier: Modifie
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                MaterialTheme.colorScheme.surface.copy(alpha = .82f),
-                                MaterialTheme.colorScheme.surface,
+                                Color.Transparent,
+                                Color(0xD9000812),
+                                Color(0xF5000812),
                             ),
                         ),
                     )
-                    .padding(20.dp),
+                    .padding(horizontal = 24.dp, vertical = 22.dp),
             ) {
-                Text(drive.date, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(drive.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(drive.summary, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(drive.date, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFB9C8DB))
+                Text(
+                    drive.title,
+                    style = if (featured) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(drive.summary, style = MaterialTheme.typography.bodyMedium, color = Color(0xFFD5E0EC), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(12.dp))
                 if (largeText) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -245,7 +284,7 @@ fun DriveSummaryCard(drive: DriveSummary, onClick: () -> Unit, modifier: Modifie
 private fun Metric(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.tertiary)
-        Text(text, style = MaterialTheme.typography.labelLarge)
+        Text(text, style = MaterialTheme.typography.labelLarge, color = Color(0xFFE8F0F8))
     }
 }
 
