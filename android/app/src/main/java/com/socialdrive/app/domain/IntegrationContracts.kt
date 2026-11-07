@@ -97,6 +97,7 @@ interface AuxiliaryCapabilitySource {
     val textToSpeech: StateFlow<CapabilityStatus>
     val speechToText: StateFlow<CapabilityStatus>
     val speechRecognitionActive: StateFlow<Boolean>
+    val speechRecognitionState: StateFlow<SpeechRecognitionState>
     val locationPermission: String?
 
     suspend fun initialize()
@@ -106,6 +107,8 @@ interface AuxiliaryCapabilitySource {
     fun refreshLocationPermission()
     fun release()
 }
+
+enum class SpeechRecognitionState { Idle, Listening, Applied, NoResult, Cancelled, Failed }
 
 data class IntegrationBundle(
     val vehicleMotionSource: VehicleMotionSource,

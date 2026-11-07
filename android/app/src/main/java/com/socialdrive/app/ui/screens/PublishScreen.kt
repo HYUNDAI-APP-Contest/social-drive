@@ -33,6 +33,7 @@ import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.RouteSource
+import com.socialdrive.app.domain.SpeechRecognitionState
 import com.socialdrive.app.ui.components.MemoryPalette
 import com.socialdrive.app.ui.components.RouteMemoryArtwork
 import com.socialdrive.app.ui.components.RouteSourceBadge
@@ -63,6 +64,7 @@ fun PublishScreen(
     memoryPalette: MemoryPalette = MemoryPalette.Coast,
     speechRecognition: CapabilityState = CapabilityState.Unavailable,
     speechRecognitionActive: Boolean = false,
+    speechRecognitionState: SpeechRecognitionState = SpeechRecognitionState.Idle,
     onDictateTitle: () -> Boolean = { false },
     onDictateDescription: () -> Boolean = { false },
     onCancelDictation: () -> Unit = {},
@@ -161,6 +163,10 @@ fun PublishScreen(
                             Text("음성 입력 취소")
                         }
                     }
+                } else {
+                    speechRecognitionMessage(speechRecognitionState)?.let { message ->
+                        Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
                 Text("3  공개 범위 · 전체 공개", style = MaterialTheme.typography.titleMedium)
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -187,6 +193,14 @@ fun PublishScreen(
             }
         }
     }
+}
+
+internal fun speechRecognitionMessage(state: SpeechRecognitionState): String? = when (state) {
+    SpeechRecognitionState.Idle, SpeechRecognitionState.Listening -> null
+    SpeechRecognitionState.Applied -> "음성 인식 결과를 반영했어요."
+    SpeechRecognitionState.NoResult -> "인식된 음성이 없어요. 다시 시도해 주세요."
+    SpeechRecognitionState.Cancelled -> "음성 입력을 취소했어요."
+    SpeechRecognitionState.Failed -> "음성 인식을 시작하지 못했어요. 잠시 후 다시 시도해 주세요."
 }
 
 internal fun publishCoverPrivacyLabel(source: RouteSource): String =

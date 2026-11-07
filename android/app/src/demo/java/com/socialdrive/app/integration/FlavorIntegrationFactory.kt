@@ -17,6 +17,7 @@ import com.socialdrive.app.domain.NavigationState
 import com.socialdrive.app.domain.NavigationValidation
 import com.socialdrive.app.domain.VehicleMotionSource
 import com.socialdrive.app.domain.VehicleMotionStatus
+import com.socialdrive.app.domain.SpeechRecognitionState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,6 +39,8 @@ private class DemoAuxiliaryCapabilitySource : AuxiliaryCapabilitySource {
     override val textToSpeech: StateFlow<CapabilityStatus> = demo.asStateFlow()
     override val speechToText: StateFlow<CapabilityStatus> = demo.asStateFlow()
     override val speechRecognitionActive: StateFlow<Boolean> = MutableStateFlow(false).asStateFlow()
+    override val speechRecognitionState: StateFlow<SpeechRecognitionState> =
+        MutableStateFlow(SpeechRecognitionState.Idle).asStateFlow()
     override val locationPermission: String? = null
     override suspend fun initialize() = Unit
     override fun speakFeedback(message: String): Boolean = false

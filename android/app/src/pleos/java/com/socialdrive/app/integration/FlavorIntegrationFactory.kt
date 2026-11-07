@@ -25,6 +25,7 @@ import ai.pleos.playground.stt.constant.Mode as SttMode
 import ai.pleos.playground.stt.listener.OnInitializeListener as SttInitializeListener
 import ai.pleos.playground.stt.listener.ResultListener
 import com.socialdrive.app.domain.AuxiliaryCapabilitySource
+import com.socialdrive.app.domain.SpeechRecognitionState
 import com.socialdrive.app.domain.FutureRouteCollector
 import com.socialdrive.app.domain.NormalizedRoutePoint
 import com.socialdrive.app.domain.RawRouteCoordinate
@@ -77,6 +78,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private val mutableTts = MutableStateFlow(checking)
     private val mutableStt = MutableStateFlow(checking)
     private val mutableRecognitionActive = MutableStateFlow(false)
+    private val mutableRecognitionState = MutableStateFlow(SpeechRecognitionState.Idle)
     private val locationLock = Any()
     private val rawLocations = ArrayList<RawRouteCoordinate>()
     private var collectionAuthorized = false
@@ -101,25 +103,34 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             if (isFinal) {
                 recognitionCallback = null
                 mutableRecognitionActive.value = false
+                mutableRecognitionState.value = if (text.isBlank()) {
+                    SpeechRecognitionState.NoResult
+                } else {
+                    SpeechRecognitionState.Applied
+                }
             }
         }
         override fun onUpdatedEpdData(start: Long, end: Long) = Unit
         override fun onStartedRecognition() = Unit
         override fun onEndedRecognition() {
+            val hadPendingCallback = recognitionCallback != null
             recognitionCallback = null
             mutableRecognitionActive.value = false
+            if (hadPendingCallback) mutableRecognitionState.value = SpeechRecognitionState.NoResult
         }
         override fun onError(error: ai.pleos.playground.stt.constant.ErrorType) {
             recognitionCallback = null
             mutableRecognitionActive.value = false
+            mutableRecognitionState.value = SpeechRecognitionState.Failed
         }
-        override fun onReady() = Unit
+        override fun onReady() { mutableRecognitionState.value = SpeechRecognitionState.Listening }
         override fun onUpdatedRms(rms: Double) = Unit
     }
     override val location: StateFlow<CapabilityStatus> = mutableLocation.asStateFlow()
     override val textToSpeech: StateFlow<CapabilityStatus> = mutableTts.asStateFlow()
     override val speechToText: StateFlow<CapabilityStatus> = mutableStt.asStateFlow()
     override val speechRecognitionActive: StateFlow<Boolean> = mutableRecognitionActive.asStateFlow()
+    override val speechRecognitionState: StateFlow<SpeechRecognitionState> = mutableRecognitionState.asStateFlow()
     override val locationPermission: String = FUSED_LOCATION_PERMISSION
 
     override suspend fun initialize() {
@@ -163,17 +174,21 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         if (mutableStt.value.capability != CapabilityState.Available || recognitionCallback != null) return false
         recognitionCallback = onText
         mutableRecognitionActive.value = true
+        mutableRecognitionState.value = SpeechRecognitionState.Listening
         return runCatching { stt.request() }
             .onFailure {
                 recognitionCallback = null
                 mutableRecognitionActive.value = false
+                mutableRecognitionState.value = SpeechRecognitionState.Failed
             }
             .isSuccess
     }
 
     override fun stopSpeechRecognition() {
+        val wasActive = recognitionCallback != null || mutableRecognitionActive.value
         recognitionCallback = null
         mutableRecognitionActive.value = false
+        mutableRecognitionState.value = if (wasActive) SpeechRecognitionState.Cancelled else SpeechRecognitionState.Idle
         runCatching { stt.stop() }
     }
 

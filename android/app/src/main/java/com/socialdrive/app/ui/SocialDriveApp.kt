@@ -75,6 +75,7 @@ fun SocialDriveApp(
     val textToSpeechCapability by offlineViewModel.textToSpeechCapability.collectAsStateWithLifecycle()
     val speechToTextCapability by offlineViewModel.speechToTextCapability.collectAsStateWithLifecycle()
     val speechRecognitionActive by offlineViewModel.speechRecognitionActive.collectAsStateWithLifecycle()
+    val speechRecognitionState by offlineViewModel.speechRecognitionState.collectAsStateWithLifecycle()
     val cloudConnectionCapability by offlineViewModel.cloudConnectionCapability.collectAsStateWithLifecycle()
     val routePrivacy by offlineViewModel.routePrivacy.collectAsStateWithLifecycle()
     val deleteRequestState by offlineViewModel.deleteRequestState.collectAsStateWithLifecycle()
@@ -314,6 +315,7 @@ fun SocialDriveApp(
                             highlightCount = displayedDraft?.highlightCount ?: presentedStory.highlights,
                             speechRecognition = speechToTextCapability.capability,
                             speechRecognitionActive = speechRecognitionActive,
+                            speechRecognitionState = speechRecognitionState,
                             onDictateTitle = {
                                 displayedDraft != null && offlineViewModel.requestTitleDictation()
                             },

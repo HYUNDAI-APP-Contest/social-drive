@@ -77,6 +77,7 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     val textToSpeechCapability = app.auxiliaryCapabilitySource.textToSpeech
     val speechToTextCapability = app.auxiliaryCapabilitySource.speechToText
     val speechRecognitionActive = app.auxiliaryCapabilitySource.speechRecognitionActive
+    val speechRecognitionState = app.auxiliaryCapabilitySource.speechRecognitionState
     val cloudConnectionCapability = app.cloudConnectionStatusSource.status
     val locationPermission: String? get() = app.auxiliaryCapabilitySource.locationPermission
 
