@@ -1,6 +1,12 @@
 package com.socialdrive.app.data.remote
 
 import java.net.URI
+import com.socialdrive.app.domain.CapabilityStatus
+import kotlinx.coroutines.flow.StateFlow
+
+interface CloudConnectionStatusSource {
+    val status: StateFlow<CapabilityStatus>
+}
 
 data class CloudRuntimeConfiguration(
     val client: CloudDriveClientConfig,

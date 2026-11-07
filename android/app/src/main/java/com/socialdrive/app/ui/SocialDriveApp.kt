@@ -66,6 +66,7 @@ fun SocialDriveApp(
     val locationCapability by offlineViewModel.locationCapability.collectAsStateWithLifecycle()
     val textToSpeechCapability by offlineViewModel.textToSpeechCapability.collectAsStateWithLifecycle()
     val speechToTextCapability by offlineViewModel.speechToTextCapability.collectAsStateWithLifecycle()
+    val cloudConnectionCapability by offlineViewModel.cloudConnectionCapability.collectAsStateWithLifecycle()
     val routePrivacy by offlineViewModel.routePrivacy.collectAsStateWithLifecycle()
     val deleteRequestState by offlineViewModel.deleteRequestState.collectAsStateWithLifecycle()
     var destination by rememberSaveable { mutableStateOf(AppDestination.Home) }
@@ -297,6 +298,7 @@ fun SocialDriveApp(
                         locationStatus = locationCapability,
                         textToSpeechStatus = textToSpeechCapability,
                         speechToTextStatus = speechToTextCapability,
+                        cloudConnectionStatus = cloudConnectionCapability,
                         onThemeChange = { theme = it },
                         onBack = { navigate(AppDestination.Home) },
                         routePrivacy = routePrivacy,

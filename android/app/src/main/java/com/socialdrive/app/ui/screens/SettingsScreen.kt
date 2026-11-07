@@ -53,6 +53,7 @@ fun SettingsScreen(
     locationStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "사용 불가"),
     textToSpeechStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "사용 불가"),
     speechToTextStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "사용 불가"),
+    cloudConnectionStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "설정 필요"),
     onThemeChange: (ThemeMode) -> Unit,
     onBack: () -> Unit,
     routePrivacy: RoutePrivacyStatus = RoutePrivacyStatus(
@@ -118,7 +119,7 @@ fun SettingsScreen(
                         Modifier.weight(1f).verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus)
+                        IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus, cloudConnectionStatus)
                         DemoBoundaryNotice()
                     }
                 }
@@ -134,7 +135,7 @@ fun SettingsScreen(
                         onEnableLiveRoute,
                         onDeleteRequest = { showDeleteConfirmation = true },
                     )
-                    IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus)
+                    IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus, cloudConnectionStatus)
                     DemoBoundaryNotice()
                 }
             }
@@ -223,6 +224,7 @@ private fun IntegrationSection(
     locationStatus: CapabilityStatus,
     textToSpeechStatus: CapabilityStatus,
     speechToTextStatus: CapabilityStatus,
+    cloudConnectionStatus: CapabilityStatus,
 ) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -232,6 +234,7 @@ private fun IntegrationSection(
             IntegrationRow("위치 연동", locationStatus)
             IntegrationRow("음성 안내", textToSpeechStatus)
             IntegrationRow("음성 인식", speechToTextStatus)
+            IntegrationRow("AWS 클라우드", cloudConnectionStatus)
             UnavailableStatusRow("차량 제어", "준비 중 · 사용 불가")
             StatusRow("오프라인 초안", "기기에 보존")
         }
