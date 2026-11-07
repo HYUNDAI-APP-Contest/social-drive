@@ -460,7 +460,9 @@ class CloudDriveClientTest {
 
         val failure = assertFailsWith<CloudDriveException> { client.feed() }
 
-        assertEquals("RESPONSE_TOO_LARGE", failure.code)
+        assertEquals(CloudFailureKind.AUTHENTICATION, failure.kind)
+        assertEquals("HTTP_401", failure.code)
+        assertFalse(failure.retryable)
         assertTrue(invalidated)
     }
 

@@ -249,7 +249,12 @@ class CloudDriveClient(
         } catch (_: Throwable) {
             throw CloudDriveException(CloudFailureKind.RETRYABLE, "API_TRANSPORT", retryable = true)
         }
-        if (response.status == 401) runCatching { auth.onAuthenticationRejected() }
+        if (response.status == 401) {
+            runCatching { auth.onAuthenticationRejected() }
+            if (response.body.size > MAX_RESPONSE_BYTES) {
+                throw CloudDriveException(CloudFailureKind.AUTHENTICATION, "HTTP_401", retryable = false)
+            }
+        }
         if (response.body.size > MAX_RESPONSE_BYTES) throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
         if (response.status !in expectedStatuses) throw parseApiError(response, terminalDeleteConflict)
         if (response.status == 204) return JsonValue.NullValue
