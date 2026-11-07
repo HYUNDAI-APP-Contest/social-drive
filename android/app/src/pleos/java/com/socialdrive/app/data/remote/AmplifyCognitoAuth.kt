@@ -3,6 +3,7 @@ package com.socialdrive.app.data.remote
 import android.content.Context
 import com.amplifyframework.auth.cognito.AWSCognitoAuthPlugin
 import com.amplifyframework.auth.cognito.AWSCognitoAuthSession
+import com.amplifyframework.auth.cognito.result.AWSCognitoAuthSignOutResult
 import com.amplifyframework.auth.result.AuthSignInResult
 import com.amplifyframework.auth.result.step.AuthSignInStep
 import com.amplifyframework.core.Amplify
@@ -124,9 +125,16 @@ internal class AmplifyCognitoAuth(
         mutableState.value = CloudAuthState(CloudAuthPhase.WORKING, "로그아웃 중")
         try {
             try {
-                withCognitoOperationTimeout { clearAmplifySession() }
+                val globallyComplete = withCognitoOperationTimeout { clearAmplifySession() }
                 PleosCloudRuntime.clearSessionSource()
-                mutableState.value = signedOutState()
+                mutableState.value = if (globallyComplete) {
+                    signedOutState()
+                } else {
+                    CloudAuthState(
+                        CloudAuthPhase.SIGNED_OUT,
+                        "기기 로그아웃 완료 · 전체 로그아웃 상태는 다시 확인해 주세요",
+                    )
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Throwable) {
@@ -137,13 +145,22 @@ internal class AmplifyCognitoAuth(
         }
     }
 
-    private suspend fun clearAmplifySession() {
+    private suspend fun clearAmplifySession(): Boolean =
         suspendCancellableCoroutine { continuation ->
-            Amplify.Auth.signOut {
-                if (continuation.isActive) continuation.resume(Unit)
+            Amplify.Auth.signOut { result ->
+                if (!continuation.isActive) return@signOut
+                when (result) {
+                    is AWSCognitoAuthSignOutResult.CompleteSignOut -> continuation.resume(true)
+                    is AWSCognitoAuthSignOutResult.PartialSignOut -> continuation.resume(false)
+                    is AWSCognitoAuthSignOutResult.FailedSignOut -> continuation.resumeWithException(
+                        IllegalStateException("Cognito local sign-out failed"),
+                    )
+                    else -> continuation.resumeWithException(
+                        IllegalStateException("Unexpected Cognito sign-out result"),
+                    )
+                }
             }
         }
-    }
 
     override suspend fun freshAccessToken(): String {
         operationGate.enter()

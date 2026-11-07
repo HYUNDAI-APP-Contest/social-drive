@@ -632,6 +632,15 @@ test("PLEOS cloud build gate validates all public deployment outputs without sec
   assert.doesNotMatch(auth, /clientSecret|android\.util\.Log|println\(|printStackTrace/);
 });
 
+test("Cognito sign-out distinguishes complete partial and failed SDK results", () => {
+  const auth = read("app/src/pleos/java/com/socialdrive/app/data/remote/AmplifyCognitoAuth.kt");
+  assert.match(auth, /AWSCognitoAuthSignOutResult\.CompleteSignOut[\s\S]*resume\(true\)/);
+  assert.match(auth, /AWSCognitoAuthSignOutResult\.PartialSignOut[\s\S]*resume\(false\)/);
+  assert.match(auth, /AWSCognitoAuthSignOutResult\.FailedSignOut[\s\S]*resumeWithException/);
+  assert.match(auth, /val globallyComplete = withCognitoOperationTimeout[\s\S]*clearSessionSource\(\)/);
+  assert.match(auth, /CloudAuthPhase\.SIGNED_OUT[\s\S]*전체 로그아웃 상태/);
+});
+
 test("publish concurrency and upload recovery retain frozen versions and bounded durable rewinds", () => {
   const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
   const daos = read("app/src/main/java/com/socialdrive/app/data/local/Daos.kt");
