@@ -1,6 +1,5 @@
 package com.socialdrive.app.data.remote
 
-import java.nio.charset.StandardCharsets
 import java.time.Instant
 import java.util.Base64
 
@@ -16,17 +15,18 @@ class CognitoAccessTokenPolicy(
         if (token.length !in 32..MAX_TOKEN_LENGTH || token.any(Char::isWhitespace)) return false
         val parts = token.split('.')
         if (parts.size != 3 || parts.any(String::isEmpty)) return false
-        val payload = runCatching {
-            Base64.getUrlDecoder().decode(parts[1]).toString(StandardCharsets.UTF_8)
+        val payloadBytes = runCatching {
+            Base64.getUrlDecoder().decode(parts[1])
         }.getOrNull() ?: return false
-        if (payload.length > MAX_PAYLOAD_LENGTH) return false
+        if (payloadBytes.size > MAX_PAYLOAD_LENGTH) return false
+        val claims = runCatching { JsonCodec.parse(payloadBytes).objectValue() }.getOrNull() ?: return false
 
         val expectedIssuer = "https://cognito-idp.${configuration.region}.amazonaws.com/${configuration.userPoolId}"
-        val issuer = payload.singleStringClaim("iss") ?: return false
-        val clientId = payload.singleStringClaim("client_id") ?: return false
-        val tokenUse = payload.singleStringClaim("token_use") ?: return false
-        val expiresAt = payload.singleLongClaim("exp") ?: return false
-        val issuedAt = payload.singleLongClaim("iat") ?: return false
+        val issuer = claims.stringClaim("iss") ?: return false
+        val clientId = claims.stringClaim("client_id") ?: return false
+        val tokenUse = claims.stringClaim("token_use") ?: return false
+        val expiresAt = claims.longClaim("exp") ?: return false
+        val issuedAt = claims.longClaim("iat") ?: return false
         val now = clock().epochSecond
         return issuer == expectedIssuer &&
             clientId == configuration.clientId &&
@@ -36,13 +36,11 @@ class CognitoAccessTokenPolicy(
             issuedAt < expiresAt
     }
 
-    private fun String.singleStringClaim(name: String): String? =
-        Regex("\\\"$name\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"")
-            .findAll(this).map { it.groupValues[1] }.toList().singleOrNull()
+    private fun Map<String, JsonValue>.stringClaim(name: String): String? =
+        (get(name) as? JsonValue.StringValue)?.value
 
-    private fun String.singleLongClaim(name: String): Long? =
-        Regex("\\\"$name\\\"\\s*:\\s*(\\d{1,12})(?=\\s*[,}])")
-            .findAll(this).mapNotNull { it.groupValues[1].toLongOrNull() }.toList().singleOrNull()
+    private fun Map<String, JsonValue>.longClaim(name: String): Long? =
+        (get(name) as? JsonValue.NumberValue)?.value?.takeIf { it.length in 1..12 }?.toLongOrNull()
 
     private companion object {
         const val MAX_TOKEN_LENGTH = 16_384

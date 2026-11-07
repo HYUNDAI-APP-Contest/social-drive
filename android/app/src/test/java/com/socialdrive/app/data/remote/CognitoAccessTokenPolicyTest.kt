@@ -29,6 +29,8 @@ class CognitoAccessTokenPolicyTest {
         assertFalse(policy.isValid(token(issuedAt = now.epochSecond + 301L)))
         assertFalse(policy.isValid(token(extra = "\"client_id\":\"${configuration.clientId}\",")))
         assertFalse(policy.isValid("not-a-jwt"))
+        assertFalse(policy.isValid(rawPayload("{not-json}")))
+        assertFalse(policy.isValid(rawPayload("{\"iss\":\"x\",\"iss\":\"x\"}")))
     }
 
     private fun token(
@@ -48,4 +50,6 @@ class CognitoAccessTokenPolicyTest {
 
     private fun encode(value: String): String = Base64.getUrlEncoder().withoutPadding()
         .encodeToString(value.toByteArray())
+
+    private fun rawPayload(payload: String): String = "${encode("{\"alg\":\"RS256\"}")}.${encode(payload)}.signature"
 }
