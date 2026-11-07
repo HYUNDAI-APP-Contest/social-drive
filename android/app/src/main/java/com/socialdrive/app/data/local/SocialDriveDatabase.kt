@@ -16,8 +16,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         NormalizedRoutePointEntity::class,
         PublishedDeleteRequestEntity::class,
         PublishConflictEntity::class,
+        CachedFeedDriveEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class SocialDriveDatabase : RoomDatabase() {
@@ -27,6 +28,7 @@ abstract class SocialDriveDatabase : RoomDatabase() {
     abstract fun routePrivacyDao(): RoutePrivacyDao
     abstract fun publishedDeleteDao(): PublishedDeleteDao
     abstract fun publishConflictDao(): PublishConflictDao
+    abstract fun cachedFeedDao(): CachedFeedDao
 
     companion object {
         fun create(context: Context): SocialDriveDatabase = Room.databaseBuilder(
@@ -187,6 +189,25 @@ object RoomMigrations {
         }
     }
 
+    val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(database: SupportSQLiteDatabase) {
+            database.execSQL("""
+                CREATE TABLE IF NOT EXISTS cached_feed_drives (
+                    id TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    distanceMeters INTEGER NOT NULL,
+                    durationSeconds INTEGER NOT NULL,
+                    highlightCount INTEGER NOT NULL,
+                    publishedAt TEXT NOT NULL,
+                    cachedAtEpochMs INTEGER NOT NULL,
+                    PRIMARY KEY(id)
+                )
+            """.trimIndent())
+        }
+    }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_1_2,
         MIGRATION_2_3,
@@ -195,5 +216,6 @@ object RoomMigrations {
         MIGRATION_5_6,
         MIGRATION_6_7,
         MIGRATION_7_8,
+        MIGRATION_8_9,
     )
 }

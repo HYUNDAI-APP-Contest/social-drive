@@ -66,6 +66,7 @@ fun SocialDriveApp(
     val lifecycleOwner = LocalLifecycleOwner.current
     val activeRecording by offlineViewModel.activeRecording.collectAsStateWithLifecycle()
     val drafts by offlineViewModel.drafts.collectAsStateWithLifecycle()
+    val driveFeed by offlineViewModel.driveFeed.collectAsStateWithLifecycle()
     val selectedDraft by offlineViewModel.selectedDraft.collectAsStateWithLifecycle()
     val persistedUploadState by offlineViewModel.uploadState.collectAsStateWithLifecycle()
     val conflictReview by offlineViewModel.conflictReview.collectAsStateWithLifecycle()
@@ -215,7 +216,12 @@ fun SocialDriveApp(
                     draft.toLocalDriveSummary(repository.drive(draft.storyId) ?: defaultStoryDrive)
                 }
                 val localDraftDrive = localDraftDrives.firstOrNull { it.id == memoryStory.driveId }
-                val homeDrives = localDraftDrives + repository.drives()
+                val remoteDrives = when (val feed = driveFeed) {
+                    is ContentState.Content -> feed.value
+                    is ContentState.Offline -> feed.cached
+                    else -> emptyList()
+                }
+                val homeDrives = localDraftDrives + remoteDrives
                 val storyBase = localDraftDrive
                     ?: repository.drive(memoryStory.driveId)
                     ?: defaultStoryDrive
@@ -241,7 +247,15 @@ fun SocialDriveApp(
                 ) { activeDestination ->
                 when (activeDestination) {
                     AppDestination.Home -> HomeScreen(
-                        state = ContentState.Content(homeDrives),
+                        state = when (driveFeed) {
+                            ContentState.Loading -> if (localDraftDrives.isEmpty()) ContentState.Loading else ContentState.Content(localDraftDrives)
+                            ContentState.Empty -> if (localDraftDrives.isEmpty()) ContentState.Empty else ContentState.Content(localDraftDrives)
+                            is ContentState.Content -> ContentState.Content(homeDrives)
+                            is ContentState.Offline -> ContentState.Offline(homeDrives)
+                            is ContentState.Error -> if (localDraftDrives.isEmpty()) driveFeed else ContentState.Offline(localDraftDrives)
+                            is ContentState.PermissionDenied -> if (localDraftDrives.isEmpty()) driveFeed else ContentState.Offline(localDraftDrives)
+                            is ContentState.Retry -> if (localDraftDrives.isEmpty()) driveFeed else ContentState.Offline(localDraftDrives)
+                        },
                         motion = motion,
                         vehicleStatus = vehicleMotion.integration,
                         blockedMessage = blockedMessage,
@@ -260,7 +274,7 @@ fun SocialDriveApp(
                             scope.launch { offlineViewModel.startRecording() }
                         },
                         onSettings = { navigate(AppDestination.Settings) },
-                        onRetry = {},
+                        onRetry = offlineViewModel::refreshDriveFeed,
                     )
                     AppDestination.Detail -> DetailScreen(
                         drive = presentedStory,

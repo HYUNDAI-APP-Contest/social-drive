@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.work.Configuration
 import androidx.work.WorkManager
 import com.socialdrive.app.data.DraftRepository
+import com.socialdrive.app.data.FlavorDriveFeedRepositoryFactory
 import com.socialdrive.app.data.ConflictReviewRepository
 import com.socialdrive.app.data.ConflictReplayScheduler
 import com.socialdrive.app.data.PublishQueueRepository
@@ -49,6 +50,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
     val parkedExecutionGate by lazy { ParkedExecutionGate(vehicleMotionSource.status.value.motion) }
     val recordingRepository: RecordingRepository by lazy { RecordingRepository(database, routeCollector = integrationBundle.routeCollector) }
     val draftRepository: DraftRepository by lazy { DraftRepository(database) }
+    val driveFeedRepository by lazy { FlavorDriveFeedRepositoryFactory.create(database) }
     val publishQueueRepository: PublishQueueRepository by lazy { PublishQueueRepository(database) }
     val routePrivacyRepository: RoutePrivacyRepository by lazy {
         RoutePrivacyRepository(
@@ -100,12 +102,14 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         applicationScope.launch { cloudAuth.initialize() }
+        applicationScope.launch { driveFeedRepository.refresh() }
         applicationScope.launch {
             cloudAuth.state.collect { auth ->
                 if (auth.phase == CloudAuthPhase.SIGNED_IN) {
                     deleteWorkScheduler.resumeAfterAuthentication()
                     publishScheduler.recoverAfterProcessRestart()
                 }
+                driveFeedRepository.refresh()
             }
         }
         applicationScope.launch {

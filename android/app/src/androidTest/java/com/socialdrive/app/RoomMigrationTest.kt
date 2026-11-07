@@ -11,6 +11,7 @@ import com.socialdrive.app.data.local.SocialDriveDatabase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import kotlinx.coroutines.test.runTest
@@ -24,6 +25,12 @@ class RoomMigrationTest {
         emptyList(),
         FrameworkSQLiteOpenHelperFactory(),
     )
+
+    @Before
+    fun removePreviousTestDatabases() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        ALL_TEST_DATABASES.forEach(context::deleteDatabase)
+    }
 
     @Test
     fun migrateOneToThreePreservesRowsAndAddsFrozenVersionAndBoundedRewindState() {
@@ -169,7 +176,11 @@ class RoomMigrationTest {
     @Test
     fun migrateSevenToEightInvalidatesUnversionedLocationConsent() {
         helper.createDatabase(PRIVACY_POLICY_DATABASE, 7).apply {
-            execSQL("UPDATE route_privacy_state SET consentState='Granted', routeSource='LiveAvailable', updatedAtEpochMs=123 WHERE id=1")
+            execSQL("""
+                INSERT INTO route_privacy_state
+                    (id, consentState, routeSource, unavailableReason, updatedAtEpochMs)
+                VALUES (1, 'Granted', 'LiveAvailable', NULL, 123)
+            """.trimIndent())
             close()
         }
 
@@ -179,6 +190,31 @@ class RoomMigrationTest {
                 assertEquals("NotAsked", cursor.getString(0))
                 assertNull(cursor.getString(1))
                 assertEquals("DemoPreset", cursor.getString(2))
+            }
+        }
+    }
+
+    @Test
+    fun migrateEightToNineCreatesEmptyPublicFeedCacheWithoutTouchingExistingData() {
+        helper.createDatabase(FEED_DATABASE, 8).apply {
+            execSQL("INSERT INTO recording_sessions VALUES ('recording-feed','DRAFTED',100,200,2,1500)")
+            close()
+        }
+
+        helper.runMigrationsAndValidate(
+            FEED_DATABASE,
+            9,
+            true,
+            RoomMigrations.MIGRATION_8_9,
+        ).use { database ->
+            database.query("SELECT COUNT(*) FROM cached_feed_drives").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals(0, cursor.getInt(0))
+            }
+            database.query("SELECT state, distanceMeters FROM recording_sessions WHERE id='recording-feed'").use { cursor ->
+                cursor.moveToFirst()
+                assertEquals("DRAFTED", cursor.getString(0))
+                assertEquals(1500, cursor.getInt(1))
             }
         }
     }
@@ -279,5 +315,16 @@ class RoomMigrationTest {
         private const val CONFLICT_DATABASE = "migration-conflict-review-test"
         private const val DELETE_DATABASE = "migration-delete-lifecycle-test"
         private const val DISTANCE_DATABASE = "migration-distance-test"
+        private const val FEED_DATABASE = "migration-feed-cache-test"
+        private val ALL_TEST_DATABASES = listOf(
+            DATABASE,
+            FAILED_DATABASE,
+            PRIVACY_DATABASE,
+            PRIVACY_POLICY_DATABASE,
+            CONFLICT_DATABASE,
+            DELETE_DATABASE,
+            DISTANCE_DATABASE,
+            FEED_DATABASE,
+        )
     }
 }

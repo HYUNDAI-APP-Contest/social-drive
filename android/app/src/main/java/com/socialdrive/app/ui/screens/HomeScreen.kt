@@ -40,6 +40,7 @@ import com.socialdrive.app.domain.ContentState
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.DriveSummary
 import com.socialdrive.app.domain.MotionState
+import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.ui.components.ContentStateKind
 import com.socialdrive.app.ui.components.ContentStatePanel
 import com.socialdrive.app.ui.components.DriveSummaryCard
@@ -69,6 +70,17 @@ fun HomeScreen(
         is ContentState.Offline -> state.cached.any { it.id.startsWith("local-") }
         else -> false
     }
+    val visibleDrives = when (state) {
+        is ContentState.Content -> state.value
+        is ContentState.Offline -> state.cached
+        else -> emptyList()
+    }
+    val sourceBadge = when {
+        visibleDrives.any { it.id.startsWith("cloud-") } -> "AWS 공개 데이터"
+        hasLocalDrive && visibleDrives.none { it.routeSource == RouteSource.DemoPreset } -> "기기 기록"
+        hasLocalDrive -> "기기 기록 · 데모 데이터"
+        else -> "데모 데이터"
+    }
     LaunchedEffect(hasLocalDrive) {
         if (!hasLocalDrive && selectedFilter == DriveFilter.Local) selectedFilter = DriveFilter.All
     }
@@ -85,7 +97,7 @@ fun HomeScreen(
                 Text("오늘의 드라이브", style = MaterialTheme.typography.headlineLarge)
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("좋았던 길과 순간을 안전하게 남겨요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    DemoDataBadge(label = if (hasLocalDrive) "기기 기록 · 데모 데이터" else "데모 데이터")
+                    DemoDataBadge(label = sourceBadge)
                 }
             }
             Button(

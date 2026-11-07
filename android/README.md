@@ -140,7 +140,7 @@ This compiles the SDK-independent request controller/coordinator, route consent/
 
 | Area | Current behavior | Future boundary |
 | --- | --- | --- |
-| Route and drive feed | Preset normalized artwork and Korean copy; production DTO/HTTP contract and concrete OkHttp transport are implemented | Inject approved public Cognito/API outputs and add cached feed entities |
+| Route and drive feed | Demo keeps presets; PLEOS calls the authenticated production feed, atomically caches only public metadata in Room, and falls back to that cache offline without persisting expiring asset URLs | Inject approved public Cognito/API outputs and validate feed/detail behavior against the deployed stack |
 | Motion state | Demo flavor simulation | Pleos flavor initializes Vehicle 2.3.2 but remains fail-closed `Unknown`; the public Brake API is not proof of parking |
 | Navigation | Demo feedback; fake records contain no coordinates | Pleos flavor initializes NaviHelper 3.0.5 and accepts only validated, privacy-reviewed route input |
 | Recording | Room session/draft persistence and consented normalized PLEOS route collection | Validate sensor behavior on an approved real vehicle |

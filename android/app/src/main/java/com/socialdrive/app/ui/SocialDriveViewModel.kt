@@ -49,6 +49,10 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     val drafts: StateFlow<List<DraftSnapshot>> = app.draftRepository.drafts
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
+    val driveFeed = app.driveFeedRepository.state
+
+    fun refreshDriveFeed() = viewModelScope.launch { app.driveFeedRepository.refresh() }
+
     private val selectedDraftId = MutableStateFlow<String?>(null)
     val selectedDraft: StateFlow<DraftSnapshot?> = combine(drafts, selectedDraftId) { items, selectedId ->
         selectVisibleDraft(items, selectedId)

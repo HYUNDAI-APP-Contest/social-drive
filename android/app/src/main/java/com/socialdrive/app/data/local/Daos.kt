@@ -100,6 +100,18 @@ interface DraftDao {
 }
 
 @Dao
+interface CachedFeedDao {
+    @Query("SELECT * FROM cached_feed_drives ORDER BY publishedAt DESC, id DESC")
+    suspend fun findAll(): List<CachedFeedDriveEntity>
+
+    @Query("DELETE FROM cached_feed_drives")
+    suspend fun deleteAll()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<CachedFeedDriveEntity>)
+}
+
+@Dao
 interface UploadQueueDao {
     @Query("SELECT * FROM upload_queue WHERE draftId = :draftId")
     fun observe(draftId: String): Flow<UploadQueueEntity?>

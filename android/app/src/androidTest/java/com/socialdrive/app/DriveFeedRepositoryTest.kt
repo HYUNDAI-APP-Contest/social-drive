@@ -1,0 +1,94 @@
+package com.socialdrive.app
+
+import androidx.room.Room
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.socialdrive.app.data.PersistentCloudDriveFeedRepository
+import com.socialdrive.app.data.local.SocialDriveDatabase
+import com.socialdrive.app.data.remote.ApiHttpTransport
+import com.socialdrive.app.data.remote.AuthSessionProvider
+import com.socialdrive.app.data.remote.BearerToken
+import com.socialdrive.app.data.remote.CloudDriveClient
+import com.socialdrive.app.data.remote.CloudDriveClientConfig
+import com.socialdrive.app.data.remote.HttpRequest
+import com.socialdrive.app.data.remote.HttpResponse
+import com.socialdrive.app.data.remote.ObjectUploadTransport
+import com.socialdrive.app.domain.ContentState
+import java.net.URI
+import kotlinx.coroutines.test.runTest
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class DriveFeedRepositoryTest {
+    private lateinit var database: SocialDriveDatabase
+
+    @Before
+    fun setUp() {
+        database = Room.inMemoryDatabaseBuilder(
+            ApplicationProvider.getApplicationContext(),
+            SocialDriveDatabase::class.java,
+        ).allowMainThreadQueries().build()
+    }
+
+    @After
+    fun tearDown() = database.close()
+
+    @Test
+    fun successfulRefreshPersistsOnlyPublicMetadata() = runTest {
+        val transport = QueueTransport().apply { responses += feedResponse() }
+        val repository = PersistentCloudDriveFeedRepository(database, { client(transport) }, now = { 123L })
+
+        repository.refresh()
+
+        val state = repository.state.value as ContentState.Content
+        assertEquals("cloud-drive-public-0001", state.value.single().id)
+        assertEquals("공개 드라이브", state.value.single().title)
+        val cached = database.cachedFeedDao().findAll().single()
+        assertEquals(123L, cached.cachedAtEpochMs)
+        val columns = database.openHelper.readableDatabase
+            .query("PRAGMA table_info(cached_feed_drives)")
+            .use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(1)) } }
+        assertFalse(columns.any { it.contains("url", ignoreCase = true) })
+        assertFalse(columns.any { it.contains("route", ignoreCase = true) })
+    }
+
+    @Test
+    fun failedRefreshUsesLastValidatedCache() = runTest {
+        val transport = QueueTransport().apply { responses += feedResponse() }
+        var current = client(transport)
+        val repository = PersistentCloudDriveFeedRepository(database, { current })
+        repository.refresh()
+        current = client(ThrowingTransport)
+
+        repository.refresh()
+
+        val state = repository.state.value as ContentState.Offline
+        assertEquals("cloud-drive-public-0001", state.cached.single().id)
+    }
+
+    private fun client(api: ApiHttpTransport) = CloudDriveClient(
+        config = CloudDriveClientConfig(URI("https://api.example.test/dev"), setOf("upload.example.test")),
+        auth = AuthSessionProvider { BearerToken.inMemory("test-token") },
+        apiTransport = api,
+        objectTransport = ObjectUploadTransport { HttpResponse(500) },
+    )
+
+    private fun feedResponse() = HttpResponse(
+        200,
+        body = """{"items":[{"id":"drive-public-0001","status":"PUBLISHED","version":2,"title":"공개 드라이브","summary":"검증된 공개 요약","distanceMeters":128400,"durationSeconds":9360,"highlightCount":4,"createdAt":"2026-11-01T10:00:00Z","publishedAt":"2026-11-01T10:05:00Z","coverUrl":"https://upload.example.test/private-cover"}],"nextCursor":null}""".toByteArray(),
+    )
+
+    private class QueueTransport : ApiHttpTransport {
+        val responses = ArrayDeque<HttpResponse>()
+        override suspend fun execute(request: HttpRequest): HttpResponse = responses.removeFirst()
+    }
+
+    private object ThrowingTransport : ApiHttpTransport {
+        override suspend fun execute(request: HttpRequest): HttpResponse = error("offline")
+    }
+}

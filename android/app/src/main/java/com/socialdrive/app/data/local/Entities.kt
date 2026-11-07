@@ -107,6 +107,20 @@ data class PublishConflictEntity(
     val lastFetchErrorCode: String?,
 )
 
+/** Public feed metadata only. Short-lived asset URLs and route coordinates are never persisted. */
+@Entity(tableName = "cached_feed_drives")
+data class CachedFeedDriveEntity(
+    @PrimaryKey val id: String,
+    val version: Int,
+    val title: String,
+    val summary: String,
+    val distanceMeters: Int,
+    val durationSeconds: Int,
+    val highlightCount: Int,
+    val publishedAt: String,
+    val cachedAtEpochMs: Long,
+)
+
 object LocalState {
     const val RECORDING = "RECORDING"
     const val DRAFTED = "DRAFTED"
