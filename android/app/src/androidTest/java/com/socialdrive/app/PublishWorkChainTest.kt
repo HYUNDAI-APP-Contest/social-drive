@@ -5,8 +5,10 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.Configuration
+import androidx.work.Data
 import androidx.work.WorkManager
 import androidx.work.testing.SynchronousExecutor
+import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
 import com.socialdrive.app.data.DraftSnapshot
 import com.socialdrive.app.data.EnqueueResult
@@ -26,10 +28,14 @@ import com.socialdrive.app.data.remote.RemoteDraftRef
 import com.socialdrive.app.data.remote.RemoteDriveException
 import com.socialdrive.app.data.remote.RemoteFailureCode
 import com.socialdrive.app.data.work.PublishScheduler
+import com.socialdrive.app.data.work.CreateDriveWorker
+import com.socialdrive.app.data.work.PublishDriveWorker
 import com.socialdrive.app.data.work.PublishWorkerDependencies
 import com.socialdrive.app.data.work.PublishWorkerFactory
 import com.socialdrive.app.data.work.PublishRescheduler
 import com.socialdrive.app.data.work.PublishWorkChainEnqueuer
+import com.socialdrive.app.data.work.StagedPublishWorker
+import com.socialdrive.app.data.work.UploadAssetsWorker
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.safety.ParkedExecutionGate
 import java.util.concurrent.TimeUnit
@@ -351,6 +357,52 @@ class PublishWorkChainTest {
         assertEquals(3, resumed.count { !it.state.isFinished })
         resumed.forEach { driver.setAllConstraintsMet(it.id) }
         awaitUniqueWorkFinished(draft.id)
+
+        assertEquals(2, remote.createCalls)
+        assertEquals(1, remote.uploadCalls)
+        assertEquals(1, remote.publishCalls)
+        assertEquals(LocalState.COMPLETE, database.uploadQueueDao().find(draft.id)?.stage)
+        assertEquals(LocalState.PUBLISHED, database.uploadQueueDao().find(draft.id)?.status)
+    }
+
+    @Test
+    fun transientAuthenticationRefreshFailureRetriesAndCompletesWithoutLogin() = runTest {
+        val values = ArrayDeque(listOf("recording-auth-timeout", "draft-auth-timeout", "request-auth-timeout"))
+        val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 1_500L })
+        val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
+        val queue = PublishQueueRepository(database, clock = { 1_500L })
+        queue.enqueue(draft.id, MotionState.Parked)
+        val dependencies = PublishWorkerDependencies(database, remote, motion, PublishRescheduler {})
+        val workerFactory = PublishWorkerFactory(dependencies)
+        val input = Data.Builder().putString(StagedPublishWorker.KEY_DRAFT_ID, draft.id).build()
+        remote.createError = RemoteDriveException(RemoteFailureCode.SERVER_BUSY, retryable = true)
+
+        val firstCreate = TestListenableWorkerBuilder<CreateDriveWorker>(context)
+            .setInputData(input)
+            .setWorkerFactory(workerFactory)
+            .setRunAttemptCount(0)
+            .build()
+        assertEquals(androidx.work.ListenableWorker.Result.retry()::class, firstCreate.doWork()::class)
+        assertEquals(LocalState.FAILED, database.uploadQueueDao().find(draft.id)?.status)
+        assertEquals(1, remote.createCalls)
+
+        remote.createError = null
+        val secondCreate = TestListenableWorkerBuilder<CreateDriveWorker>(context)
+            .setInputData(input)
+            .setWorkerFactory(workerFactory)
+            .setRunAttemptCount(1)
+            .build()
+        assertEquals(androidx.work.ListenableWorker.Result.success()::class, secondCreate.doWork()::class)
+        val upload = TestListenableWorkerBuilder<UploadAssetsWorker>(context)
+            .setInputData(input)
+            .setWorkerFactory(workerFactory)
+            .build()
+        assertEquals(androidx.work.ListenableWorker.Result.success()::class, upload.doWork()::class)
+        val publish = TestListenableWorkerBuilder<PublishDriveWorker>(context)
+            .setInputData(input)
+            .setWorkerFactory(workerFactory)
+            .build()
+        assertEquals(androidx.work.ListenableWorker.Result.success()::class, publish.doWork()::class)
 
         assertEquals(2, remote.createCalls)
         assertEquals(1, remote.uploadCalls)
