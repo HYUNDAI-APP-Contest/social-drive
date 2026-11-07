@@ -91,6 +91,12 @@ class AndroidBackendContractHarnessTest {
             val deleteKey = "d".repeat(64)
             client.deleteDrive(created.id, deleteKey)
             client.deleteDrive(created.id, deleteKey)
+            val conflictingDelete = assertFailsWith<CloudDriveException> {
+                client.deleteDrive(created.id, "f".repeat(64))
+            }
+            assertEquals(CloudFailureKind.IDEMPOTENCY_CONFLICT, conflictingDelete.kind)
+            assertEquals("IDEMPOTENCY_CONFLICT", conflictingDelete.code)
+            assertFalse(conflictingDelete.retryable)
             assertTrue(client.feed().items.isEmpty())
             assertEquals(CloudFailureKind.NOT_FOUND, assertFailsWith<CloudDriveException> { client.getDrive(created.id) }.kind)
             assertPrivacyBoundary(bridge, draft)
@@ -100,8 +106,8 @@ class AndroidBackendContractHarnessTest {
             assertEquals(0, afterDelete.sentinelMatches)
             assertEquals(0, afterDelete.objectAuthorizationCount)
             assertEquals(404, afterDelete.deleteStatuses.first())
-            assertEquals(listOf(204, 204), afterDelete.deleteStatuses.takeLast(2))
-            assertEquals(listOf(deleteKey, deleteKey), afterDelete.deleteIdempotencyKeys.takeLast(2))
+            assertEquals(listOf(204, 204, 409), afterDelete.deleteStatuses.takeLast(3))
+            assertEquals(listOf(deleteKey, deleteKey, "f".repeat(64)), afterDelete.deleteIdempotencyKeys.takeLast(3))
             assertTrue(afterDelete.deleteIdempotencyKeys.all { it.matches(Regex("[a-f0-9]{64}")) })
             assertTrue(afterDelete.logKeys.flatten().all { it in setOf("requestId", "routeKey", "status", "errorCode") })
         }
