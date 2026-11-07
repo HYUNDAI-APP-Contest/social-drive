@@ -79,6 +79,8 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private val mutableRecognitionActive = MutableStateFlow(false)
     private val locationLock = Any()
     private val rawLocations = ArrayList<RawRouteCoordinate>()
+    private var collectionAuthorized = false
+    private var recordingRequested = false
     private var locationCollecting = false
     private val locationListener = object : FusedLocationListener {
         override fun onChanged(location: LocationData?) {
@@ -178,10 +180,16 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     override fun refreshLocationPermission() {
         val permitted = hasLocationPermission()
         val supported = runCatching { fusedLocation.isSupported() }.getOrDefault(false)
-        mutableLocation.value = if (permitted && supported) {
-            available("실차 · 위치 사용 가능")
+        if (permitted && supported) {
+            mutableLocation.value = available("실차 · 위치 사용 가능")
+            val shouldRegister = synchronized(locationLock) {
+                val start = collectionAuthorized && recordingRequested && !locationCollecting
+                if (start) locationCollecting = true
+                start
+            }
+            if (shouldRegister) registerLocationCallback()
         } else {
-            if (!permitted) {
+            mutableLocation.value = if (!permitted) {
                 val wasCollecting = synchronized(locationLock) {
                     val active = locationCollecting
                     locationCollecting = false
@@ -199,31 +207,68 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     override suspend fun start() {
         check(mutableLocation.value.capability == CapabilityState.Available)
         val shouldRegister = synchronized(locationLock) {
-            if (locationCollecting) false else { locationCollecting = true; true }
+            collectionAuthorized = true
+            val start = recordingRequested && !locationCollecting
+            if (start) locationCollecting = true
+            start
         }
-        if (!shouldRegister) return
-        fusedLocation.registerFusedLocationCallback(locationListener)
+        if (shouldRegister) registerLocationCallback()
     }
 
     override suspend fun beginRecording() {
-        synchronized(locationLock) { rawLocations.clear() }
+        val shouldRegister = synchronized(locationLock) {
+            rawLocations.clear()
+            recordingRequested = true
+            val start = collectionAuthorized &&
+                mutableLocation.value.capability == CapabilityState.Available &&
+                !locationCollecting
+            if (start) locationCollecting = true
+            start
+        }
+        if (shouldRegister) registerLocationCallback()
     }
 
     override suspend fun snapshotAndClear(): List<NormalizedRoutePoint> {
-        val snapshot = synchronized(locationLock) { rawLocations.toList().also { rawLocations.clear() } }
+        val (snapshot, wasCollecting) = synchronized(locationLock) {
+            val points = rawLocations.toList()
+            rawLocations.clear()
+            recordingRequested = false
+            val active = locationCollecting
+            locationCollecting = false
+            points to active
+        }
+        if (wasCollecting) runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
         return RouteNormalizer.normalize(snapshot)
     }
 
     override suspend fun stopAndAwait() {
-        synchronized(locationLock) { locationCollecting = false; rawLocations.clear() }
+        synchronized(locationLock) {
+            collectionAuthorized = false
+            recordingRequested = false
+            locationCollecting = false
+            rawLocations.clear()
+        }
         runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
+    }
+
+    private fun registerLocationCallback() {
+        runCatching { fusedLocation.registerFusedLocationCallback(locationListener) }
+            .onFailure {
+                synchronized(locationLock) { locationCollecting = false }
+                mutableLocation.value = unavailable("실차 · 위치 연결 실패")
+            }
     }
 
     private fun hasLocationPermission(): Boolean =
         context.checkSelfPermission(FUSED_LOCATION_PERMISSION) == PackageManager.PERMISSION_GRANTED
 
     override fun release() {
-        synchronized(locationLock) { locationCollecting = false; rawLocations.clear() }
+        synchronized(locationLock) {
+            collectionAuthorized = false
+            recordingRequested = false
+            locationCollecting = false
+            rawLocations.clear()
+        }
         runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
         stopSpeechRecognition()
         runCatching { stt.removeListener(recognitionListener) }
