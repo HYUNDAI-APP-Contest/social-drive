@@ -105,7 +105,9 @@ class CloudDriveClient(
             cursor?.let { append("&cursor=").append(percentEncode(it.rawValue())) }
         }
         val root = api(HttpMethod.GET, "/feed$query", expectedStatuses = setOf(200)).objectValue()
-        val items = root.array("items").map { itemValue ->
+        val itemValues = root.array("items")
+        if (itemValues.size > limit) throw CloudContractException("FEED_LIMIT_EXCEEDED")
+        val items = itemValues.map { itemValue ->
             val item = itemValue.objectValue()
             val drive = parseDrive(item)
             if (drive.status != DriveStatus.PUBLISHED) throw CloudContractException("INVALID_FEED_STATUS")
@@ -264,7 +266,9 @@ class CloudDriveClient(
             validateInstructionMetadata(instruction, manifest)
             instruction
         }
-        if (parsed.map { it.kind }.toSet() != byKind.keys) throw CloudContractException("MISSING_UPLOAD")
+        if (parsed.size != byKind.size || parsed.map { it.kind }.toSet() != byKind.keys) {
+            throw CloudContractException("INVALID_UPLOAD_SET")
+        }
         return parsed
     }
 

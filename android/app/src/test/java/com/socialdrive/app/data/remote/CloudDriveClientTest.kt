@@ -62,6 +62,26 @@ class CloudDriveClientTest {
     }
 
     @Test
+    fun `response contract rejects excessive feed items and duplicate upload instructions`() = runBlocking {
+        val feedHarness = Harness()
+        feedHarness.api.responses += jsonResponse(
+            200,
+            """{"items":[${driveJson(status = "PUBLISHED")},${driveJson(status = "PUBLISHED")}],"nextCursor":null}""",
+        )
+        val excessiveFeed = assertFailsWith<CloudDriveException> { feedHarness.client.feed(limit = 1) }
+        assertEquals("FEED_LIMIT_EXCEEDED", excessiveFeed.code)
+
+        val uploadHarness = Harness()
+        val duplicateManifests = uploadHarness.manifests + uploadHarness.manifests.first()
+        uploadHarness.api.responses += jsonResponse(200, uploadSessionResponse(duplicateManifests))
+        val duplicateUploads = assertFailsWith<CloudDriveException> {
+            uploadHarness.client.refreshUploads("drive-remote-0001", uploadHarness.manifests)
+        }
+        assertEquals("INVALID_UPLOAD_SET", duplicateUploads.code)
+        assertTrue(uploadHarness.objects.requests.isEmpty())
+    }
+
+    @Test
     fun `drive resources reject unsafe ids impossible ranges and unreasonable timestamps`() = runBlocking {
         val invalidDrives = listOf(
             driveJson(status = "PUBLISHED").replace("drive-remote-0001", "bad id"),
