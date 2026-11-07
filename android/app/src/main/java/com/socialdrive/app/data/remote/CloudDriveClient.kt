@@ -230,6 +230,7 @@ class CloudDriveClient(
             return CloudDriveException(kind, code, retryable = false, requestId = requestId)
         }
         val kind = when {
+            code == "CONSENT_RENEWAL_REQUIRED" -> CloudFailureKind.CONSENT_RENEWAL_REQUIRED
             response.status == 401 -> CloudFailureKind.AUTHENTICATION
             response.status == 403 -> CloudFailureKind.FORBIDDEN
             response.status == 404 -> CloudFailureKind.NOT_FOUND

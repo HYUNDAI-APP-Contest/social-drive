@@ -22,7 +22,7 @@ sealed interface ContentState<out T> {
     data class Retry(val message: String) : ContentState<Nothing>
 }
 
-enum class UploadState { Draft, Queued, Uploading, Failed, NeedsConflictReview, Published }
+enum class UploadState { Draft, Queued, Uploading, Failed, NeedsConflictReview, NeedsConsentRenewal, Published }
 
 data class RoutePoint(val horizontal: Float, val vertical: Float)
 

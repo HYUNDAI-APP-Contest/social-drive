@@ -78,6 +78,7 @@ class CloudRemoteDriveApi(
                 CloudFailureKind.VERSION_CONFLICT -> RemoteFailureCode.VERSION_CONFLICT
                 CloudFailureKind.UPLOAD_INCOMPLETE -> RemoteFailureCode.UPLOAD_INCOMPLETE
                 CloudFailureKind.UPLOAD_EXPIRED -> RemoteFailureCode.UPLOAD_EXPIRED
+                CloudFailureKind.CONSENT_RENEWAL_REQUIRED -> RemoteFailureCode.CONSENT_RENEWAL_REQUIRED
                 CloudFailureKind.IDEMPOTENCY_CONFLICT -> RemoteFailureCode.REJECTED
                 CloudFailureKind.VALIDATION, CloudFailureKind.CONTRACT -> RemoteFailureCode.REJECTED
                 CloudFailureKind.RETRYABLE -> RemoteFailureCode.SERVER_BUSY

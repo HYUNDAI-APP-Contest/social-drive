@@ -167,19 +167,7 @@ class PublishQueueRepository(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     fun observeState(draftId: String): Flow<UploadState> = database.uploadQueueDao().observe(draftId).map { item ->
-        when (item?.status) {
-            null -> UploadState.Draft
-            LocalState.QUEUED -> UploadState.Queued
-            LocalState.RUNNING -> UploadState.Uploading
-            LocalState.FAILED -> if (item.lastErrorCode == LocalState.VERSION_CONFLICT) {
-                UploadState.NeedsConflictReview
-            } else {
-                UploadState.Failed
-            }
-            LocalState.PAUSED_MOTION -> UploadState.Queued
-            LocalState.PUBLISHED -> UploadState.Published
-            else -> UploadState.Draft
-        }
+        queueUploadState(item?.status, item?.lastErrorCode)
     }
 
     suspend fun enqueue(draftId: String, motionState: MotionState): EnqueueResult {
@@ -230,6 +218,19 @@ class PublishQueueRepository(
             }
         }
     }
+}
+
+internal fun queueUploadState(status: String?, lastErrorCode: String?): UploadState = when (status) {
+    null -> UploadState.Draft
+    LocalState.QUEUED, LocalState.PAUSED_MOTION -> UploadState.Queued
+    LocalState.RUNNING -> UploadState.Uploading
+    LocalState.FAILED -> when (lastErrorCode) {
+        LocalState.VERSION_CONFLICT -> UploadState.NeedsConflictReview
+        LocalState.CONSENT_RENEWAL_REQUIRED -> UploadState.NeedsConsentRenewal
+        else -> UploadState.Failed
+    }
+    LocalState.PUBLISHED -> UploadState.Published
+    else -> UploadState.Draft
 }
 
 private fun DraftEntity.toSnapshot(

@@ -387,6 +387,22 @@ class CloudDriveClientTest {
     }
 
     @Test
+    fun `동의 갱신 요구는 작업 대기열까지 전용 실패로 전달한다`() = runBlocking {
+        val harness = Harness()
+        harness.api.responses += errorResponse(422, "CONSENT_RENEWAL_REQUIRED", retryable = false)
+        val clientFailure = assertFailsWith<CloudDriveException> { harness.client.createDrive(harness.input) }
+        assertEquals(CloudFailureKind.CONSENT_RENEWAL_REQUIRED, clientFailure.kind)
+
+        harness.api.responses += errorResponse(422, "CONSENT_RENEWAL_REQUIRED", retryable = false)
+        val adapter = CloudRemoteDriveApi(harness.client, "2026-11-07.v1")
+        val remoteFailure = assertFailsWith<RemoteDriveException> {
+            adapter.createDrive(testDraft().clientRequestId, testDraft())
+        }
+        assertEquals(RemoteFailureCode.CONSENT_RENEWAL_REQUIRED, remoteFailure.code)
+        assertFalse(remoteFailure.retryable)
+    }
+
+    @Test
     fun `delete auth conflict and server responses preserve bounded retry policy inputs`() = runBlocking {
         val harness = Harness()
         val key = "f".repeat(64)

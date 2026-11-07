@@ -201,6 +201,7 @@ fun PublishScreen(
                     UploadState.Uploading -> Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("안전하게 업로드 중…") }
                     UploadState.Failed -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canAct && consent && publicationBlockReason == null, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("업로드 다시 시도") }
                     UploadState.NeedsConflictReview -> Button(onClick = onReviewConflict, enabled = canAct, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("서버 버전 검토") }
+                    UploadState.NeedsConsentRenewal -> Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("동의 갱신 후 새 게시 필요") }
                     UploadState.Queued -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = false, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("네트워크 연결을 기다리는 중") }
                     UploadState.Draft -> Button(onClick = { onUploadStateChange(UploadState.Uploading) }, enabled = canEdit && consent && publicationBlockReason == null, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) { Text("안전하게 게시하기") }
                 }

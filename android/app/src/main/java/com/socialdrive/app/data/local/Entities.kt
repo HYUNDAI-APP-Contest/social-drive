@@ -124,6 +124,7 @@ object LocalState {
     const val PRIVACY_WITHDRAWN = "PRIVACY_WITHDRAWN"
     const val DELETE_PENDING = "DELETE_PENDING"
     const val VERSION_CONFLICT = "VERSION_CONFLICT"
+    const val CONSENT_RENEWAL_REQUIRED = "CONSENT_RENEWAL_REQUIRED"
 }
 
 object ConflictState {

@@ -601,6 +601,7 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   assert.match(contracts, /fun interface ApiHttpTransport/);
   assert.match(contracts, /fun interface ObjectUploadTransport/);
   assert.match(client, /"Authorization" to token\.authorizationHeader\(\)/);
+  assert.match(client, /code == "CONSENT_RENEWAL_REQUIRED" -> CloudFailureKind\.CONSENT_RENEWAL_REQUIRED/);
   assert.match(client, /check\(request\.headers\.keys\.none \{ it\.equals\("authorization"/);
   assert.match(client, /allowedUploadHosts/);
   assert.match(client, /ASSET_HOST_NOT_ALLOWED/);
@@ -618,6 +619,7 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   assert.match(client, /fun updateDrive/);
   assert.match(client, /fun deleteDrive/);
   assert.match(adapter, /clientRequestId = clientRequestId/);
+  assert.match(adapter, /CloudFailureKind\.CONSENT_RENEWAL_REQUIRED -> RemoteFailureCode\.CONSENT_RENEWAL_REQUIRED/);
   assert.match(adapter, /client\.refreshUploads/);
   assert.match(adapter, /override suspend fun uploadAssets/);
   assert.match(adapter, /MAX_UPLOAD_SESSION_ATTEMPTS = 2/);

@@ -19,7 +19,7 @@ class CloudRemoteConflictReviewApi(private val client: CloudDriveClient) : Remot
             val code = when (error.kind) {
                 CloudFailureKind.NOT_FOUND -> RemoteFailureCode.NOT_FOUND
                 CloudFailureKind.AUTHENTICATION -> RemoteFailureCode.AUTHENTICATION
-                CloudFailureKind.FORBIDDEN -> RemoteFailureCode.REJECTED
+                CloudFailureKind.FORBIDDEN, CloudFailureKind.CONSENT_RENEWAL_REQUIRED -> RemoteFailureCode.REJECTED
                 CloudFailureKind.RETRYABLE -> RemoteFailureCode.SERVER_BUSY
                 else -> RemoteFailureCode.REJECTED
             }
