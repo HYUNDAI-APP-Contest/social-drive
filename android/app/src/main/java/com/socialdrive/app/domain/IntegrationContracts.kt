@@ -116,4 +116,6 @@ data class IntegrationBundle(
 object SpeechRecognitionPolicy {
     fun canStart(motion: MotionState, capability: CapabilityStatus): Boolean =
         motion == MotionState.Parked && capability.capability == CapabilityState.Available
+
+    fun shouldCommit(text: String, isFinal: Boolean): Boolean = isFinal && text.isNotBlank()
 }

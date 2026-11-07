@@ -125,8 +125,10 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     private fun requestDictation(update: suspend (DraftSnapshot, String) -> Unit): Boolean {
         if (!SpeechRecognitionPolicy.canStart(vehicleMotion.value.motion, speechToTextCapability.value)) return false
         val draft = latestDraft.value ?: return false
-        return app.auxiliaryCapabilitySource.startSpeechRecognition { text, _ ->
-            if (text.isNotBlank()) viewModelScope.launch { update(draft, text) }
+        return app.auxiliaryCapabilitySource.startSpeechRecognition { text, isFinal ->
+            if (SpeechRecognitionPolicy.shouldCommit(text, isFinal)) {
+                viewModelScope.launch { update(draft, text.trim()) }
+            }
         }
     }
 

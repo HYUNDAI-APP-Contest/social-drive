@@ -19,4 +19,11 @@ class SpeechRecognitionPolicyTest {
             ),
         )
     }
+
+    @Test
+    fun `최종 음성 인식 결과만 초안에 반영한다`() {
+        assertFalse(SpeechRecognitionPolicy.shouldCommit("제주 해안", isFinal = false))
+        assertFalse(SpeechRecognitionPolicy.shouldCommit("   ", isFinal = true))
+        assertTrue(SpeechRecognitionPolicy.shouldCommit("제주 해안 드라이브", isFinal = true))
+    }
 }
