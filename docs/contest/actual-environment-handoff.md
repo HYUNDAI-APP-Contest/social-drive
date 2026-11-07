@@ -6,12 +6,12 @@
 
 ## 확인된 실행 스냅샷
 
-아래 결과는 앱 코드 커밋 `72889b5`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
+아래 결과는 앱 코드 커밋 `89a6f6e`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
 
 - 대상: `emulator-5554`, Android user 10, PLEOS 가로 화면 `2560×1440`
 - 패키지: `com.socialdrive.app`
 - APK: `android/app/build/outputs/apk/pleos/debug/app-pleos-debug.apk`
-- SHA-256: `1a3bdcf4a5ee52af5f21ae67b54db7ecb9d7292b5ba3682c5f27c3df5905bf24`
+- SHA-256: `b7505bc01d5a337b8f69f0d3cd5d3a1dc7ce4ca2ffcd20b0408756a92e13e125`
 - 설치 결과: `adb install -r` 성공
 - 시작 결과: `com.socialdrive.app/.MainActivity`가 현재 포커스이며 시작 직후 FATAL/ANR 없음
 - 설정 화면: 차량 상태, 차량 내비게이션, 위치 연동, 음성 안내, 음성 인식이 모두 `PLEOS 연결됨`
@@ -56,6 +56,8 @@ Cognito access token은 SDK lease 검증뿐 아니라 최종 `BearerToken` 공�
 API와 presigned object 요청은 리디렉션·암묵적 연결 재시도를 끄고 2 MiB 응답 상한과 30초 전체 호출 제한을 적용한 동일 `OkHttpClient` 연결 풀을 프로세스 동안 재사용한다. 반복 작업마다 새 소켓 풀을 만들지 않는 것은 양쪽 flavor 단위 테스트로 확인했지만, 실제 API Gateway/S3 연결 재사용 관찰은 AWS E2E 범위다.
 
 Worker 메모리의 업로드 payload는 upload session 요청 직전에 SHA-256 hex와 base64를 다시 계산해 동결된 명령 메타데이터와 모두 비교한다. payload가 생성 뒤 변경되면 `/uploads` API와 object transport를 호출하지 않고 영구 거부한다. 변조와 무통신 경계는 코어 회귀 테스트로 확인했다.
+
+게시 작업의 `REJECTED`, `NOT_FOUND`, `CONFIGURATION`은 재시도 가능한 전송 실패와 구분해 `게시 불가`로 표시한다. 해당 상태에서는 재시도 버튼을 비활성화하고 로컬 기록이 유지됨과 새 기록 필요를 안내한다. `SERVER_BUSY` 같은 일시 장애는 기존 재시도 흐름을 유지하며 상태 매핑은 양 flavor 단위 테스트로 확인했다.
 
 데모 flavor의 합성 경로는 데모 표시용으로만 유지한다. production AWS 어댑터는 기록된 정규화 경로가 2점 미만이면 API 생성 요청 전에 거부하고, 생성 뒤 동의 철회 경합 등으로 합성 경로 업로드 명령이 만들어져도 업로드 세션 요청과 object 전송 전에 다시 거부한다. 두 차단 지점과 무통신 상태는 단위 테스트로 확인했으며, 실제 차량에서 2점 이상 수집한 경로의 AWS 게시 성공은 E2E 미검증 범위다.
 
