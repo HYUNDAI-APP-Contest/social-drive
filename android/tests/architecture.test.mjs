@@ -698,6 +698,7 @@ test("cloud auth secrets are cleared at both UI and ViewModel ownership boundari
   const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");
   assert.match(settings, /val password = secret\.toCharArray\(\)[\s\S]*secret = ""[\s\S]*onSignIn\(username, password\)/);
   assert.match(settings, /val response = secret\.toCharArray\(\)[\s\S]*secret = ""[\s\S]*onConfirm\(response\)/);
+  assert.match(settings, /LaunchedEffect\(motion, authState\.phase\)[\s\S]*motion != MotionState\.Parked[\s\S]*username = ""[\s\S]*secret = ""/);
   assert.match(viewModel, /signInToCloud[\s\S]*CoroutineStart\.UNDISPATCHED[\s\S]*finally[\s\S]*password\.fill\('\\u0000'\)/);
   assert.match(viewModel, /confirmCloudSignIn[\s\S]*CoroutineStart\.UNDISPATCHED[\s\S]*finally[\s\S]*response\.fill\('\\u0000'\)/);
 });

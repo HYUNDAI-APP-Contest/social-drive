@@ -26,6 +26,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -171,6 +172,17 @@ private fun CloudAuthSection(
     if (authState.phase == CloudAuthPhase.UNAVAILABLE) return
     var username by remember { mutableStateOf("") }
     var secret by remember { mutableStateOf("") }
+    LaunchedEffect(motion, authState.phase) {
+        val authenticationSurfaceActive = authState.phase !in setOf(
+            CloudAuthPhase.SIGNED_IN,
+            CloudAuthPhase.REAUTH_REQUIRED,
+            CloudAuthPhase.UNAVAILABLE,
+        )
+        if (motion != MotionState.Parked || !authenticationSurfaceActive) {
+            username = ""
+            secret = ""
+        }
+    }
     val editable = motion == MotionState.Parked && authState.phase != CloudAuthPhase.WORKING
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
