@@ -11,6 +11,26 @@ import org.junit.Test
 
 class PleosAuxiliaryCapabilitySourceTest {
     @Test
+    fun `위치 원본은 권한 철회 때만 삭제하고 SDK 조회 장애에는 보존한다`() {
+        assertEquals(
+            LocationRefreshDisposition.PurgeForPermissionLoss,
+            locationRefreshDisposition(permissionGranted = false, supported = null),
+        )
+        assertEquals(
+            LocationRefreshDisposition.SuspendAndPreserve,
+            locationRefreshDisposition(permissionGranted = true, supported = null),
+        )
+        assertEquals(
+            LocationRefreshDisposition.SuspendAndPreserve,
+            locationRefreshDisposition(permissionGranted = true, supported = false),
+        )
+        assertEquals(
+            LocationRefreshDisposition.Collect,
+            locationRefreshDisposition(permissionGranted = true, supported = true),
+        )
+    }
+
+    @Test
     fun `음성 권한 철회는 기존 SDK 초기화 lease를 폐기한다`() {
         assertFalse(speechInitializedAfterPermissionRefresh(permissionGranted = false, initialized = true))
         assertFalse(speechInitializedAfterPermissionRefresh(permissionGranted = false, initialized = false))

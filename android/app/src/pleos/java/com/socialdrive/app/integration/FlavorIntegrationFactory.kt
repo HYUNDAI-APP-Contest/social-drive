@@ -327,27 +327,42 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     override fun refreshLocationPermission() {
         if (released) return
         val permitted = hasLocationPermission()
-        val supported = runCatching { fusedLocation.isSupported() }.getOrDefault(false)
-        if (permitted && supported) {
-            mutableLocation.value = available("실차 · 위치 사용 가능")
-            val shouldRegister = synchronized(locationLock) {
-                val start = collectionAuthorized && recordingRequested && !locationCollecting
-                if (start) locationCollecting = true
-                start
+        val supported = if (permitted) runCatching { fusedLocation.isSupported() } else null
+        when (locationRefreshDisposition(permitted, supported?.getOrNull())) {
+            LocationRefreshDisposition.PurgeForPermissionLoss -> {
+                val listener = synchronized(locationLock) {
+                    locationCollecting = false
+                    rawLocations.clear()
+                    lastLocationTimestampMillis = null
+                    detachLocationListenerLocked()
+                }
+                unregisterLocationCallback(listener)
+                mutableLocation.value = CapabilityStatus(
+                    CapabilityState.PermissionDenied,
+                    IntegrationSource.Actual,
+                    "실차 · 권한 필요",
+                )
             }
-            if (shouldRegister) registerLocationCallback()
-        } else {
-            val listener = synchronized(locationLock) {
-                locationCollecting = false
-                rawLocations.clear()
-                lastLocationTimestampMillis = null
-                detachLocationListenerLocked()
+            LocationRefreshDisposition.Collect -> {
+                mutableLocation.value = available("실차 · 위치 사용 가능")
+                val shouldRegister = synchronized(locationLock) {
+                    val start = collectionAuthorized && recordingRequested && !locationCollecting
+                    if (start) locationCollecting = true
+                    start
+                }
+                if (shouldRegister) registerLocationCallback()
             }
-            unregisterLocationCallback(listener)
-            mutableLocation.value = if (!permitted) {
-                CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, "실차 · 권한 필요")
-            } else {
-                unavailable("실차 · 위치 미지원")
+            LocationRefreshDisposition.SuspendAndPreserve -> {
+                val listener = synchronized(locationLock) {
+                    locationCollecting = false
+                    detachLocationListenerLocked()
+                }
+                unregisterLocationCallback(listener)
+                mutableLocation.value = if (supported?.isFailure == true) {
+                    unavailable("실차 · 위치 상태 확인 실패")
+                } else {
+                    unavailable("실차 · 위치 미지원")
+                }
             }
         }
     }
@@ -755,6 +770,17 @@ internal fun locationReconnectAllowed(
     permissionGranted: Boolean,
     released: Boolean,
 ): Boolean = listenerAbsent && authorized && recording && permissionGranted && !released
+
+internal enum class LocationRefreshDisposition { PurgeForPermissionLoss, SuspendAndPreserve, Collect }
+
+internal fun locationRefreshDisposition(
+    permissionGranted: Boolean,
+    supported: Boolean?,
+): LocationRefreshDisposition = when {
+    !permissionGranted -> LocationRefreshDisposition.PurgeForPermissionLoss
+    supported == true -> LocationRefreshDisposition.Collect
+    else -> LocationRefreshDisposition.SuspendAndPreserve
+}
 
 internal fun speechResultAccepted(
     sessionMatches: Boolean,
