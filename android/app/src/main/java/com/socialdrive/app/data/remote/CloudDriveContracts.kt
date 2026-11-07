@@ -60,6 +60,7 @@ fun interface AuthSessionProvider {
 /** SDK boundary for a future configured Cognito client. No Cognito SDK or client secret is embedded here. */
 fun interface CognitoSessionSource {
     suspend fun freshAccessToken(): String
+    fun onSessionInvalidated() = Unit
 }
 
 internal class ValidatingCognitoSessionSource(
@@ -74,10 +75,12 @@ internal class ValidatingCognitoSessionSource(
             throw cancelled
         } catch (error: Throwable) {
             onValidation(false)
+            runCatching { delegate.onSessionInvalidated() }
             throw error
         }
         val valid = runCatching { validator.isValid(token) }.getOrDefault(false)
         onValidation(valid)
+        if (!valid) runCatching { delegate.onSessionInvalidated() }
         require(valid) { "Invalid Cognito access token" }
         return token
     }

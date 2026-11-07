@@ -175,6 +175,13 @@ internal class AmplifyCognitoAuth(
         }
     }
 
+    override fun onSessionInvalidated() {
+        mutableState.value = CloudAuthState(
+            CloudAuthPhase.REAUTH_REQUIRED,
+            "AWS 세션 갱신이 필요합니다. 기존 세션을 정리해 주세요",
+        )
+    }
+
     private suspend fun fetchCognitoSession(): AWSCognitoAuthSession =
         suspendCancellableCoroutine { continuation ->
             Amplify.Auth.fetchAuthSession(

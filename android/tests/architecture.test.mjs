@@ -668,6 +668,16 @@ test("Cognito sign-out distinguishes complete partial and failed SDK results", (
   assert.match(auth, /CloudAuthPhase\.SIGNED_OUT[\s\S]*전체 로그아웃 상태/);
 });
 
+test("invalid Cognito tokens synchronize runtime and account reauthentication state", () => {
+  const contracts = read("app/src/main/java/com/socialdrive/app/data/remote/CloudDriveContracts.kt");
+  const auth = read("app/src/pleos/java/com/socialdrive/app/data/remote/AmplifyCognitoAuth.kt");
+  const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
+  assert.match(contracts, /fun onSessionInvalidated\(\)/);
+  assert.match(contracts, /!valid[\s\S]*delegate\.onSessionInvalidated\(\)/);
+  assert.match(auth, /override fun onSessionInvalidated\(\)[\s\S]*CloudAuthPhase\.REAUTH_REQUIRED/);
+  assert.match(settings, /CloudAuthPhase\.REAUTH_REQUIRED[\s\S]*세션 정리/);
+});
+
 test("cloud auth secrets are cleared at both UI and ViewModel ownership boundaries", () => {
   const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
   const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");

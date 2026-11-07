@@ -177,11 +177,11 @@ private fun CloudAuthSection(
             Text("AWS 계정", style = MaterialTheme.typography.titleLarge)
             Text(authState.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
             when (authState.phase) {
-                CloudAuthPhase.SIGNED_IN -> Button(
+                CloudAuthPhase.SIGNED_IN, CloudAuthPhase.REAUTH_REQUIRED -> Button(
                     onClick = onSignOut,
                     enabled = editable,
                     modifier = Modifier.heightIn(min = 48.dp),
-                ) { Text("로그아웃") }
+                ) { Text(if (authState.phase == CloudAuthPhase.REAUTH_REQUIRED) "세션 정리" else "로그아웃") }
                 CloudAuthPhase.CHALLENGE -> {
                     OutlinedTextField(
                         value = secret,

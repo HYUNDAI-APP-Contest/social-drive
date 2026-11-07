@@ -4,6 +4,7 @@ import kotlinx.coroutines.CancellationException
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class ValidatingCognitoSessionSourceTest {
     @Test
@@ -24,14 +25,35 @@ class ValidatingCognitoSessionSourceTest {
     @Test
     fun `세션 공급자 예외도 로그인 갱신 필요 상태로 전달한다`() = kotlinx.coroutines.test.runTest {
         val states = mutableListOf<Boolean>()
+        var invalidated = false
         val source = ValidatingCognitoSessionSource(
-            delegate = CognitoSessionSource { error("signed out") },
+            delegate = object : CognitoSessionSource {
+                override suspend fun freshAccessToken(): String = error("signed out")
+                override fun onSessionInvalidated() { invalidated = true }
+            },
             validator = AccessTokenValidator { true },
             onValidation = states::add,
         )
 
         assertFailsWith<IllegalStateException> { source.freshAccessToken() }
         assertEquals(listOf(false), states)
+        assertTrue(invalidated)
+    }
+
+    @Test
+    fun `거부된 토큰은 SDK 인증 상태도 재인증 필요로 무효화한다`() = kotlinx.coroutines.test.runTest {
+        var invalidated = false
+        val source = ValidatingCognitoSessionSource(
+            delegate = object : CognitoSessionSource {
+                override suspend fun freshAccessToken() = "wrong-pool-token"
+                override fun onSessionInvalidated() { invalidated = true }
+            },
+            validator = AccessTokenValidator { false },
+            onValidation = {},
+        )
+
+        assertFailsWith<IllegalArgumentException> { source.freshAccessToken() }
+        assertTrue(invalidated)
     }
 
     @Test

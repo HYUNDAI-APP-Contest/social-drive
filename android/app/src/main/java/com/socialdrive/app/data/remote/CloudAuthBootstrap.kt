@@ -2,7 +2,7 @@ package com.socialdrive.app.data.remote
 
 import kotlinx.coroutines.flow.StateFlow
 
-enum class CloudAuthPhase { UNAVAILABLE, SIGNED_OUT, WORKING, CHALLENGE, SIGNED_IN, ERROR }
+enum class CloudAuthPhase { UNAVAILABLE, SIGNED_OUT, WORKING, CHALLENGE, SIGNED_IN, REAUTH_REQUIRED, ERROR }
 
 data class CloudAuthState(
     val phase: CloudAuthPhase,
