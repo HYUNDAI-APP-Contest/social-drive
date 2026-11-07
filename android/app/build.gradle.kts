@@ -33,6 +33,18 @@ val cloudCognitoRegion = providers.gradleProperty("socialDrive.cloud.cognitoRegi
 val cloudCognitoUserPoolId = providers.gradleProperty("socialDrive.cloud.cognitoUserPoolId").orElse("")
 val cloudCognitoClientId = providers.gradleProperty("socialDrive.cloud.cognitoClientId").orElse("")
 
+fun isValidCloudHost(value: String): Boolean {
+    if (value.length !in 4..253 || value.startsWith('.') || value.endsWith('.')) return false
+    val labels = value.split('.')
+    if (labels.size < 2 || labels.last().none(Char::isLetter)) return false
+    return labels.all { label ->
+        label.length in 1..63 &&
+            label.first().isLetterOrDigit() &&
+            label.last().isLetterOrDigit() &&
+            label.all { it in 'a'..'z' || it in '0'..'9' || it == '-' }
+    }
+}
+
 tasks.register("verifyPleosCloudConfiguration") {
     group = "verification"
     description = "Validates the public AWS/Cognito configuration without printing its values."
@@ -57,7 +69,7 @@ tasks.register("verifyPleosCloudConfiguration") {
             throw GradleException("PLEOS cloud API URL must be an origin/path HTTPS URL without credentials, query, or fragment.")
         }
         val hosts = values.getValue("uploadHosts").split(',').map(String::trim).filter(String::isNotEmpty)
-        if (hosts.isEmpty() || hosts.any { it != it.lowercase() || !it.matches(Regex("[a-z0-9.-]+")) }) {
+        if (hosts.isEmpty() || hosts.any { it != it.lowercase() || !isValidCloudHost(it) }) {
             throw GradleException("PLEOS cloud upload hosts must be lowercase host names without schemes or paths.")
         }
         val policy = values.getValue("consentPolicyVersion")

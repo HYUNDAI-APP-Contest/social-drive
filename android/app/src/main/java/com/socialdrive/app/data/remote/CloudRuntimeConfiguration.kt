@@ -31,7 +31,7 @@ data class CloudRuntimeConfiguration(
                 .filter(String::isNotEmpty)
                 .map(String::lowercase)
                 .toSet()
-            if (hosts.isEmpty() || hosts.any { !it.matches(Regex("[a-z0-9.-]+")) }) return null
+            if (hosts.isEmpty() || hosts.any { !it.isValidCloudHost() }) return null
             return runCatching {
                 CloudRuntimeConfiguration(
                     client = CloudDriveClientConfig(URI(apiBaseUrl), hosts),
@@ -40,6 +40,18 @@ data class CloudRuntimeConfiguration(
                 )
             }.getOrNull()
         }
+    }
+}
+
+internal fun String.isValidCloudHost(): Boolean {
+    if (length !in 4..253 || startsWith('.') || endsWith('.')) return false
+    val labels = split('.')
+    if (labels.size < 2 || labels.last().none(Char::isLetter)) return false
+    return labels.all { label ->
+        label.length in 1..63 &&
+            label.first().isLetterOrDigit() &&
+            label.last().isLetterOrDigit() &&
+            label.all { it in 'a'..'z' || it in '0'..'9' || it == '-' }
     }
 }
 
