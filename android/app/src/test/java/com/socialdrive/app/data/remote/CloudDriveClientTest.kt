@@ -438,6 +438,18 @@ class CloudDriveClientTest {
         )
         val foreignAsset = assertFailsWith<CloudDriveException> { harness.client.feed(limit = 1) }
         assertEquals("ASSET_HOST_NOT_ALLOWED", foreignAsset.code)
+
+        harness.api.responses += jsonResponse(
+            200,
+            """{"items":[${driveJson(status = "PUBLISHED", extra = ",\"coverUrl\":\"https://upload.example.test/${"a".repeat(8_193)}\"")}],"nextCursor":null}""",
+        )
+        assertEquals("INVALID_URL", assertFailsWith<CloudDriveException> { harness.client.feed(limit = 1) }.code)
+
+        harness.api.responses += jsonResponse(
+            200,
+            """{"items":[${driveJson(status = "PUBLISHED", extra = ",\"coverUrl\":\"https://upload.example.test?sig=value\"")}],"nextCursor":null}""",
+        )
+        assertEquals("INVALID_URL", assertFailsWith<CloudDriveException> { harness.client.feed(limit = 1) }.code)
     }
 
     @Test

@@ -503,8 +503,13 @@ class CloudDriveClient(
     }
 
     private fun secureUri(value: String): URI {
+        if (value.length !in 1..MAX_CLOUD_URL_LENGTH || '\\' in value || value.any(Char::isWhitespace)) {
+            throw CloudContractException("INVALID_URL")
+        }
         val uri = runCatching { URI(value) }.getOrElse { throw CloudContractException("INVALID_URL") }
-        if (!uri.scheme.equals("https", true) || uri.host == null || uri.userInfo != null || uri.fragment != null || (uri.port != -1 && uri.port != 443)) {
+        if (!uri.scheme.equals("https", true) || uri.host == null || uri.userInfo != null || uri.fragment != null ||
+            uri.rawPath.isNullOrEmpty() || !uri.rawPath.startsWith('/') || (uri.port != -1 && uri.port != 443)
+        ) {
             throw CloudContractException("INVALID_URL")
         }
         return uri
@@ -571,6 +576,7 @@ class CloudDriveClient(
 
     companion object {
         private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+        private const val MAX_CLOUD_URL_LENGTH = 8_192
         private const val MAX_PRESIGNED_SECONDS = 900L
         private const val CLOCK_SKEW_SECONDS = 30L
         private const val HEX = "0123456789ABCDEF"
