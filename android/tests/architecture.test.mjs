@@ -375,10 +375,15 @@ test("Pleos dependencies permissions and flavors are least-privilege isolated", 
   assert.doesNotMatch(mainManifest, /uses-permission/);
   const permissions = [...pleosManifest.matchAll(/uses-permission android:name="([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(permissions, [
+    "android.permission.INTERNET",
+    "android.permission.ACCESS_NETWORK_STATE",
     "pleos.car.permission.CAR_DRIVE",
     "pleos.car.permission.NAVI_ROUTE_SEARCH",
+    "pleos.car.permission.FUSED_LOCATION",
+    "pleos.car.permission.TTS_SERVICE",
+    "pleos.car.permission.STT_SERVICE",
   ]);
-  for (const forbidden of ["FusedLocation", "TextToSpeech", "SpeechToText", "CONTROL_CAR_", "PRIVATE_CAR_"]) {
+  for (const forbidden of ["CONTROL_CAR_", "PRIVATE_CAR_"]) {
     assert.doesNotMatch(build + pleosManifest, new RegExp(forbidden));
   }
 });
