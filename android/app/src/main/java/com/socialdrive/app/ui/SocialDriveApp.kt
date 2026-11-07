@@ -401,7 +401,12 @@ fun SocialDriveApp(
                         onWithdrawConsent = {
                             scope.launch {
                                 val result = offlineViewModel.withdrawRouteConsent()
-                                privacyMessage = "동의를 철회하고 미게시 경로 ${result.purgedUnpublishedPointCount}개를 삭제했어요."
+                                privacyMessage = buildString {
+                                    append("동의를 철회하고 미게시 경로 ${result.purgedUnpublishedPointCount}개를 삭제했어요.")
+                                    if (result.remoteCleanupDraftIds.isNotEmpty()) {
+                                        append(" 원격 초안 ${result.remoteCleanupDraftIds.size}개도 삭제 대기열에 추가했어요.")
+                                    }
+                                }
                             }
                         },
                         onEnableLiveRoute = {

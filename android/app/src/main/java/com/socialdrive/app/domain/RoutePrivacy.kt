@@ -187,6 +187,7 @@ interface FutureRouteCollector {
 data class WithdrawalReceipt(
     val purgedUnpublishedPointCount: Int,
     val tombstonedDraftIds: Set<String>,
+    val remoteCleanupDraftIds: Set<String> = emptySet(),
 )
 
 interface RoutePrivacyMutationStore {

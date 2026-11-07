@@ -832,6 +832,8 @@ test("route source consent withdrawal and delete pending stay privacy safe", () 
   assert.match(domain, /stopAndAwait\(\)[\s\S]*withdrawAndPurge\(\)[\s\S]*pendingUploads\.cancel/);
   assert.match(offline, /database\.withTransaction[\s\S]*effectiveRouteConsentState\([\s\S]*RouteConsentState\.Granted[\s\S]*collectedRoute\.points\.takeIf/);
   assert.match(repository, /RoomRoutePrivacyMutationStore/);
+  assert.match(repository, /remoteCleanupDraftIds[\s\S]*onDeletePending/);
+  assert.match(repository, /draft\.state == LocalState\.PUBLISHED \|\| draft\.remoteDriveId == null[\s\S]*remoteDeleteRequest/);
   assert.match(repository, /currentMotion = currentMotion/);
   assert.match(application, /currentMotion = \{ vehicleMotionSource\.status\.value\.motion \}/);
   assert.match(domain, /motion != MotionState\.Parked[\s\S]*MotionRejected/);

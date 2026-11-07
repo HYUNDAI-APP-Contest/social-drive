@@ -19,6 +19,7 @@ import com.socialdrive.app.domain.RouteConsentState
 import com.socialdrive.app.domain.RouteLocationConsentPolicy
 import com.socialdrive.app.domain.FutureRouteCollector
 import com.socialdrive.app.domain.CollectedRoute
+import com.socialdrive.app.domain.DeleteRequestState
 import com.socialdrive.app.domain.NormalizedRoutePoint
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -271,14 +272,17 @@ class OfflinePersistenceTest {
         val queue = PublishQueueRepository(database, clock = { 1_000L })
         val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
         queue.enqueue(draft.id, MotionState.Parked)
+        database.draftDao().updateRemoteState(draft.id, LocalState.QUEUED, "remote-withdraw-10", 1, 1_000L)
         database.routePrivacyDao().insertPoint(NormalizedRoutePointEntity(draft.recordingId, 0, .2f, .3f, "UNPUBLISHED"))
         database.routePrivacyDao().insertPoint(NormalizedRoutePointEntity(draft.recordingId, 1, .4f, .5f, "PUBLISHED"))
         var cancelled = emptySet<String>()
+        val scheduledRemoteCleanup = mutableSetOf<String>()
         val privacy = RoutePrivacyRepository(
             database,
             PendingRouteUploadCanceller { cancelled = it },
             currentMotion = { MotionState.Parked },
             clock = { 1_001L },
+            onDeletePending = scheduledRemoteCleanup::add,
         )
 
         val receipt = privacy.withdraw()
@@ -291,6 +295,10 @@ class OfflinePersistenceTest {
         assertEquals(0, database.uploadQueueDao().claimStage(draft.id, LocalState.CANCELLED, LocalState.PRIVACY_WITHDRAWN, 0, 1, 1_002L))
         assertEquals(0, database.uploadQueueDao().completeCreateStage(draft.id, 1, 1_002L))
         assertEquals(setOf(draft.id), cancelled)
+        assertEquals(setOf(draft.id), receipt.remoteCleanupDraftIds)
+        assertEquals(setOf(draft.id), scheduledRemoteCleanup)
+        assertEquals("remote-withdraw-10", database.publishedDeleteDao().find(draft.id)?.remoteDriveId)
+        assertEquals(DeleteRequestState.DELETE_PENDING.name, database.publishedDeleteDao().find(draft.id)?.state)
     }
 
     @Test
