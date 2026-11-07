@@ -497,7 +497,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
   assert.match(coreRunner, /expectedTests = 83/);
-  assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
+  assert.match(readme, /does not compile Android framework code,[\s\S]*the PLEOS vendor adapters,[\s\S]*assemble an APK,[\s\S]*replace a PLEOS emulator run/);
 });
 
 test("cloud API core isolates auth from presigned uploads and actual flavor never falls back to fake", () => {
@@ -556,8 +556,11 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   assert.match(remote, /current\(\) \?: UnavailableRemoteDriveApi\(\)/);
   assert.doesNotMatch(entities, /bearer|token|presigned|uploadUrl|authorization/i);
   assert.doesNotMatch(client + contracts + adapter, /android\.util\.Log|println\(|printStackTrace/);
-  assert.match(readme, /highlightCount = 0/);
-  assert.match(readme, /must remain unavailable until approved derived publication metadata/);
+  assert.match(adapter, /distanceMeters = draft\.distanceMeters/);
+  assert.match(adapter, /durationSeconds = draft\.durationSeconds/);
+  assert.match(adapter, /highlightCount = draft\.highlightCount/);
+  assert.match(readme, /freezes actual duration, normalized route distance, and highlight count/);
+  assert.doesNotMatch(readme, /highlightCount = 0|must remain unavailable until approved derived publication metadata/);
   for (const source of ["CloudDriveClient.kt", "CloudDriveClientTest.kt", "CloudRemoteDriveApi.kt"]) {
     assert.ok(coreScript.includes(source), source);
   }
