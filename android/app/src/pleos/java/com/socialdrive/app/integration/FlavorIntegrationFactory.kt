@@ -114,10 +114,18 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private val recognitionListener = object : ResultListener {
         override fun onUpdated(text: String, isFinal: Boolean) {
             val callback = synchronized(recognitionLock) { recognitionCallback }
-            callback?.invoke(text, isFinal)
-            if (isFinal) finishRecognition(
-                if (text.isBlank()) SpeechRecognitionState.NoResult else SpeechRecognitionState.Applied,
-            )
+            if (isFinal) {
+                val completed = finishRecognition(
+                    if (text.isBlank()) SpeechRecognitionState.NoResult else SpeechRecognitionState.Applied,
+                )
+                if (completed && runCatching { callback?.invoke(text, true) }.isFailure) {
+                    mutableRecognitionState.value = SpeechRecognitionState.Failed
+                }
+            } else if (runCatching { callback?.invoke(text, false) }.isFailure) {
+                if (finishRecognition(SpeechRecognitionState.Failed)) {
+                    runCatching { stt.stop() }
+                }
+            }
         }
         override fun onUpdatedEpdData(start: Long, end: Long) = Unit
         override fun onStartedRecognition() = Unit
