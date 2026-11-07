@@ -27,9 +27,10 @@ test("contains no account id or credentials", () => {
 });
 
 test("exports every non-secret Android cloud build input", () => {
-  for (const output of ["ApiUrl:", "UserPoolId:", "UserPoolClientId:", "UploadHost:"]) {
+  for (const output of ["CloudRegion:", "ApiUrl:", "UserPoolId:", "UserPoolClientId:", "UploadHost:", "ConsentPolicyVersion:"]) {
     assert.ok(template.includes(output), `missing ${output}`);
   }
   assert.match(template, /Value: !Sub \$\{MediaBucket\}\.s3\.\$\{AWS::Region\}\.\$\{AWS::URLSuffix\}/);
+  assert.match(template, /AllowedPattern: '\^\[A-Za-z0-9\._-\]\{1,32\}\$'/);
 });
 
