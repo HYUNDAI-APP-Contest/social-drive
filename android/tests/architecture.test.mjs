@@ -43,6 +43,12 @@ test("WorkManager uses target-only on-demand initialization without a test APK p
   assert.doesNotMatch(build, /lint\s*\{[\s\S]*(?:disable|baseline)/);
 });
 
+test("WorkManager does not emit informational queue identifiers", () => {
+  const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
+  assert.match(application, /setMinimumLoggingLevel\(android\.util\.Log\.WARN\)/);
+  assert.doesNotMatch(application, /setMinimumLoggingLevel\(android\.util\.Log\.(?:VERBOSE|DEBUG|INFO)\)/);
+});
+
 test("Room owns durable recordings drafts and a non-destructive migration path", () => {
   const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
   const daos = read("app/src/main/java/com/socialdrive/app/data/local/Daos.kt");
@@ -551,7 +557,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 94/);
+  assert.match(coreRunner, /expectedTests = 97/);
   assert.match(readme, /does not compile Android framework code,[\s\S]*the PLEOS vendor adapters,[\s\S]*assemble an APK,[\s\S]*replace a PLEOS emulator run/);
 });
 

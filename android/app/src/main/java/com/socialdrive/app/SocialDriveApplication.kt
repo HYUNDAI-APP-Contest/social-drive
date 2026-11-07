@@ -94,7 +94,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setWorkerFactory(publishWorkerFactory)
-            .setMinimumLoggingLevel(android.util.Log.INFO)
+            .setMinimumLoggingLevel(android.util.Log.WARN)
             .build()
 
     override fun onCreate() {
