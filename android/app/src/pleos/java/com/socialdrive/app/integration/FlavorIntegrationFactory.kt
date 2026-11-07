@@ -33,6 +33,7 @@ import com.socialdrive.app.domain.RawRouteCoordinate
 import com.socialdrive.app.domain.RouteNormalizer
 import com.socialdrive.app.domain.RouteDistance
 import com.socialdrive.app.domain.CapabilityState
+import com.socialdrive.app.domain.BoundedRouteBuffer
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.IntegrationBundle
 import com.socialdrive.app.domain.IntegrationSource
@@ -86,7 +87,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private val mutableRecognitionState = MutableStateFlow(SpeechRecognitionState.Idle)
     private val locationLock = Any()
     private val recognitionLock = Any()
-    private val rawLocations = ArrayList<RawRouteCoordinate>()
+    private val rawLocations = BoundedRouteBuffer(MAX_ROUTE_POINTS)
     private var collectionAuthorized = false
     private var recordingRequested = false
     private var locationCollecting = false
@@ -98,9 +99,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             location ?: return
             val coordinate = RawRouteCoordinate.fromOrNull(location.longitude, location.latitude) ?: return
             synchronized(locationLock) {
-                if (locationCollecting && rawLocations.size < MAX_ROUTE_POINTS) {
-                    rawLocations += coordinate
-                }
+                if (locationCollecting) rawLocations.offer(coordinate)
             }
         }
         override fun onError(error: Exception) {
@@ -347,8 +346,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
 
     override suspend fun snapshotAndClear(): CollectedRoute {
         val (snapshot, wasCollecting) = synchronized(locationLock) {
-            val points = rawLocations.toList()
-            rawLocations.clear()
+            val points = rawLocations.snapshotAndClear()
             recordingRequested = false
             val active = locationCollecting
             locationCollecting = false

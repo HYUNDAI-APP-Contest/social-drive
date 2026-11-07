@@ -418,6 +418,7 @@ test("PLEOS TTS and STT permissions fail closed and remain recoverable", () => {
   assert.match(pleos, /if \(!hasPermission\(STT_PERMISSION\)\)[\s\S]*permissionDenied/);
   assert.match(pleos, /ttsInitialized[\s\S]*sttInitialized/);
   assert.match(pleos, /RawRouteCoordinate\.fromOrNull\(location\.longitude, location\.latitude\) \?: return/);
+  assert.match(pleos, /BoundedRouteBuffer\(MAX_ROUTE_POINTS\)/);
 });
 
 test("actual adapters fail closed and never fall back to demo state", () => {
@@ -737,7 +738,9 @@ test("route source consent withdrawal and delete pending stay privacy safe", () 
   ]) assert.ok(domain.includes(marker), marker);
   assert.match(domain, /data object LiveAvailable : RouteSource/);
   assert.match(pleos, /collectionAuthorized && recordingRequested && !locationCollecting/);
-  assert.match(pleos, /if \(locationCollecting && rawLocations\.size < MAX_ROUTE_POINTS\)/);
+  assert.match(pleos, /if \(locationCollecting\) rawLocations\.offer\(coordinate\)/);
+  assert.match(domain, /class BoundedRouteBuffer[\s\S]*if \(points\.size >= maximumSize\) compact\(\)/);
+  assert.match(domain, /if \(compacted\.last\(\) != latest\) compacted \+= latest/);
   assert.match(domain, /stopAndAwait\(\)[\s\S]*withdrawAndPurge\(\)[\s\S]*pendingUploads\.cancel/);
   assert.match(repository, /RoomRoutePrivacyMutationStore/);
   assert.match(repository, /currentMotion = currentMotion/);

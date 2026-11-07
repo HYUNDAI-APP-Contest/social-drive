@@ -105,6 +105,27 @@ class RoutePrivacyTest {
     }
 
     @Test
+    fun `장시간 위치 버퍼는 상한 안에서 출발점과 최신점을 보존한다`() {
+        val buffer = BoundedRouteBuffer(5)
+        val points = (0..12).map { index -> RawRouteCoordinate(126.0 + index / 100.0, 37.0) }
+
+        points.forEach(buffer::offer)
+
+        val retained = buffer.snapshot()
+        assertEquals(true, retained.size <= 5)
+        assertEquals(points.first(), retained.first())
+        assertEquals(points.last(), retained.last())
+        assertEquals(retained, retained.sortedBy(RawRouteCoordinate::longitude))
+        assertEquals(retained, buffer.snapshotAndClear())
+        assertEquals(emptyList(), buffer.snapshot())
+    }
+
+    @Test
+    fun `위치 버퍼는 의미 있는 최소 상한을 요구한다`() {
+        assertFailsWith<IllegalArgumentException> { BoundedRouteBuffer(2) }
+    }
+
+    @Test
     fun `future fake collector receives zero points before explicit consent`() = runBlocking {
         val harness = Harness()
         harness.collector.offer(NormalizedRoutePoint(0, .2f, .3f))

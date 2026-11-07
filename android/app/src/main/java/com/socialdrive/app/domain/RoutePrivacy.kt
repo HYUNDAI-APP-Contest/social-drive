@@ -92,6 +92,32 @@ data class CollectedRoute(
     }
 }
 
+class BoundedRouteBuffer(private val maximumSize: Int) {
+    init { require(maximumSize >= 3) }
+
+    private val points = ArrayList<RawRouteCoordinate>(maximumSize)
+
+    fun offer(point: RawRouteCoordinate) {
+        if (points.size >= maximumSize) compact()
+        points += point
+    }
+
+    fun snapshotAndClear(): List<RawRouteCoordinate> = points.toList().also { points.clear() }
+
+    fun clear() = points.clear()
+
+    internal fun snapshot(): List<RawRouteCoordinate> = points.toList()
+
+    private fun compact() {
+        val latest = points.last()
+        val compacted = ArrayList<RawRouteCoordinate>((points.size / 2) + 1)
+        points.forEachIndexed { index, point -> if (index % 2 == 0) compacted += point }
+        if (compacted.last() != latest) compacted += latest
+        points.clear()
+        points.addAll(compacted)
+    }
+}
+
 object RouteDistance {
     fun plausibleTrack(points: List<RawRouteCoordinate>): List<RawRouteCoordinate> {
         if (points.size < 2) return points
