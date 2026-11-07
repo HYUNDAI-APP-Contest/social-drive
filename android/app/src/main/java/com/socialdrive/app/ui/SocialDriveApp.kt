@@ -16,6 +16,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -53,6 +54,7 @@ import com.socialdrive.app.ui.screens.SettingsScreen
 import com.socialdrive.app.ui.components.memoryPaletteFor
 import com.socialdrive.app.ui.theme.SocialDriveTheme
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 @Composable
 fun SocialDriveApp(
@@ -76,6 +78,7 @@ fun SocialDriveApp(
     val cloudConnectionCapability by offlineViewModel.cloudConnectionCapability.collectAsStateWithLifecycle()
     val routePrivacy by offlineViewModel.routePrivacy.collectAsStateWithLifecycle()
     val deleteRequestState by offlineViewModel.deleteRequestState.collectAsStateWithLifecycle()
+    var recordingNowEpochMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var destination by rememberSaveable { mutableStateOf(AppDestination.Home) }
     val motion = vehicleMotion.motion
     var theme by rememberSaveable { mutableStateOf(ThemeMode.Night) }
@@ -114,6 +117,13 @@ fun SocialDriveApp(
     LaunchedEffect(activeRecording?.id, activeRecording?.highlightCount) {
         activeRecording?.let { recording ->
             memoryStory = memoryStory.recordingProgress(recording.highlightCount)
+        }
+    }
+    LaunchedEffect(activeRecording?.id) {
+        if (activeRecording == null) return@LaunchedEffect
+        while (true) {
+            recordingNowEpochMs = System.currentTimeMillis()
+            delay(1_000)
         }
     }
     LaunchedEffect(latestDraft?.id, latestDraft?.highlightCount, activeRecording?.id) {
@@ -226,8 +236,11 @@ fun SocialDriveApp(
                         snapshot = RecordingSnapshot(
                             storyId = presentedStory.id,
                             route = displayedRoute,
-                            elapsed = "01:24:17",
-                            distance = "64.2 km",
+                            elapsed = formatRecordingElapsed(
+                                activeRecording?.startedAtEpochMs ?: recordingNowEpochMs,
+                                recordingNowEpochMs,
+                            ),
+                            distance = recordingRouteStatus(routePrivacy.displayedSource),
                             highlights = presentedStory.highlights,
                             gps = locationCapability.capability,
                             vehicle = vehicleMotion.integration.capability,

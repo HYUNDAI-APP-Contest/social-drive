@@ -212,7 +212,7 @@ private fun NavigationContractContent() {
                     storyId = "demo-coast",
                     route = FakeDriveRepository().drive("demo-coast")!!.route,
                     elapsed = "00:01:24",
-                    distance = "1.2 km",
+                    distance = "데모 경로",
                     highlights = 1,
                     gps = CapabilityState.Unavailable,
                     vehicle = CapabilityState.Unavailable,

@@ -112,7 +112,7 @@ fun RecordingScreen(snapshot: RecordingSnapshot, onHighlight: () -> Unit, onRequ
                     Text("경과 시간", Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(snapshot.elapsed, style = MaterialTheme.typography.displayLarge)
                     Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(44.dp)) {
-                        RecordingMetric("주행 거리", snapshot.distance)
+                        RecordingMetric("경로 상태", snapshot.distance)
                         RecordingMetric("하이라이트", "${snapshot.highlights}개")
                     }
                     Text(

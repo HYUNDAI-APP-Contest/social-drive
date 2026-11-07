@@ -66,7 +66,7 @@ fun VisualScenarioFixture(
                             storyId = "demo-coast",
                             route = requireNotNull(fixtureRepository.drive("demo-coast")).route,
                             elapsed = "01:24:17",
-                            distance = "64.2 km",
+                            distance = "데모 경로",
                             highlights = 3,
                             gps = CapabilityState.Unavailable,
                             vehicle = CapabilityState.Unavailable,
