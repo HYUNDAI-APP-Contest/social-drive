@@ -93,6 +93,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private var collectionAuthorized = false
     private var recordingRequested = false
     private var locationCollecting = false
+    private var lastLocationTimestampMillis: Long? = null
     private var registeredLocationListener: FusedLocationListener? = null
     @Volatile private var ttsInitialized = false
     @Volatile private var sttInitialized = false
@@ -314,6 +315,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             val listener = synchronized(locationLock) {
                 locationCollecting = false
                 rawLocations.clear()
+                lastLocationTimestampMillis = null
                 detachLocationListenerLocked()
             }
             unregisterLocationCallback(listener)
@@ -466,6 +468,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
         if (released) return
         val shouldRegister = synchronized(locationLock) {
             rawLocations.clear()
+            lastLocationTimestampMillis = null
             recordingRequested = true
             val start = collectionAuthorized &&
                 mutableLocation.value.capability == CapabilityState.Available &&
@@ -481,6 +484,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             val points = rawLocations.snapshotAndClear()
             recordingRequested = false
             locationCollecting = false
+            lastLocationTimestampMillis = null
             points to detachLocationListenerLocked()
         }
         unregisterLocationCallback(listener)
@@ -498,6 +502,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             recordingRequested = false
             locationCollecting = false
             rawLocations.clear()
+            lastLocationTimestampMillis = null
             detachLocationListenerLocked()
         }
         unregisterLocationCallback(listener)
@@ -558,13 +563,23 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
                 val coordinate = RawRouteCoordinate.fromOrNull(location.longitude, location.latitude) ?: return
                 val permissionGranted = hasLocationPermission()
                 val accepted = synchronized(locationLock) {
-                    locationSampleAccepted(
+                    val shouldAccept = locationSampleAccepted(
                         listenerMatches = registeredLocationListener === listener,
                         collecting = locationCollecting,
                         authorized = collectionAuthorized,
                         recording = recordingRequested,
                         permissionGranted = permissionGranted,
-                    ).also { if (it) rawLocations.offer(coordinate) }
+                    ) && locationTimestampAccepted(
+                        previousTimestampMillis = lastLocationTimestampMillis,
+                        timestampMillis = location.timestampMillis,
+                    )
+                    if (shouldAccept) {
+                        rawLocations.offer(coordinate)
+                        if (location.timestampMillis > 0L) {
+                            lastLocationTimestampMillis = location.timestampMillis
+                        }
+                    }
+                    shouldAccept
                 }
                 if (!accepted && !permissionGranted) {
                     deactivateLocationCollection(
@@ -592,6 +607,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             if (expectedListener != null && registeredLocationListener !== expectedListener) return
             locationCollecting = false
             rawLocations.clear()
+            lastLocationTimestampMillis = null
             detachLocationListenerLocked()
         }
         mutableLocation.value = CapabilityStatus(status, IntegrationSource.Actual, label)
@@ -625,6 +641,7 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             recordingRequested = false
             locationCollecting = false
             rawLocations.clear()
+            lastLocationTimestampMillis = null
             detachLocationListenerLocked()
         }
         unregisterLocationCallback(listener)
@@ -646,6 +663,11 @@ internal fun locationSampleAccepted(
     recording: Boolean,
     permissionGranted: Boolean,
 ): Boolean = listenerMatches && collecting && authorized && recording && permissionGranted
+
+internal fun locationTimestampAccepted(
+    previousTimestampMillis: Long?,
+    timestampMillis: Long,
+): Boolean = timestampMillis <= 0L || previousTimestampMillis == null || timestampMillis > previousTimestampMillis
 
 internal fun speechResultAccepted(
     sessionMatches: Boolean,
