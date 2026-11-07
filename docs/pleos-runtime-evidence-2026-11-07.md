@@ -12,6 +12,10 @@
 | TextToSpeech 3.3.1 | 기록 시작 피드백에서 `TtsCallback onReady/onStart` 관찰 | 온디바이스 모드, 빈 문구 거부 |
 | SpeechToText 3.3.1 | 게시 화면에서 `request`와 `ReadyToStartRecognition`, 취소 시 `stop/close` 관찰 | 주차 상태에서만 시작. 최종·비공백 결과만 초안에 반영 |
 
+TTS/STT 초기화 콜백이 누락될 때 설정이 무기한정 `확인 중`에 머물지 않도록 10초 상한을 적용했다. STT 요청이 종료·오류·최종 결과 콜백 없이 멈추는 경우에도 30초 뒤 세션을 종료하고 `stop()`을 호출하도록 보강했다. 세션 번호로 이전 타이머가 새 인식을 종료하지 못하게 했고, 앱 해제 후 늦은 초기화 콜백도 무시한다.
+
+보강 APK를 데이터 유지 설치한 뒤 실제 게시 화면의 제목 음성 입력을 다시 실행했다. 화면에 `음성을 듣고 있어요…`가 표시됐고 SDK `request` 뒤 `ReadyToStartRecognition`을 수신했다. `음성 입력 취소`를 누르면 SDK `stop`이 호출되고 `음성 입력을 취소했어요.`로 복귀했으며 앱 프로세스 크래시는 없었다.
+
 ## NaviHelper 재현 절차
 
 1. 최신 `app-pleos-debug.apk`를 설치하고 `com.socialdrive.app/.MainActivity`를 user 10에서 실행한다.
