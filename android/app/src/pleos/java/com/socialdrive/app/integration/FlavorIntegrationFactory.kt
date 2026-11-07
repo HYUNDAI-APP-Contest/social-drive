@@ -398,7 +398,13 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
     private fun registerLocationCallback() {
         val result = synchronized(locationOperationLock) {
             if (released) return
-            runCatching { fusedLocation.registerFusedLocationCallback(locationListener) }
+            runCatching {
+                fusedLocation.registerFusedLocationCallback(locationListener)
+                val stillOwned = synchronized(locationLock) { locationCollecting && !released }
+                if (!stillOwned) {
+                    runCatching { fusedLocation.unregisterFusedLocationCallback(locationListener) }
+                }
+            }
         }
         result
             .onFailure {

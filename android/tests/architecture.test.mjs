@@ -428,6 +428,7 @@ test("PLEOS TTS and STT permissions fail closed and remain recoverable", () => {
   assert.match(pleos, /if \(isFinal\)[\s\S]*finishRecognition\([\s\S]*runCatching \{ callback\?\.invoke\(text, true\) \}/);
   assert.match(pleos, /callback\?\.invoke\(text, false\)[\s\S]*finishRecognition\(SpeechRecognitionState\.Failed\)/);
   assert.match(pleos, /locationOperationLock[\s\S]*registerLocationCallback\([\s\S]*synchronized\(locationOperationLock\)/);
+  assert.match(pleos, /registerFusedLocationCallback\(locationListener\)[\s\S]*val stillOwned = synchronized\(locationLock\) \{ locationCollecting && !released \}[\s\S]*if \(!stillOwned\)[\s\S]*unregisterFusedLocationCallback\(locationListener\)/);
   assert.match(pleos, /val shouldRelease = synchronized\(speechOperationLock\)[\s\S]*if \(!shouldRelease\) return/);
   assert.match(pleos, /RawRouteCoordinate\.fromOrNull\(location\.longitude, location\.latitude\) \?: return/);
   assert.match(pleos, /BoundedRouteBuffer\(MAX_ROUTE_POINTS\)/);
