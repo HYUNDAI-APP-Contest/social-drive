@@ -92,7 +92,7 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
         val transports = sharedCloudTransports()
         return CloudDriveClient(
             config = configured.client,
-            auth = InMemoryCognitoAuthSessionProvider(validatingSession),
+            auth = InMemoryCognitoAuthSessionProvider(validatingSession, policy),
             apiTransport = transports,
             objectTransport = transports,
         )

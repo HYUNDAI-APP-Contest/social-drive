@@ -17,6 +17,25 @@ import com.socialdrive.app.domain.NormalizedRoutePoint
 
 class CloudDriveClientTest {
     @Test
+    fun `최종 bearer 공급자는 명시적 검증을 통과하지 못한 토큰을 전송하지 않는다`() = runBlocking {
+        val api = FakeTransport()
+        val client = CloudDriveClient(
+            config = CloudDriveClientConfig(URI("https://api.example.test/dev"), setOf("upload.example.test")),
+            auth = InMemoryCognitoAuthSessionProvider(
+                CognitoSessionSource { "invalid-token" },
+                AccessTokenValidator { false },
+            ),
+            apiTransport = api,
+            objectTransport = FakeObjectTransport(),
+        )
+
+        val failure = assertFailsWith<CloudDriveException> { client.feed() }
+
+        assertEquals(CloudFailureKind.AUTHENTICATION, failure.kind)
+        assertTrue(api.requests.isEmpty())
+    }
+
+    @Test
     fun `AWS 게시 어댑터는 합성 데모 경로를 생성 전에 거부한다`() = runBlocking {
         val harness = Harness()
         val draft = testDraft().copy(routePoints = emptyList())
@@ -500,7 +519,7 @@ class CloudDriveClientTest {
         }
         val client = CloudDriveClient(
             config = CloudDriveClientConfig(URI("https://api.example.test/dev"), setOf("upload.example.test")),
-            auth = InMemoryCognitoAuthSessionProvider(session),
+            auth = InMemoryCognitoAuthSessionProvider(session, AccessTokenValidator { true }),
             apiTransport = api,
             objectTransport = FakeObjectTransport(),
         )
@@ -523,7 +542,7 @@ class CloudDriveClientTest {
         }
         val client = CloudDriveClient(
             config = CloudDriveClientConfig(URI("https://api.example.test/dev"), setOf("upload.example.test")),
-            auth = InMemoryCognitoAuthSessionProvider(session),
+            auth = InMemoryCognitoAuthSessionProvider(session, AccessTokenValidator { true }),
             apiTransport = api,
             objectTransport = FakeObjectTransport(),
         )

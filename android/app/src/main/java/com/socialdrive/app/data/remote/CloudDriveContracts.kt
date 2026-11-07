@@ -132,7 +132,7 @@ internal suspend fun validateCognitoSession(
 
 class InMemoryCognitoAuthSessionProvider(
     private val source: CognitoSessionSource,
-    private val validator: AccessTokenValidator = AccessTokenValidator { true },
+    private val validator: AccessTokenValidator,
 ) : AuthSessionProvider {
     override suspend fun freshBearerToken(): BearerToken {
         val token = source.freshAccessToken()
