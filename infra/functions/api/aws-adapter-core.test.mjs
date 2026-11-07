@@ -136,6 +136,58 @@ test("rejects an S3 object when the service checksum differs from the manifest",
   assert.deepEqual(result.invalid, ["COVER"]);
 });
 
+test("published deletion removes the feed index and returns the prior drive for asset cleanup", async () => {
+  const published = {
+    ...draftRequest.draft,
+    id: draftRequest.driveId,
+    ownerId: draftRequest.userId,
+    status: "PUBLISHED",
+    version: 2,
+    FeedPK: "FEED#PUBLIC",
+    FeedSK: "2026-11-01T10:00:00.000Z#drive-demo-001",
+  };
+  const sent = [];
+  const client = {
+    async send(sentCommand) {
+      sent.push(sentCommand);
+      if (sentCommand.kind === "Get") return { Item: { PK: "DRIVE#drive-demo-001", SK: "META", entity: "DRIVE", ...published } };
+      if (sentCommand.kind === "Update") return { Attributes: { PK: "DRIVE#drive-demo-001", SK: "META", entity: "DRIVE", ...published } };
+      throw new Error(`unexpected command ${sentCommand.kind}`);
+    },
+  };
+  const repository = new DynamoRepository({ tableName: "demo", client, commands: dynamoCommands });
+
+  const deleted = await repository.deleteDrive({
+    driveId: published.id,
+    userId: published.ownerId,
+    now: "2026-11-01T11:00:00.000Z",
+  });
+
+  const update = sent.find((entry) => entry.kind === "Update");
+  assert.equal(deleted.status, "PUBLISHED");
+  assert.match(update.input.UpdateExpression, /REMOVE FeedPK, FeedSK/);
+  assert.equal(update.input.ExpressionAttributeValues[":deleted"], "DELETED");
+  assert.equal(update.input.ConditionExpression, "ownerId = :owner AND #status <> :deleted");
+});
+
+test("asset deletion targets every manifest object under the private drive prefix", async () => {
+  const sent = [];
+  const assets = new S3Assets({
+    bucket: "private-demo-bucket",
+    client: { send: async (sentCommand) => { sent.push(sentCommand); return {}; } },
+    commands: s3Commands,
+    presign: async () => "unused",
+  });
+
+  await assets.deleteAssets(drive);
+
+  assert.deepEqual(sent.map((entry) => entry.kind), ["DeleteObject", "DeleteObject"]);
+  assert.deepEqual(sent.map((entry) => entry.input), [
+    { Bucket: "private-demo-bucket", Key: "drives/drive-demo-001/cover" },
+    { Bucket: "private-demo-bucket", Key: "drives/drive-demo-001/route" },
+  ]);
+});
+
 test("replays a committed idempotent create after the idempotency condition loses", async () => {
   const existingDrive = { ...draftRequest.draft, id: draftRequest.driveId, ownerId: draftRequest.userId, status: "DRAFT", version: 1 };
   const commands = [];

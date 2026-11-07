@@ -134,6 +134,20 @@ test("patch and delete are owner-only, versioned, and delete is idempotent", asy
   assert.equal(deleted.statusCode, 204); assert.equal(repeated.statusCode, 204);
 });
 
+test("deleting a published drive removes it from feed and detail and cleans every asset", async () => {
+  const ctx = harness(); const created = await createDrive(ctx); const drive = created.body.drive;
+  await completeAndPublish(ctx, drive);
+  assert.equal(parse(await ctx.handler(event("GET /feed"))).items.length, 1);
+
+  const deleted = await ctx.handler(event("DELETE /drives/{driveId}", { driveId: drive.id }));
+
+  assert.equal(deleted.statusCode, 204);
+  assert.equal((await ctx.repository.getDrive(drive.id)).status, "DELETED");
+  assert.equal(parse(await ctx.handler(event("GET /feed"))).items.length, 0);
+  assert.equal((await ctx.handler(event("GET /drives/{driveId}", { driveId: drive.id }))).statusCode, 404);
+  assert.deepEqual(ctx.assets.deleted, new Set([`${drive.id}:COVER`, `${drive.id}:ROUTE`]));
+});
+
 test("validation never echoes request data or infrastructure errors", async () => {
   const ctx = harness(); const unsafe = draft(); unsafe.assets[0].contentType = "text/html";
   const result = await createDrive(ctx, { payload: unsafe }); const serialized = JSON.stringify(result.body);
