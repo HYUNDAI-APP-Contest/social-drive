@@ -324,4 +324,7 @@ Outputs:
     Value: !Ref MobileAppClient
   MediaBucketName:
     Value: !Ref MediaBucket
+  UploadHost:
+    Description: Exact allow-list host for socialDrive.cloud.uploadHosts
+    Value: !Sub ${MediaBucket}.s3.${AWS::Region}.${AWS::URLSuffix}
 

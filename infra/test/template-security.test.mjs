@@ -26,3 +26,10 @@ test("contains no account id or credentials", () => {
   assert.doesNotMatch(template, /\b\d{12}\b|AKIA[0-9A-Z]{16}|aws_secret_access_key/i);
 });
 
+test("exports every non-secret Android cloud build input", () => {
+  for (const output of ["ApiUrl:", "UserPoolId:", "UserPoolClientId:", "UploadHost:"]) {
+    assert.ok(template.includes(output), `missing ${output}`);
+  }
+  assert.match(template, /Value: !Sub \$\{MediaBucket\}\.s3\.\$\{AWS::Region\}\.\$\{AWS::URLSuffix\}/);
+});
+
