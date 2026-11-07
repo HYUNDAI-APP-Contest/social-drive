@@ -26,4 +26,12 @@ class SpeechRecognitionPolicyTest {
         assertFalse(SpeechRecognitionPolicy.shouldCommit("   ", isFinal = true))
         assertTrue(SpeechRecognitionPolicy.shouldCommit("제주 해안 드라이브", isFinal = true))
     }
+
+    @Test
+    fun `최종 반영 시점에도 주차 상태를 다시 확인한다`() {
+        assertTrue(SpeechRecognitionPolicy.canCommit(MotionState.Parked, "제주 해안", isFinal = true))
+        assertFalse(SpeechRecognitionPolicy.canCommit(MotionState.Driving, "제주 해안", isFinal = true))
+        assertFalse(SpeechRecognitionPolicy.canCommit(MotionState.Unknown, "제주 해안", isFinal = true))
+        assertFalse(SpeechRecognitionPolicy.canCommit(MotionState.Parked, "제주 해안", isFinal = false))
+    }
 }

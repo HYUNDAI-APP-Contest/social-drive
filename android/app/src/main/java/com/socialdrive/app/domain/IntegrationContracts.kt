@@ -125,4 +125,7 @@ object SpeechRecognitionPolicy {
         motion == MotionState.Parked && capability.capability == CapabilityState.Available
 
     fun shouldCommit(text: String, isFinal: Boolean): Boolean = isFinal && text.isNotBlank()
+
+    fun canCommit(motion: MotionState, text: String, isFinal: Boolean): Boolean =
+        motion == MotionState.Parked && shouldCommit(text, isFinal)
 }

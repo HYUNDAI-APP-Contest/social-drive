@@ -126,6 +126,8 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
                 if (status.motion == MotionState.Parked) {
                     deleteWorkScheduler.resumeWhenParked()
                     publishScheduler.recoverAfterProcessRestart()
+                } else if (auxiliaryCapabilitySource.speechRecognitionActive.value) {
+                    auxiliaryCapabilitySource.stopSpeechRecognition()
                 }
             }
         }

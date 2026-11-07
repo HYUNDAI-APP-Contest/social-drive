@@ -183,7 +183,11 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
         val draft = selectedDraft.value ?: return false
         return app.auxiliaryCapabilitySource.startSpeechRecognition { text, isFinal ->
             if (SpeechRecognitionPolicy.shouldCommit(text, isFinal)) {
-                viewModelScope.launch { update(draft, text.trim()) }
+                viewModelScope.launch {
+                    if (SpeechRecognitionPolicy.canCommit(vehicleMotion.value.motion, text, isFinal)) {
+                        update(draft, text.trim())
+                    }
+                }
             }
         }
     }
