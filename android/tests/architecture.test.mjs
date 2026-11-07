@@ -573,13 +573,21 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
 test("PLEOS cloud build gate validates all public deployment outputs without secret fields", () => {
   const build = read("app/build.gradle.kts");
   const handoff = read("../docs/aws-app-connection.md");
+  const auth = read("app/src/pleos/java/com/socialdrive/app/data/remote/AmplifyCognitoAuth.kt");
   assert.match(build, /tasks\.register\("verifyPleosCloudConfiguration"\)/);
+  assert.match(build, /tasks\.named\("prePleosReleaseBuild"\)[\s\S]*dependsOn\("verifyPleosCloudConfiguration"\)/);
+  assert.match(build, /"pleosImplementation"\("com\.amplifyframework:aws-auth-cognito:2\.27\.4"\)/);
   for (const marker of [
     "apiBaseUrl", "uploadHosts", "consentPolicyVersion", "cognitoRegion", "cognitoUserPoolId", "cognitoClientId",
   ]) assert.ok(build.includes(`\"${marker}\"`), marker);
   assert.match(build, /PLEOS cloud public configuration verified/);
   assert.doesNotMatch(build, /cloud.*(?:secret|password|accessKey)/i);
   assert.match(handoff, /\.\/gradlew verifyPleosCloudConfiguration/);
+  assert.match(auth, /authenticationFlowType", "USER_SRP_AUTH"/);
+  assert.match(auth, /Amplify\.Auth\.fetchAuthSession/);
+  assert.match(auth, /userPoolTokensResult\?\.value\?\.accessToken/);
+  assert.match(auth, /challengeLabel\(\)[\s\S]*clearAmplifySession\(\)/);
+  assert.doesNotMatch(auth, /clientSecret|android\.util\.Log|println\(|printStackTrace/);
 });
 
 test("publish concurrency and upload recovery retain frozen versions and bounded durable rewinds", () => {
