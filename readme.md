@@ -143,7 +143,7 @@ Pleos 실기 검증 전 다음을 확인해야 합니다.
 - [x] Android Gradle build 성공 로그와 commit SHA (`4f2b559`)
 - [x] Pleos AVD 설치·실행 및 instrumentation 51/51
 - [ ] Vehicle capability와 P/D/R/N 상태 전환
-- [ ] NaviHelper 목적지·경유지 요청과 callback
+- [x] NaviHelper 공개 목적지 1건의 요청과 terminal callback (Pleos Emulator; 경유지 API shape는 정적·단위 검증)
 - [ ] 앱 재시작 후 session/draft/queue 복구
 - [ ] Android-AWS 인증·게시 E2E
 - [ ] 비밀값·개인정보 비노출 확인
