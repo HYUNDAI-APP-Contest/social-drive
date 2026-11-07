@@ -10,4 +10,10 @@ class PleosAuxiliaryCapabilitySourceTest {
         assertEquals(10_000L, AUXILIARY_INITIALIZATION_TIMEOUT_MILLIS)
         assertTrue(AUXILIARY_INITIALIZATION_TIMEOUT_MILLIS in 1_000L..15_000L)
     }
+
+    @Test
+    fun `STT 인식 세션은 자동으로 종료되는 상한을 둔다`() {
+        assertEquals(30_000L, SPEECH_RECOGNITION_TIMEOUT_MILLIS)
+        assertTrue(SPEECH_RECOGNITION_TIMEOUT_MILLIS in 10_000L..60_000L)
+    }
 }
