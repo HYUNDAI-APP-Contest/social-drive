@@ -28,6 +28,7 @@ class CloudRuntimeConfigurationTest {
         assertNull(valid(apiBaseUrl = "https://localhost/prod"))
         assertNull(valid(apiBaseUrl = "https://api..example.com/prod"))
         assertNull(valid(uploadHosts = "https://upload.example.com"))
+        assertNull(valid(uploadHosts = "Upload.example.com"))
         assertNull(valid(uploadHosts = "upload..example.com"))
         assertNull(valid(uploadHosts = "-upload.example.com"))
         assertNull(valid(uploadHosts = "upload.example-.com"))

@@ -29,9 +29,8 @@ data class CloudRuntimeConfiguration(
             val hosts = uploadHosts.split(',')
                 .map(String::trim)
                 .filter(String::isNotEmpty)
-                .map(String::lowercase)
                 .toSet()
-            if (hosts.isEmpty() || hosts.any { !it.isValidCloudHost() }) return null
+            if (hosts.isEmpty() || hosts.any { it != it.lowercase() || !it.isValidCloudHost() }) return null
             return runCatching {
                 val apiUri = URI(apiBaseUrl)
                 if (apiUri.host?.lowercase()?.isValidCloudHost() != true) return null
