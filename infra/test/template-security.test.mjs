@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const template = fs.readFileSync(new URL("../template.yaml", import.meta.url), "utf8");
+const packageManifest = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+
+test("propagates SAM validation failures when the CLI is installed", () => {
+  const command = packageManifest.scripts.validate;
+  assert.match(command, /if command -v sam[^;]*; then sam validate[^;]*; else/);
+  assert.doesNotMatch(command, /sam validate[^)]*\|\|\s*echo/);
+});
 
 test("keeps storage private, encrypted, on-demand, and retained", () => {
   for (const expected of ["BlockPublicAcls: true", "RestrictPublicBuckets: true", "SSEEnabled: true", "BillingMode: PAY_PER_REQUEST", "PointInTimeRecoveryEnabled: true", "TimeToLiveSpecification:", "AttributeName: expiresAtEpoch", "DeletionPolicy: Retain"]) assert.match(template, new RegExp(expected));

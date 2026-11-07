@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "test": "node --test functions/api/*.test.mjs test/*.test.mjs",
-    "validate": "npm test && (command -v sam >/dev/null && sam validate --lint --template-file template.yaml || echo 'SAM CLI not installed; deterministic security checks passed')",
+    "validate": "npm test && if command -v sam >/dev/null; then sam validate --lint --template-file template.yaml; else echo 'SAM CLI not installed; deterministic security checks passed'; fi",
     "build:function": "npm ci --omit=dev --ignore-scripts --prefix functions/api"
   }
 }
