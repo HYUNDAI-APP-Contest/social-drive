@@ -47,7 +47,10 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
         val transports = OkHttpCloudTransports.create()
         return CloudDriveClient(
             config = configured.client,
-            auth = InMemoryCognitoAuthSessionProvider(session),
+            auth = InMemoryCognitoAuthSessionProvider(
+                session,
+                CognitoAccessTokenPolicy(configured.cognito),
+            ),
             apiTransport = transports,
             objectTransport = transports,
         )

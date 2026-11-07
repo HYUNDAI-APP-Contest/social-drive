@@ -61,10 +61,19 @@ fun interface CognitoSessionSource {
     suspend fun freshAccessToken(): String
 }
 
+fun interface AccessTokenValidator {
+    fun isValid(token: String): Boolean
+}
+
 class InMemoryCognitoAuthSessionProvider(
     private val source: CognitoSessionSource,
+    private val validator: AccessTokenValidator = AccessTokenValidator { true },
 ) : AuthSessionProvider {
-    override suspend fun freshBearerToken(): BearerToken = BearerToken.inMemory(source.freshAccessToken())
+    override suspend fun freshBearerToken(): BearerToken {
+        val token = source.freshAccessToken()
+        require(validator.isValid(token)) { "Invalid Cognito access token" }
+        return BearerToken.inMemory(token)
+    }
 }
 
 enum class DriveStatus { DRAFT, PUBLISHED }
