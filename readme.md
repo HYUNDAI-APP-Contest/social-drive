@@ -7,8 +7,8 @@
 2026-11-02 현재 Android 앱 PR #2의 병합 커밋 `dcffaad`가 이 작업공간 HEAD의 조상이며 `android/` 소스가 통합돼 있습니다. 제출용 서명 release APK와 clean-install 증거는 승인된 signing material 및 PLEOS AVD 검증 전이므로 아직 없습니다.
 
 - Vehicle SDK 2.3.2와 NaviHelper 3.0.5 adapter의 최초 구현 커밋은 `6475287`이며 1차 독립 검토에서 `CHANGES_REQUIRED`였습니다.
-- Issue #28 NaviHelper 경계 구현 커밋 `2abdd0bdc04bb470e016c53f14d877d4517e6b8f`에서 static 50/50, Kotlin core 92/92, Demo unit 122/122, Pleos unit 110/110이 통과했습니다. PLEOS Connect Emulator 2.1.0/API 34 exact smoke도 1/1, 실패·오류·skip 0으로 통과했고, 실제 legacy `onRouteEnded` 완료 콜백을 production adapter가 안전하게 정규화한 뒤 `terminal_completed`와 `released`까지 관찰했습니다. 이는 물리 차량, signed release, AWS 또는 vendor System Back 증거를 의미하지 않습니다.
-- 2026-11-07 Issue #28 재검증에서는 정적 계약 32/32, Kotlin core 92/92, Demo unit 122/122, Pleos unit 110/110이 통과했고 Demo/Pleos debug APK를 캐시 없이 다시 조립했습니다. 같은 PLEOS Connect Emulator의 exact smoke는 첫 실행에서 에뮬레이터 프로세스 불안정으로 instrumentation이 종료됐으나, 동일 명령 재실행은 1/1, 실패·오류·skip 0으로 통과했습니다. 이 worker가 관찰한 로컬 `origin/main` ref는 `8a068c3`이며 remote fetch는 수행하지 않았으므로, 최신 remote main의 exact SHA 확인과 독립 재실행은 센티넬/오케스트레이터 승인 경계에 남아 있습니다.
+- Issue #28 NaviHelper 경계는 client AAR 3.0.5와 PLEOS Connect Emulator 2.1.0/API 34의 Navi service 3.0.4 조합에서 검증했습니다. service가 보낸 legacy `onRouteEnded`를 production adapter가 안전하게 정규화했고, exact smoke는 1/1, 실패·오류·skip 0으로 `terminal_completed`와 `released`까지 관찰했습니다. 이는 물리 차량, signed release, AWS 또는 vendor System Back 증거를 의미하지 않습니다.
+- 2026-11-07 최종 hardening은 release가 이미 claim된 listener 제거를 추월하지 못하도록 session별 단일 maintenance drainer를 적용했습니다. 전체 정적 50/50, Kotlin core 93/93, Demo unit 123/123, Pleos unit 111/111이 통과했습니다. 전용 verifier는 전체 UTP/logcat을 임시 디렉터리에서만 처리하고 source SHA·1/0/0/0 결과·allowlisted stage만 JSON으로 남긴 뒤 raw 경로/좌표/payload를 폐기합니다. GitHub에서 fetch한 `origin/main` `8a068c3b72cf081d59f41686fa0e15d02e398a7b`는 이 issue 브랜치의 조상입니다.
 - `4f2b559116fd98ee3fe05e05fc6431b59888d0d6`은 Issue #28 이전 Android 통합 검증의 역사적 HEAD이며 현재 Issue #28 검토 HEAD가 아닙니다. 당시 PLEOS Connect Emulator 2.1.0(Android 14, user 10)에서 instrumentation 51/51, SDK-independent Kotlin 74/74, 정적 계약 29/29이 통과했습니다.
 - Gradle clean, Demo/Pleos 단위 테스트, Demo release lint, Demo Debug/Release, Pleos Debug와 Pleos AndroidTest 조립이 179개 task로 성공했습니다. Demo release 산출물은 unsigned이므로 공모전 제출용 서명·설치 검증은 아직 남아 있습니다.
 - Room v6에는 durable 409 conflict review와 parked-only published-delete tombstone, bounded retry가 구현돼 있습니다. Pleos/production cloud factory는 승인된 Cognito/API 설정과 concrete transport가 없으면 fail closed합니다.
@@ -113,7 +113,7 @@ bash scripts/build-submission-release.sh
 | Gradle | 프로젝트 wrapper 8.9 | clean/unit/lint/assemble 179 tasks 성공 |
 | Emulator | Pleos Connect Emulator 2.1.0, Android 14, user 10 | 앱 설치·UI 8/8·비UI 43/43 성공. physical system Back은 미검증 |
 | Vehicle | Vehicle SDK 2.3.2 / Vehicle Service 대응 버전 | 초기화·release 수명주기와 fail-closed Unknown 실행. 실제 permissioned state callback은 미검증 |
-| Navigation | NaviHelper 3.0.5 | permission·초기화·request·terminal·listener 제거·release의 privacy-safe 계약과 opt-in PLEOS 계측 테스트는 빌드/코어 검증. 연결 AVD의 package service가 준비되지 않아 instrumentation은 `0 tests`; 실제 route callback 실기 증거는 미완료 |
+| Navigation | NaviHelper client 3.0.5 / emulator service 3.0.4 | permission·초기화·request·terminal·listener 제거·release의 privacy-safe 계약과 opt-in PLEOS exact smoke 1/1 통과. allowlisted JSON만 보존하고 vendor/UTP raw log는 폐기 |
 | AWS | Cognito JWT, DynamoDB, private S3 기반 목표 | backend `ddbd61f` 계약 포함. concrete Cognito/API host·no-redirect HTTP adapter 설정 부재로 actual cloud unavailable; AWS E2E 미실행 |
 
 P0-3A bootstrap/doctor의 과거 차단은 해소되어 build·emulator·debug APK 증거가 생겼습니다. signing secret과 keystore는 조회하지 않았고, 제출용 signed release와 actual cloud는 여전히 별도 승인·검증 경계입니다.

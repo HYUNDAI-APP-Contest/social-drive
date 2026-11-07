@@ -316,6 +316,50 @@ class NavigationGatewayCoordinatorTest {
         assertTrue(NavigationRuntimeStage.STALE_IGNORED in harness.evidence.stages())
     }
 
+    @Test
+    fun `release cannot overtake a claimed listener removal`() {
+        val cancellationEntered = CountDownLatch(1)
+        val allowCancellation = CountDownLatch(1)
+        val harness = Harness { port ->
+            port.requestAction = { throw IllegalStateException("request failed") }
+        }
+        harness.coordinator.initialize()
+        harness.scheduler.cancelAction = {
+            cancellationEntered.countDown()
+            assertTrue(allowCancellation.await(2, TimeUnit.SECONDS))
+        }
+        val port = harness.ports.single()
+
+        val request = thread(name = "navigation-request-failure") {
+            assertIs<NavigationRequestResult.Rejected>(
+                harness.coordinator.requestRoute(request("claimed-cleanup", "선점 정리")),
+            )
+        }
+        assertTrue(cancellationEntered.await(2, TimeUnit.SECONDS))
+
+        val release = thread(name = "navigation-release-overtake") { harness.coordinator.release() }
+        release.join(2_000)
+        assertTrue(!release.isAlive)
+        assertTrue("release" !in port.events, "release must wait behind claimed listener cleanup")
+
+        allowCancellation.countDown()
+        request.join(2_000)
+        assertTrue(!request.isAlive)
+
+        val removalIndex = port.events.indexOf("removeListener")
+        val releaseIndex = port.events.indexOf("release")
+        assertTrue(removalIndex >= 0)
+        assertTrue(releaseIndex > removalIndex)
+        assertEquals(1, port.events.count { it == "removeListener" })
+        assertEquals(1, port.events.count { it == "release" })
+        assertTrue(
+            harness.evidence.stages().indexOf(NavigationRuntimeStage.LISTENER_REMOVED) <
+                harness.evidence.stages().indexOf(NavigationRuntimeStage.RELEASED),
+        )
+        assertIs<NavigationState.Idle>(harness.observer.states.last())
+        assertTrue(NavigationRuntimeStage.CLEANUP_FAILED !in harness.evidence.stages())
+    }
+
     private fun request(id: String, label: String) = NavigationRequest(
         requestId = id,
         destination = NavigationPlace(label, 0.0, 0.0),
@@ -401,11 +445,15 @@ class NavigationGatewayCoordinatorTest {
         private var now = 0L
         private val tasks = mutableListOf<ManualTask>()
         var cancelledAll = false
+        var cancelAction: () -> Unit = {}
 
         override fun schedule(delayMillis: Long, task: () -> Unit): NavigationScheduledTask {
             val scheduled = ManualTask(now + delayMillis, task)
             tasks += scheduled
-            return NavigationScheduledTask { scheduled.cancelled = true }
+            return NavigationScheduledTask {
+                scheduled.cancelled = true
+                cancelAction()
+            }
         }
 
         override fun cancelAll() {

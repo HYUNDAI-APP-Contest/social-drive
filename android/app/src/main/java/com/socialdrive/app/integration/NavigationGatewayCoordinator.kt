@@ -365,13 +365,18 @@ internal class NavigationGatewayCoordinator(
         session.request = null
         val tasks = listOfNotNull(request.timeoutTask, request.settleTask)
         if (request.listenerAdded) session.pendingRemovals += ListenerRemoval(request.listener, request.token)
-        val maintenance = claimMaintenanceLocked(session)
-        return RequestCompletion(session, token, tasks, maintenance, update.state)
+        val completion = RequestCompletion(session, token, tasks, update.state)
+        session.pendingCompletions += completion
+        completion.maintenance = claimMaintenanceLocked(session)
+        return completion
     }
 
     private fun completeRequest(completion: RequestCompletion) {
         cancelTasks(completion.tasks)
-        val cleaned = runMaintenance(completion.maintenance)
+        runMaintenance(completion.maintenance)
+    }
+
+    private fun publishCompletion(completion: RequestCompletion, cleaned: Boolean) {
         val stillCurrent = synchronized(lock) {
             if (current !== completion.session || completion.session.detached) {
                 record(completion.token, NavigationRuntimeStage.STALE_IGNORED)
@@ -451,38 +456,52 @@ internal class NavigationGatewayCoordinator(
     }
 
     private fun claimMaintenanceLocked(session: Session): VendorMaintenance? {
-        if (session.vendorCalls != 0) return null
+        if (session.vendorCalls != 0 || session.maintenanceClaimed) return null
         val listeners = session.pendingRemovals.toList()
+        val completions = session.pendingCompletions.toList()
         session.pendingRemovals.clear()
+        session.pendingCompletions.clear()
         val shouldRelease = session.disposeRequested && !session.disposed
         if (shouldRelease) session.disposed = true
-        if (listeners.isEmpty() && !shouldRelease) return null
-        return VendorMaintenance(session, listeners, shouldRelease)
+        if (listeners.isEmpty() && completions.isEmpty() && !shouldRelease) return null
+        session.maintenanceClaimed = true
+        return VendorMaintenance(session, listeners, completions, shouldRelease)
     }
 
     private fun runMaintenance(maintenance: VendorMaintenance?): Boolean {
         if (maintenance == null) return true
-        var successful = true
-        synchronized(maintenance.session.vendorLock) {
-            maintenance.listeners.forEach { listener ->
-                runCatching { maintenance.session.resources.port.removeListener(listener.listener) }
-                    .onSuccess { record(listener.token, NavigationRuntimeStage.LISTENER_REMOVED) }
-                    .onFailure { successful = false }
+        var next: VendorMaintenance? = maintenance
+        var allSuccessful = true
+        while (next != null) {
+            val currentMaintenance = next
+            var successful = true
+            synchronized(currentMaintenance.session.vendorLock) {
+                currentMaintenance.listeners.forEach { listener ->
+                    runCatching { currentMaintenance.session.resources.port.removeListener(listener.listener) }
+                        .onSuccess { record(listener.token, NavigationRuntimeStage.LISTENER_REMOVED) }
+                        .onFailure { successful = false }
+                }
+                if (currentMaintenance.release) {
+                    runCatching { currentMaintenance.session.resources.port.release() }
+                        .onSuccess { record(currentMaintenance.session.lifecycleToken, NavigationRuntimeStage.RELEASED) }
+                        .onFailure { successful = false }
+                }
             }
-            if (maintenance.release) {
-                runCatching { maintenance.session.resources.port.release() }
-                    .onSuccess { record(maintenance.session.lifecycleToken, NavigationRuntimeStage.RELEASED) }
-                    .onFailure { successful = false }
+            if (currentMaintenance.release) currentMaintenance.session.resources.scheduleScope.cancelAll()
+            if (!successful) {
+                allSuccessful = false
+                synchronized(lock) { cleanupFailed = true }
+                record(currentMaintenance.session.lifecycleToken, NavigationRuntimeStage.CLEANUP_FAILED)
+                observer.onCapabilityChanged(false)
+                observer.onStateChanged(NavigationState.Failed(CLEANUP_FAILED))
+            }
+            currentMaintenance.completions.forEach { publishCompletion(it, successful) }
+            next = synchronized(lock) {
+                currentMaintenance.session.maintenanceClaimed = false
+                claimMaintenanceLocked(currentMaintenance.session)
             }
         }
-        if (maintenance.release) maintenance.session.resources.scheduleScope.cancelAll()
-        if (!successful) {
-            synchronized(lock) { cleanupFailed = true }
-            record(maintenance.session.lifecycleToken, NavigationRuntimeStage.CLEANUP_FAILED)
-            observer.onCapabilityChanged(false)
-            observer.onStateChanged(NavigationState.Failed(CLEANUP_FAILED))
-        }
-        return successful
+        return allSuccessful
     }
 
     private fun releaseOrphan(resources: NavigationVendorSession, token: LifecycleToken) {
@@ -507,6 +526,7 @@ internal class NavigationGatewayCoordinator(
         val resources: NavigationVendorSession,
         val vendorLock: Any = Any(),
         val pendingRemovals: MutableSet<ListenerRemoval> = linkedSetOf(),
+        val pendingCompletions: MutableList<RequestCompletion> = mutableListOf(),
         var request: RequestContext? = null,
         var initializationTimeoutTask: NavigationScheduledTask? = null,
         var quarantineTask: NavigationScheduledTask? = null,
@@ -514,6 +534,7 @@ internal class NavigationGatewayCoordinator(
         var detached: Boolean = false,
         var disposeRequested: Boolean = false,
         var disposed: Boolean = false,
+        var maintenanceClaimed: Boolean = false,
     )
 
     private data class RequestContext(
@@ -532,13 +553,14 @@ internal class NavigationGatewayCoordinator(
         val session: Session,
         val token: RequestToken,
         val tasks: List<NavigationScheduledTask>,
-        val maintenance: VendorMaintenance?,
         val terminalState: NavigationState,
+        var maintenance: VendorMaintenance? = null,
     )
     private data class DetachedSession(val tasks: List<NavigationScheduledTask>, val maintenance: VendorMaintenance?)
     private data class VendorMaintenance(
         val session: Session,
         val listeners: List<ListenerRemoval>,
+        val completions: List<RequestCompletion>,
         val release: Boolean,
     )
     private data class ListenerRemoval(val listener: NavigationVendorListener, val token: RequestToken)

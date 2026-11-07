@@ -186,7 +186,7 @@ test("Gradle bootstrap pins and verifies its distribution", () => {
   assert.match(posix, /--proto '=https' --tlsv1\.2/);
   assert.match(localLauncher, /java_home -v 17/);
   assert.match(localLauncher, /GRADLE_USER_HOME="\$runtime_root\/gradle-user-home"/);
-  assert.match(localLauncher, /TMPDIR="\$runtime_root\/tmp"/);
+  assert.match(localLauncher, /TMPDIR="\$\{SOCIAL_DRIVE_TMPDIR:-\$runtime_root\/tmp\}"/);
   assert.match(doctor, /Android platform 35 is missing/);
   assert.doesNotMatch(doctor, /sdkmanager|install|yes \|/);
 });
@@ -426,6 +426,9 @@ test("navigation validates named coordinates and serializes requests without log
   const evidence = read("app/src/main/java/com/socialdrive/app/integration/NavigationRuntimeEvidence.kt");
   const pleos = read("app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
   const naviSmoke = read("app/src/androidTest/java/com/socialdrive/app/PleosNaviRuntimeSmokeTest.kt");
+  const runtimeVerifier = read("scripts/verify-pleos-navi-runtime.sh");
+  const gradleLauncher = read("scripts/gradle-local.sh");
+  const build = read("app/build.gradle.kts");
   const pleosGatewayTest = read("app/src/testPleos/java/com/socialdrive/app/integration/PleosNavigationGatewayTest.kt");
   const detail = read("app/src/main/java/com/socialdrive/app/ui/screens/DetailScreen.kt");
   for (const marker of ["val name: String", "val latitude: Double", "val longitude: Double", "isFinite()", "-90.0..90.0", "-180.0..180.0", "MAX_WAYPOINTS"]) {
@@ -476,6 +479,15 @@ test("navigation validates named coordinates and serializes requests without log
   assert.match(naviSmoke, /requestGeneration == 0L[\s\S]*NavigationRuntimeStage\.RELEASED/);
   assert.match(naviSmoke, /FAIL_CLOSED_STAGES/);
   assert.doesNotMatch(naviSmoke, /Log\.[a-z]+\([^,]+,\s*(?:PRIVACY_REVIEWED_PUBLIC_FIXTURE|.*latitude|.*longitude|.*requestId)/i);
+  assert.match(build, /gradleProperty\("privacySafeBuildDir"\)/);
+  assert.match(gradleLauncher, /SOCIAL_DRIVE_ANDROID_USER_HOME/);
+  assert.match(runtimeVerifier, /mktemp -d[\s\S]*privacySafeBuildDir/);
+  assert.match(runtimeVerifier, /status --porcelain --untracked-files=normal/);
+  assert.match(runtimeVerifier, /PleosNaviSmoke:\\s\+stage=/);
+  assert.match(runtimeVerifier, /rawVendorLogRetained: false/);
+  assert.match(runtimeVerifier, /trap cleanup EXIT/);
+  assert.match(runtimeVerifier, /rm -rf "\$temporary_root"/);
+  assert.doesNotMatch(runtimeVerifier, /cp .*logcat|mv .*logcat/);
   assert.match(pleosGatewayTest, /invalid production request never registers listener or calls vendor request/);
   assert.match(pleosGatewayTest, /assertEquals\(0, port\.addListenerCalls\)/);
   assert.match(pleosGatewayTest, /assertEquals\(0, port\.requestCalls\)/);
@@ -502,7 +514,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
   for (const marker of [
     "late initialization failure is ignored", "release is not recursive", "fourteen point nine seconds",
     "synchronous request callbacks", "missing callback times out", "stale listener", "request exception",
-    "new helper", "removes listener before release",
+    "new helper", "removes listener before release", "release cannot overtake a claimed listener removal",
   ]) assert.ok(suite.includes(marker), marker);
   assert.match(suite, /class FakePort : NavigationVendorPort/);
   assert.match(suite, /class ManualScheduleScope : NavigationScheduleScope/);
@@ -513,7 +525,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 92/);
+  assert.match(coreRunner, /expectedTests = 93/);
   assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 

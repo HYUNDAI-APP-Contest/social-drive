@@ -11,7 +11,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 test("local Gradle launcher keeps Android user state inside the workspace runtime", () => {
   const launcher = fs.readFileSync(path.join(root, "scripts/gradle-local.sh"), "utf8");
   assert.match(launcher, /mkdir -p[^\n]*\$runtime_root\/android-user-home/);
-  assert.match(launcher, /export ANDROID_USER_HOME="\$runtime_root\/android-user-home"/);
+  assert.match(launcher, /export ANDROID_USER_HOME="\$\{SOCIAL_DRIVE_ANDROID_USER_HOME:-\$runtime_root\/android-user-home\}"/);
+  assert.match(launcher, /mkdir -p "\$ANDROID_USER_HOME" "\$TMPDIR"/);
 });
 
 test("missing Gradle cache fails fast offline without a network attempt", () => {
