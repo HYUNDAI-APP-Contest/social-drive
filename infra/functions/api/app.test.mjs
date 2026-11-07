@@ -95,6 +95,24 @@ test("refreshes only exact expected upload manifests", async () => {
   assert.equal(bad.statusCode, 409); assert.equal(parse(bad).error.code, "ASSET_MISMATCH");
 });
 
+test("requires current consent again at upload refresh and publish boundaries", async () => {
+  const ctx = harness(); const created = await createDrive(ctx); const drive = created.body.drive;
+  ctx.repository.drives.get(drive.id).consent.policyVersion = "2026-11-07";
+  const refresh = await ctx.handler(event("POST /drives/{driveId}/uploads", {
+    driveId: drive.id, body: { assets: draft().assets },
+  }));
+  assert.equal(refresh.statusCode, 422);
+  assert.equal(parse(refresh).error.code, "CONSENT_RENEWAL_REQUIRED");
+
+  ctx.assets.markUploaded(drive.id, "COVER"); ctx.assets.markUploaded(drive.id, "ROUTE");
+  const publish = await ctx.handler(event("POST /drives/{driveId}/publish", {
+    driveId: drive.id, body: { expectedVersion: 1 },
+  }));
+  assert.equal(publish.statusCode, 422);
+  assert.equal(parse(publish).error.code, "CONSENT_RENEWAL_REQUIRED");
+  assert.equal((await ctx.repository.getDrive(drive.id)).status, "DRAFT");
+});
+
 test("requires verified assets and publishes idempotently", async () => {
   const ctx = harness(); const created = await createDrive(ctx); const drive = created.body.drive;
   const incomplete = await ctx.handler(event("POST /drives/{driveId}/publish", { driveId: drive.id, body: { expectedVersion: 1 } }));

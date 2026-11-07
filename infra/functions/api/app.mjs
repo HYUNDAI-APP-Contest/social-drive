@@ -76,6 +76,12 @@ function normalizeDraft(body, consentPolicyVersion) {
   return { clientDraftId: body.clientDraftId, schemaVersion: 1, title, summary, visibility: "PUBLIC", distanceMeters, durationSeconds, highlightCount, consent: { routeShare: true, coverShare: true, policyVersion: consent.policyVersion }, assets };
 }
 
+function requireCurrentConsent(drive, consentPolicyVersion) {
+  if (drive?.consent?.routeShare !== true || drive?.consent?.coverShare !== true || drive?.consent?.policyVersion !== consentPolicyVersion) {
+    throw new ApiError(422, "CONSENT_RENEWAL_REQUIRED", "게시 전에 개인정보 동의를 다시 확인해 주세요.", { fields: ["consent"] });
+  }
+}
+
 function publicDrive(drive) {
   return {
     id: drive.id, status: drive.status, version: drive.version, title: drive.title, summary: drive.summary,
@@ -112,6 +118,7 @@ export function createHandler({ repository, assets, consentPolicyVersion, clock 
         if (!safeId(driveId)) throw new ApiError(404, "NOT_FOUND", "드라이브를 찾을 수 없어요.");
         const drive = await repository.getDrive(driveId);
         if (!drive || drive.ownerId !== userId || drive.status !== "DRAFT") throw new ApiError(404, "NOT_FOUND", "드라이브를 찾을 수 없어요.");
+        requireCurrentConsent(drive, consentPolicyVersion);
         const requested = normalizeAssets(parseBody(event).assets);
         if (canonical(requested) !== canonical(drive.assets)) throw new ApiError(409, "ASSET_MISMATCH", "파일 정보를 안전하게 확인하지 못했어요.");
         result = response(200, { drive: publicDrive(drive), uploads: await uploadResponse(assets, { ...drive, assets: requested }, now) }, requestId);
@@ -121,6 +128,7 @@ export function createHandler({ repository, assets, consentPolicyVersion, clock 
         const body = parseBody(event);
         if (!Number.isSafeInteger(body.expectedVersion)) throw new ApiError(422, "VALIDATION_ERROR", "게시 정보를 확인해 주세요.", { fields: ["expectedVersion"] });
         if (drive.status !== "PUBLISHED") {
+          requireCurrentConsent(drive, consentPolicyVersion);
           const verified = await assets.verifyUploads(drive);
           if (verified.invalid?.length) throw new ApiError(422, "ROUTE_ASSET_INVALID", "공개용 경로 파일에서 공유할 수 없는 정보를 발견했어요.", { fields: verified.invalid });
           if (!verified.complete) throw new ApiError(409, "UPLOAD_INCOMPLETE", "남은 파일 업로드를 이어서 진행할게요.", { retryable: true, fields: verified.missing ?? [] });
