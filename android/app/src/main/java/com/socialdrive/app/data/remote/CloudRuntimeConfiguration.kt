@@ -24,6 +24,7 @@ data class CloudRuntimeConfiguration(
             cognitoClientId: String,
         ): CloudRuntimeConfiguration? {
             if (apiBaseUrl.isBlank() || uploadHosts.isBlank() || consentPolicyVersion.isBlank()) return null
+            if (apiBaseUrl != apiBaseUrl.trim() || '\\' in apiBaseUrl) return null
             if (consentPolicyVersion != RouteLocationConsentPolicy.VERSION) return null
             val cognito = CognitoRuntimeConfiguration.parse(cognitoRegion, cognitoUserPoolId, cognitoClientId)
                 ?: return null
@@ -34,7 +35,14 @@ data class CloudRuntimeConfiguration(
             if (hosts.isEmpty() || hosts.any { it != it.lowercase() || !it.isValidCloudHost() }) return null
             return runCatching {
                 val apiUri = URI(apiBaseUrl)
-                if (apiUri.host?.lowercase()?.isValidCloudHost() != true) return null
+                if (
+                    !apiUri.scheme.equals("https", ignoreCase = true) ||
+                    apiUri.host?.lowercase()?.isValidCloudHost() != true ||
+                    apiUri.userInfo != null ||
+                    apiUri.query != null ||
+                    apiUri.fragment != null ||
+                    (apiUri.port != -1 && apiUri.port != 443)
+                ) return null
                 CloudRuntimeConfiguration(
                     client = CloudDriveClientConfig(apiUri, hosts),
                     consentPolicyVersion = consentPolicyVersion,

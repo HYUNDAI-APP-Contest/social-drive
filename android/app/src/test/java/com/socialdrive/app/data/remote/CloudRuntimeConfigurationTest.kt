@@ -24,6 +24,13 @@ class CloudRuntimeConfigurationTest {
     fun `빈 값과 비 HTTPS 및 잘못된 호스트는 거부한다`() {
         assertNull(valid(apiBaseUrl = ""))
         assertNull(valid(apiBaseUrl = "http://api.example.com"))
+        assertNull(valid(apiBaseUrl = " https://api.example.com/prod"))
+        assertNull(valid(apiBaseUrl = "https://api.example.com/prod "))
+        assertNull(valid(apiBaseUrl = "https://api.example.com\\prod"))
+        assertNull(valid(apiBaseUrl = "https://user@api.example.com/prod"))
+        assertNull(valid(apiBaseUrl = "https://api.example.com:8443/prod"))
+        assertNull(valid(apiBaseUrl = "https://api.example.com/prod?stage=dev"))
+        assertNull(valid(apiBaseUrl = "https://api.example.com/prod#fragment"))
         assertNull(valid(apiBaseUrl = "https://127.0.0.1/prod"))
         assertNull(valid(apiBaseUrl = "https://localhost/prod"))
         assertNull(valid(apiBaseUrl = "https://api..example.com/prod"))
