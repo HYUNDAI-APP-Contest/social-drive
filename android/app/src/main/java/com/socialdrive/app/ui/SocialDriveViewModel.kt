@@ -7,6 +7,7 @@ import com.socialdrive.app.SocialDriveApplication
 import com.socialdrive.app.data.DraftSnapshot
 import com.socialdrive.app.data.EnqueueResult
 import com.socialdrive.app.data.local.RecordingEntity
+import com.socialdrive.app.data.remote.FlavorPublicationReadiness
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.ConflictReviewDecision
 import com.socialdrive.app.domain.ConflictReviewUiState
@@ -271,6 +272,9 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
         val draft = selectedDraft.value ?: return EnqueueResult.MissingDraft
         if (!draftCopyWriter.awaitIdle(draft.id)) {
             return EnqueueResult.Rejected("최신 편집을 저장하지 못해 게시하지 않았어요. 내용을 다시 수정한 뒤 시도해 주세요.")
+        }
+        FlavorPublicationReadiness.rejectionMessage(draft)?.let { message ->
+            return EnqueueResult.Rejected(message)
         }
         return app.publishScheduler.enqueue(draft.id, motionState)
     }
