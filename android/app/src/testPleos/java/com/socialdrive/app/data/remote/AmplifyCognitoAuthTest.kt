@@ -2,6 +2,9 @@ package com.socialdrive.app.data.remote
 
 import com.amplifyframework.auth.result.step.AuthSignInStep
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.async
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -9,6 +12,36 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AmplifyCognitoAuthTest {
+    @Test
+    fun `Cognito SDK 작업은 동시에 하나만 진행한다`() {
+        val gate = CognitoOperationGate()
+
+        assertTrue(gate.tryEnter())
+        assertEquals(false, gate.tryEnter())
+        gate.leave()
+        assertTrue(gate.tryEnter())
+        gate.leave()
+    }
+
+    @Test
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun `백그라운드 토큰 요청은 기존 인증 작업 뒤에 순서대로 진행한다`() = runTest {
+        val gate = CognitoOperationGate()
+        assertTrue(gate.tryEnter())
+
+        val waiting = async {
+            gate.enter()
+            gate.leave()
+            true
+        }
+        runCurrent()
+        assertEquals(false, waiting.isCompleted)
+
+        gate.leave()
+        runCurrent()
+        assertTrue(waiting.await())
+    }
+
     @Test
     fun `Cognito SDK 콜백 대기는 유한하다`() = runTest {
         assertEquals(20_000L, COGNITO_OPERATION_TIMEOUT_MILLIS)

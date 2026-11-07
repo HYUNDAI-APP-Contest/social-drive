@@ -14,6 +14,7 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 
@@ -24,24 +25,30 @@ internal class AmplifyCognitoAuth(
     private val context: Context,
 ) : CloudAuthBootstrap, CognitoSessionSource {
     private val mutableState = MutableStateFlow(initialState())
+    private val operationGate = CognitoOperationGate()
     override val state = mutableState.asStateFlow()
 
     override suspend fun initialize() {
         val configuration = PleosCloudRuntime.configuration ?: return
+        if (!operationGate.tryEnter()) return
         try {
-            Amplify.addPlugin(AWSCognitoAuthPlugin())
-            Amplify.configure(amplifyConfiguration(configuration.cognito), context)
-            val session = withCognitoOperationTimeout { fetchCognitoSession() }
-            val restored = session.isSignedIn && PleosCloudRuntime.installSessionSource(this)
-            if (!session.isSignedIn) {
-                PleosCloudRuntime.clearSessionSource()
+            try {
+                Amplify.addPlugin(AWSCognitoAuthPlugin())
+                Amplify.configure(amplifyConfiguration(configuration.cognito), context)
+                val session = withCognitoOperationTimeout { fetchCognitoSession() }
+                val restored = session.isSignedIn && PleosCloudRuntime.installSessionSource(this)
+                if (!session.isSignedIn) {
+                    PleosCloudRuntime.clearSessionSource()
+                }
+                mutableState.value = restoredCognitoSessionState(session.isSignedIn, restored)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                PleosCloudRuntime.reportAuthenticationFailure("AWS · 인증 초기화 실패")
+                mutableState.value = CloudAuthState(CloudAuthPhase.ERROR, "AWS 인증을 초기화하지 못했습니다")
             }
-            mutableState.value = restoredCognitoSessionState(session.isSignedIn, restored)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Throwable) {
-            PleosCloudRuntime.reportAuthenticationFailure("AWS · 인증 초기화 실패")
-            mutableState.value = CloudAuthState(CloudAuthPhase.ERROR, "AWS 인증을 초기화하지 못했습니다")
+        } finally {
+            operationGate.leave()
         }
     }
 
@@ -56,45 +63,68 @@ internal class AmplifyCognitoAuth(
             mutableState.value = CloudAuthState(CloudAuthPhase.ERROR, "아이디와 비밀번호를 입력해 주세요")
             return
         }
-        mutableState.value = CloudAuthState(CloudAuthPhase.WORKING, "AWS 로그인 확인 중")
-        val secret = password.concatToString()
-        password.fill('\u0000')
+        if (!operationGate.tryEnter()) {
+            password.fill('\u0000')
+            return
+        }
         try {
-            val result = withCognitoOperationTimeout { awaitSignIn(normalizedUsername, secret) }
-            applySignInResult(result)
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Throwable) {
-            PleosCloudRuntime.reportAuthenticationFailure("AWS · 로그인 실패")
-            mutableState.value = CloudAuthState(CloudAuthPhase.ERROR, "로그인 정보를 확인해 주세요")
+            mutableState.value = CloudAuthState(CloudAuthPhase.WORKING, "AWS 로그인 확인 중")
+            val secret = password.concatToString()
+            password.fill('\u0000')
+            try {
+                val result = withCognitoOperationTimeout { awaitSignIn(normalizedUsername, secret) }
+                applySignInResult(result)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                PleosCloudRuntime.reportAuthenticationFailure("AWS · 로그인 실패")
+                mutableState.value = CloudAuthState(CloudAuthPhase.ERROR, "로그인 정보를 확인해 주세요")
+            }
+        } finally {
+            password.fill('\u0000')
+            operationGate.leave()
         }
     }
 
     override suspend fun confirmSignIn(response: CharArray) {
         if (response.isEmpty()) return
-        val challengeLabel = mutableState.value.challengeLabel
-        mutableState.value = CloudAuthState(CloudAuthPhase.WORKING, "추가 인증 확인 중")
-        val secret = response.concatToString()
-        response.fill('\u0000')
+        if (!operationGate.tryEnter()) {
+            response.fill('\u0000')
+            return
+        }
         try {
-            applySignInResult(withCognitoOperationTimeout { awaitConfirmSignIn(secret) })
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Throwable) {
-            mutableState.value = CloudAuthState(CloudAuthPhase.CHALLENGE, "인증 응답을 다시 확인해 주세요", challengeLabel)
+            val challengeLabel = mutableState.value.challengeLabel
+            mutableState.value = CloudAuthState(CloudAuthPhase.WORKING, "추가 인증 확인 중")
+            val secret = response.concatToString()
+            response.fill('\u0000')
+            try {
+                applySignInResult(withCognitoOperationTimeout { awaitConfirmSignIn(secret) })
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                mutableState.value = CloudAuthState(CloudAuthPhase.CHALLENGE, "인증 응답을 다시 확인해 주세요", challengeLabel)
+            }
+        } finally {
+            response.fill('\u0000')
+            operationGate.leave()
         }
     }
 
     override suspend fun signOut() {
+        if (!operationGate.tryEnter()) return
         mutableState.value = CloudAuthState(CloudAuthPhase.WORKING, "로그아웃 중")
         try {
-            withCognitoOperationTimeout { clearAmplifySession() }
-            PleosCloudRuntime.clearSessionSource()
-            mutableState.value = signedOutState()
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Throwable) {
-            mutableState.value = CloudAuthState(CloudAuthPhase.SIGNED_IN, "로그아웃을 완료하지 못했습니다. 다시 시도해 주세요")
+            try {
+                withCognitoOperationTimeout { clearAmplifySession() }
+                PleosCloudRuntime.clearSessionSource()
+                mutableState.value = signedOutState()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Throwable) {
+                mutableState.value = CloudAuthState(CloudAuthPhase.SIGNED_IN, "로그아웃을 완료하지 못했습니다. 다시 시도해 주세요")
+            }
+        } finally {
+            operationGate.leave()
         }
     }
 
@@ -107,11 +137,16 @@ internal class AmplifyCognitoAuth(
     }
 
     override suspend fun freshAccessToken(): String {
-        val session = withCognitoOperationTimeout { fetchCognitoSession() }
-        val token = session.takeIf { it.isSignedIn }
-            ?.userPoolTokensResult?.value?.accessToken
-        return token?.takeIf(String::isNotBlank)
-            ?: throw IllegalStateException("Cognito session is signed out")
+        operationGate.enter()
+        try {
+            val session = withCognitoOperationTimeout { fetchCognitoSession() }
+            val token = session.takeIf { it.isSignedIn }
+                ?.userPoolTokensResult?.value?.accessToken
+            return token?.takeIf(String::isNotBlank)
+                ?: throw IllegalStateException("Cognito session is signed out")
+        } finally {
+            operationGate.leave()
+        }
     }
 
     private suspend fun fetchCognitoSession(): AWSCognitoAuthSession =
@@ -218,6 +253,16 @@ internal suspend fun <T> withCognitoOperationTimeout(
 }
 
 internal class CognitoOperationTimeoutException : Exception("Cognito operation timed out")
+
+internal class CognitoOperationGate {
+    private val mutex = Mutex()
+
+    fun tryEnter(): Boolean = mutex.tryLock()
+
+    suspend fun enter() = mutex.lock()
+
+    fun leave() = mutex.unlock()
+}
 
 internal fun AuthSignInStep.challengeLabel(): String? = when (this) {
     AuthSignInStep.CONFIRM_SIGN_IN_WITH_SMS_MFA_CODE -> "문자 인증코드"
