@@ -91,7 +91,7 @@ Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-o
 
 | 기능 | 공식 상태 | 2026-11-02 저장소 등급 | 승격 조건/금지 사항 |
 |---|---|---|---|
-| Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | `앱 구현` | PR #2 병합 소스의 Pleos flavor에 초기화·release와 fail-closed Unknown 경계가 있다. 실제 permissioned P/D/R/N callback 증거 후에만 `실제 SDK` |
+| Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | `실제 SDK (PLEOS AVD PARK callback)` | 초기화·release와 fail-closed Unknown 경계가 있고 PARK callback이 앱 상태까지 도달했다. D/R/N과 실차는 미검증 |
 | NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | `앱 구현` | PR #2 병합 소스에 coordinator·lifecycle·route request 계약이 있다. 실제 route/event callback 실기 증거 후에만 `실제 SDK` |
 | FusedLocation | 2026-11-02 가이드에는 Coming Soon | `실제 SDK`(AVD 한정) | 현재 Maven artifact·권한·callback 실행 증거가 있다. 실차 GNSS·production 로그 통제 확인 전 범위를 확대해 주장 금지 |
 | SpeechToText | 2026-11-02 가이드에는 Coming Soon | `실제 SDK`(AVD 한정) | 권한·초기화·request·timeout·stop 실행 증거가 있다. 실차 마이크 정확도 주장 금지 |
@@ -123,7 +123,7 @@ Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-o
 | 실제 경로점·위치 수집 | PLEOS AVD FusedLocation callback, 정책 버전 동의·철회, 정규화 경로 Room 저장 실행 증거 | `실제 SDK`는 AVD 범위로 한정. 원본 좌표 미저장·미업로드. 실차 GNSS·장시간 주행은 미검증 |
 | Android cloud·409 conflict contract | PR #2 병합 소스 + backend 계약 `ddbd61f` | `앱 구현`. concrete Cognito/API 설정이 없어 actual cloud는 fail closed |
 | 409 crash-window 안전 경계 | PR #2 병합 소스 | `FAILED/VERSION_CONFLICT`는 일반 worker/recovery가 claim하지 않으며 명시적 adopt만 publish queue로 전환. 자동 GET·overwrite·재게시 금지 |
-| Vehicle/NaviHelper adapter | PR #2 병합 소스가 PLEOS 기반 코드 포함 | `앱 구현`. 실제 Vehicle/Navi callback은 미검증이므로 `실제 SDK` 증거 아님 |
+| Vehicle/NaviHelper adapter | PR #2 병합 소스가 PLEOS 기반 코드 포함 | PLEOS AVD에서 Vehicle PARK와 NaviHelper `onRouteStarted` 실제 callback 확인. D/R/N·실차는 미검증 |
 | PLEOS system Back | PR #2 병합 소스 | `UNRESOLVED`. MainActivity dispatcher 이후 Compose stop dialog만 자동 검증. physical/vendor 수용 시험이 필요 |
 | P0-3A bootstrap/doctor | 역사적 commit `88b4938` | 재현 가능한 bootstrap/doctor와 offline zero-network fail-fast의 역사적 증거. 최신 앱 HEAD 또는 build/runtime 성공 증거가 아님 |
 | root `readme.md` | 앱 소개·실행 방법·테스트 환경/설정·APK 목표 경로를 문서화 | Android 통합과 제출용 signed release 미완료를 구분 |

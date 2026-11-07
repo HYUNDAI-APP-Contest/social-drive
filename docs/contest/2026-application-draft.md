@@ -32,7 +32,7 @@
 
 좋은 드라이브 코스를 발견하는 곳과 실제로 주행하는 곳이 분리되어 있다. SNS에서 사진이나 후기를 발견해도 지도에서 장소를 다시 찾고, 차량 내비게이션에 목적지와 경유지를 다시 입력해야 한다. 반대로 운전 중 좋았던 순간을 메모하거나 자세히 기록하려는 행동은 주의 분산과 충돌한다.
 
-Social Drive는 다음 경험을 제출 목표로 한다. PR #2 병합 커밋 `dcffaad`를 포함한 현재 통합 소스에는 PLEOS·cloud·route-consent, Room v6 conflict review와 published-delete lifecycle이 있다. 기존 PLEOS Connect Android 14(user 10) UI 8/8과 비UI 43/43, Kotlin core 74/74, static 29/29 및 Gradle 179 tasks 증거가 있다. actual cloud·AWS E2E·제출용 signed release·실제 Vehicle/Navi callback은 미검증이다. PLEOS system Back 전달도 `UNRESOLVED`다.
+Social Drive는 다음 경험을 제출 목표로 한다. PR #2 병합 커밋 `dcffaad`를 포함한 현재 통합 소스에는 PLEOS·cloud·route-consent, Room conflict review와 published-delete lifecycle이 있다. PLEOS Connect Android 14(user 10)에서 Vehicle PARK와 NaviHelper `onRouteStarted` 실제 callback을 확인했다. actual cloud·AWS E2E·제출용 signed release·Vehicle D/R/N·실차 검증은 남아 있다.
 
 1. 주행 중에는 기록 시작·종료와 `방금 좋았어` 한 번의 터치만 제공한다.
 2. recording session, `highlightCount`, draft, pending queue와 preset reference를 로컬 DB에 보존한다.
@@ -69,7 +69,7 @@ Social Drive는 모바일 SNS를 차량 화면으로 옮긴 앱이 아니다.
 
 ### 차량 상태가 UX를 결정하는 구조를 구현한다
 
-Vehicle adapter의 목표는 Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unknown`을 판정하는 것이다. 서비스 오류, 권한 부족, 오래된 값처럼 안전을 증명할 수 없는 경우는 `Unknown`으로 처리해 편집과 게시를 차단한다. HEAD `4f2b559`은 Pleos AVD에서 fail-closed Unknown과 Driving/Unknown 잠금 UI를 실행 검증했지만 실제 permissioned P/D/R/N callback은 확인하지 않았으므로 `실제 SDK`로 표현하지 않는다.
+Vehicle adapter는 Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unknown`을 판정한다. 서비스 오류, 권한 부족, 오래된 값처럼 안전을 증명할 수 없는 경우는 `Unknown`으로 처리해 편집과 게시를 차단한다. PLEOS AVD에서 실제 `GEAR_PARK`가 앱의 `Parked`까지 도달한 계측 테스트가 통과했다. D/R/N과 실차는 아직 검증하지 않았으므로 PARK 외 상태까지 검증한 것으로 표현하지 않는다.
 
 ### 콘텐츠가 실제 주행으로 완결된다
 
@@ -136,7 +136,7 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 | 게시물 삭제 | parked-only 삭제 요청 | PR #2 통합. Room v6 tombstone·network `DELETE`·bounded retry 계약을 demo transport에서 계측. actual cloud 미검증 | `앱 구현` |
 | Cognito/DynamoDB/S3 API | 사용자·피드·비공개 업로드 | PR #2 통합. backend `ddbd61f` 계약 기반 코드 존재. concrete cloud 설정 부재로 actual cloud unavailable | `앱 구현` |
 | 409 conflict review | stale publish의 명시적 사용자 해결 | PR #2 통합. durable FAILED, explicit fetch/adopt, publish-only replay. 일반 worker 자동 claim·GET·overwrite 금지. Room 계측 통과 | `앱 구현` |
-| Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | PR #2 통합. Pleos build/AVD 안전 UI 실행, 실제 P/D/R/N callback 미검증 | `앱 구현` |
+| Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | PLEOS AVD PARK callback 통과. D/R/N·실차 미검증 | `실제 SDK (PARK 한정)` |
 | NaviHelper 3.0.5 | 목적지·경유지 전달 | PR #2 통합. lifecycle/coordinator build·core 검증, 실제 route callback 미검증 | `앱 구현` |
 | PLEOS system Back | 기록 중 종료 확인 | Activity dispatcher 이후 dialog 계약은 검증. TaskView의 실제 system Back 전달은 `UNRESOLVED` | `미구현` |
 | preset route/motion | 전체 흐름 시연 보조 | 데모 전용 | `데모 데이터` |

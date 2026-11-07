@@ -12,7 +12,7 @@ An offline-first visual foundation for the Hyundai app contest with isolated `de
 - On-screen demo controls for every content and upload state
 - Confirmed recording stop: parked sessions continue to publish; driving/unknown sessions retain a draft without opening editing
 - Explicit actual/demo/unavailable badges and fail-closed Pleos boundaries
-- Pleos Vehicle 2.3.2 read-only Gear adapter with permission preflight, fresh-state timeout, and fail-closed `Unknown`; actual P/D/R/N callback evidence is still pending
+- Pleos Vehicle 2.3.2 read-only Gear adapter with permission preflight, fresh-state timeout, and fail-closed `Unknown`; the actual PARK callback passed on the matching PLEOS AVD, while D/R/N and physical-vehicle evidence remain pending
 - Pleos NaviHelper 3.0.5 route adapter with named coordinate validation, one-waypoint limit, duplicate request exclusion, request timeout, bounded stale-event quarantine, and privacy-safe errors
 - Actual PLEOS Fused Location, TTS, and STT adapters with explicit permission/consent boundaries; vehicle control remains excluded
 - Room-backed recording sessions, durable drafts, and a staged upload queue with exported schemas and non-destructive migrations
@@ -126,7 +126,7 @@ bash scripts/verify-pleos-clean-install.sh \
 
 The verifier refuses zero or multiple device rows (including offline or unauthorized devices), a serial mismatch, non-PLEOS/API 34/2.1.0 images, an existing package, an incomplete two-artifact metadata contract, checksum/signature mismatch, a launch crash, or a reused process. It performs a fresh `adb install` without `-r`, bounds every adb command, explicitly launches `.MainActivity`, waits for a stable PID and resumed Activity, force-stops it, and requires a different stable PID with no crash exit after relaunch. Its adjacent `pleos-clean-install-evidence.json` is created without overwriting prior evidence and is limited to source/artifact/certificate identifiers, non-sensitive AVD identity, user ID, and successful step status; it never collects logcat, screenshots, coordinates, URLs, or raw vehicle data.
 
-This evidence proves only clean installation and process relaunch. Actual Vehicle P/D/R/N callbacks, NaviHelper route/event callbacks, physical/vendor System Back delivery, actual cloud/Cognito E2E, and AWS deployment remain independent acceptance gates.
+This clean-install evidence alone proves only installation and process relaunch. Separate retained-data AVD runs verified the Vehicle PARK callback and NaviHelper `onRouteStarted`; Vehicle D/R/N, physical-device behavior, actual cloud/Cognito E2E, and AWS deployment remain independent acceptance gates.
 
 In a restricted shell where Gradle, network access, or its local lock-listener socket is unavailable, compile and run the SDK-independent PLEOS lifecycle core with Android Studio's bundled Kotlin compiler:
 

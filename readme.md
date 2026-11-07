@@ -111,8 +111,8 @@ bash scripts/build-submission-release.sh
 | Android | minSdk 28 이상, compile platform 35 | Android platform 35로 Demo/Pleos 조립 성공 |
 | Gradle | 프로젝트 wrapper 8.9 | clean/unit/lint/assemble 179 tasks 성공 |
 | Emulator | Pleos Connect Emulator 2.1.0, Android 14, user 10 | 앱 설치·UI 8/8·비UI 43/43 성공. physical system Back은 미검증 |
-| Vehicle | Vehicle SDK 2.3.2 / Vehicle Service 대응 버전 | 초기화·release 수명주기와 fail-closed Unknown 실행. 실제 permissioned state callback은 미검증 |
-| Navigation | NaviHelper 3.0.5 | 초기화·request coordinator 계약은 빌드/코어 검증. 실제 route callback 실기 증거는 미완료 |
+| Vehicle | Vehicle SDK 2.3.2 / Vehicle Service 대응 버전 | 초기화·release와 fail-closed Unknown 실행. PLEOS AVD 실제 PARK callback 통과, D/R/N·실차 미검증 |
+| Navigation | NaviHelper 3.0.5 | PLEOS AVD에서 실제 `requestRoute`와 `onRouteStarted`, 내비게이션 추천 경로 화면 확인 |
 | AWS | Cognito JWT, DynamoDB, private S3 기반 목표 | SRP/MFA/세션 복원과 no-redirect 전송 구현. 실제 스택 출력값·테스트 사용자 부재로 AWS E2E 미실행 |
 
 P0-3A bootstrap/doctor의 과거 차단은 해소되어 build·emulator·debug APK 증거가 생겼습니다. signing secret과 keystore는 조회하지 않았고, 제출용 signed release와 actual cloud는 여전히 별도 승인·검증 경계입니다.
@@ -141,8 +141,8 @@ Pleos 실기 검증 전 다음을 확인해야 합니다.
 
 - [x] Android Gradle build 성공 로그와 commit SHA (`4f2b559`)
 - [x] Pleos AVD 설치·실행 및 instrumentation 51/51
-- [ ] Vehicle capability와 P/D/R/N 상태 전환
-- [ ] NaviHelper 목적지·경유지 요청과 callback
+- [ ] Vehicle capability와 P/D/R/N 상태 전환(PARK callback은 AVD 통과)
+- [x] NaviHelper 공개 데모 목적지 요청과 `onRouteStarted` callback
 - [ ] 앱 재시작 후 session/draft/queue 복구
 - [ ] Android-AWS 인증·게시 E2E
 - [ ] 비밀값·개인정보 비노출 확인

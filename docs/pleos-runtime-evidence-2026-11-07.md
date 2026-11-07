@@ -78,9 +78,16 @@ PLEOS 음성 권한을 Manifest 선언에만 의존하지 않도록 `TTS_SERVICE
 
 TTS는 동일 AVD에서 `PLEOS 연결됨 · 음성 안내` 상태로 초기화된 뒤 기록 시작과 종료 완료 동작을 실행해 앱의 `speak()` 호출 경로를 통과했다. 기록 화면은 `실시간 경로 수집 중`으로 전환됐고 종료 확인 후 초안 저장과 게시 화면 이동까지 완료됐으며 앱 PID에 TTS 예외나 크래시는 없었다. 다만 공급자 TTS 서비스는 발화 요청·완료를 logcat이나 앱 callback으로 노출하지 않았고 이 환경에서는 실제 차량 스피커 출력을 청취할 수 없다. 따라서 AVD 증거는 권한·초기화·호출 무예외까지만 인정하며, 음성 출력 자체와 음량·중첩·오디오 포커스는 실차 수용 시험 항목으로 유지한다.
 
+## Vehicle 주차 기어 콜백 검증
+
+데이터가 보존된 PLEOS Connect Emulator의 user 10에서 테스트 APK만 추가 설치하고 `PleosGearRuntimeSmokeTest`를 `requirePleosGear=true`로 실행했다. 실제 Vehicle SDK가 전달한 `GEAR_PARK`가 애플리케이션 소유 motion source의 `MotionState.Parked`까지 제한 시간 안에 도달했으며, 계측 결과는 `OK (1 test)`, 1.443초였다. 테스트는 원시 기어 값을 로그에 남기지 않는다.
+
+검증 뒤 테스트 APK `com.socialdrive.app.test`만 제거하고 대상 앱을 다시 실행했다. 기존 초안과 실시간 경로 데이터가 유지됐고 설정 화면의 `PLEOS 연결됨 · 차량 상태`도 정상 복귀했다. 이 결과는 AVD의 PARK 콜백 경로만 증명한다. D/R/N 전환, 서비스 장애 전환, 실제 차량 신호 품질은 아직 증명하지 않았다.
+
 ## 아직 증명하지 않은 범위
 
 - 실제 차량에서의 GNSS 품질, 장시간 주행, 오디오 입력·출력 품질
+- Vehicle D/R/N 및 서비스 장애 콜백과 실제 차량의 기어 신호
 - 실제 AWS 계정의 Cognito 로그인, API Gateway authorizer, S3 업로드 E2E
 - PLEOS production 이미지의 위치 서비스 원본 좌표 로그 비활성화 또는 접근 통제 확인
 - 제출용 승인 인증서로 서명한 release APK
