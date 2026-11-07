@@ -30,6 +30,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.DisposableEffect
 import com.socialdrive.app.data.EnqueueResult
+import com.socialdrive.app.data.remote.FlavorPublicationReadiness
 import com.socialdrive.app.data.fake.FakeDriveRepository
 import com.socialdrive.app.data.local.LocalState
 import com.socialdrive.app.domain.AppDestination
@@ -420,10 +421,12 @@ fun SocialDriveApp(
                                 displayedDraft != null && offlineViewModel.requestDescriptionDictation()
                             },
                             onCancelDictation = offlineViewModel::cancelDictation,
-                            publicationBlockReason = cloudPublicationBlockReason(
-                                isLocalDraft = displayedDraft != null,
-                                status = cloudConnectionCapability,
-                            ),
+                            publicationBlockReason = displayedDraft
+                                ?.let(FlavorPublicationReadiness::rejectionMessage)
+                                ?: cloudPublicationBlockReason(
+                                    isLocalDraft = displayedDraft != null,
+                                    status = cloudConnectionCapability,
+                                ),
                             memoryPalette = memoryPaletteFor(presentedStory.id),
                         )
                     }

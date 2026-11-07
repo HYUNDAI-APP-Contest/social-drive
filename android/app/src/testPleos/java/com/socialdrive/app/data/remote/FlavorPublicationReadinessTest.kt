@@ -5,11 +5,14 @@ import com.socialdrive.app.domain.NormalizedRoutePoint
 import kotlin.test.Test
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class FlavorPublicationReadinessTest {
     @Test
     fun `PLEOS는 실제 경로가 두 점 미만인 게시를 즉시 차단한다`() {
-        assertNotNull(FlavorPublicationReadiness.rejectionMessage(draft(emptyList())))
+        val message = assertNotNull(FlavorPublicationReadiness.rejectionMessage(draft(emptyList())))
+        assertTrue(message.contains("위치 권한"))
+        assertTrue(message.contains("경로 동의"))
         assertNotNull(FlavorPublicationReadiness.rejectionMessage(draft(listOf(NormalizedRoutePoint(0, .5f, .5f)))))
     }
 
