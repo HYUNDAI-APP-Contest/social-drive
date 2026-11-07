@@ -112,6 +112,7 @@ class OfflinePersistenceTest {
         val stored = database.routePrivacyDao().pointsForRecording(draft.recordingId)
 
         assertTrue(collector.began)
+        assertEquals(listOf(0f, .5f, 1f), draft.routePoints.map { it.horizontal })
         assertEquals(listOf(0f, .5f, 1f), stored.map { it.horizontal })
         assertEquals(listOf(1f, .4f, 0f), stored.map { it.vertical })
         assertTrue(stored.all { it.publicationState == "UNPUBLISHED" })

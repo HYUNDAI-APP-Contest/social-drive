@@ -8,6 +8,7 @@ import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.local.UploadQueueEntity
 import com.socialdrive.app.data.local.NormalizedRoutePointEntity
 import com.socialdrive.app.domain.FutureRouteCollector
+import com.socialdrive.app.domain.NormalizedRoutePoint
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.UploadState
 import java.util.UUID
@@ -64,7 +65,10 @@ class RecordingRepository(
 
     suspend fun finishAsDraft(id: String): DraftSnapshot? {
         database.draftDao().findByRecording(id)?.let { existing ->
-            return existing.toSnapshot(database.recordingDao().find(id)?.highlightCount ?: 0)
+            return existing.toSnapshot(
+                database.recordingDao().find(id)?.highlightCount ?: 0,
+                database.routePrivacyDao().pointsForRecording(id).map { it.toDomain() },
+            )
         }
         val normalizedPoints = routeCollector?.snapshotAndClear().orEmpty()
         return database.withTransaction {
@@ -92,7 +96,7 @@ class RecordingRepository(
                     NormalizedRoutePointEntity(recording.id, point.sequence, point.horizontal, point.vertical, "UNPUBLISHED"),
                 )
             }
-            draft.toSnapshot(recording.highlightCount)
+            draft.toSnapshot(recording.highlightCount, normalizedPoints)
         }
     }
 
@@ -106,12 +110,18 @@ class DraftRepository(
 ) {
     val drafts: Flow<List<DraftSnapshot>> = database.draftDao().observeAll().map { items ->
         items.map { entity ->
-            entity.toSnapshot(database.recordingDao().find(entity.recordingId)?.highlightCount ?: 0)
+            entity.toSnapshot(
+                database.recordingDao().find(entity.recordingId)?.highlightCount ?: 0,
+                database.routePrivacyDao().pointsForRecording(entity.recordingId).map { it.toDomain() },
+            )
         }
     }
 
     suspend fun find(id: String): DraftSnapshot? = database.draftDao().find(id)?.let { entity ->
-        entity.toSnapshot(database.recordingDao().find(entity.recordingId)?.highlightCount ?: 0)
+        entity.toSnapshot(
+            database.recordingDao().find(entity.recordingId)?.highlightCount ?: 0,
+            database.routePrivacyDao().pointsForRecording(entity.recordingId).map { it.toDomain() },
+        )
     }
 
     suspend fun updateCopy(id: String, title: String, description: String): Boolean =
@@ -188,7 +198,10 @@ class PublishQueueRepository(
     }
 }
 
-private fun DraftEntity.toSnapshot(highlightCount: Int) = DraftSnapshot(
+private fun DraftEntity.toSnapshot(
+    highlightCount: Int,
+    routePoints: List<NormalizedRoutePoint> = emptyList(),
+) = DraftSnapshot(
     id = id,
     recordingId = recordingId,
     clientRequestId = clientRequestId,
@@ -199,4 +212,7 @@ private fun DraftEntity.toSnapshot(highlightCount: Int) = DraftSnapshot(
     state = state,
     highlightCount = highlightCount.coerceIn(0, 100),
     storyId = coverPreset.removePrefix("route-memory-").takeIf { it.startsWith("demo-") } ?: "demo-coast",
+    routePoints = routePoints,
 )
+
+private fun NormalizedRoutePointEntity.toDomain() = NormalizedRoutePoint(sequence, horizontal, vertical)

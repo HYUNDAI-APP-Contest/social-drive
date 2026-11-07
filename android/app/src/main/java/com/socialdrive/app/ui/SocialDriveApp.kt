@@ -37,6 +37,7 @@ import com.socialdrive.app.domain.ConflictReviewDecision
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.NavigationRequestResult
 import com.socialdrive.app.domain.RecordingSnapshot
+import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.ThemeMode
 import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.domain.PublishedDeleteDecision
@@ -170,6 +171,10 @@ fun SocialDriveApp(
             Box(Modifier.fillMaxSize()) {
                 val storyBase = repository.drive(memoryStory.driveId) ?: defaultStoryDrive
                 val presentedStory = memoryStory.present(storyBase)
+                val displayedRoute = latestDraft?.routePoints
+                    ?.takeIf { it.size >= 2 }
+                    ?.map { RoutePoint(it.horizontal, it.vertical) }
+                    ?: presentedStory.route
                 if (destination == AppDestination.Recording && stopConfirmationRequested) {
                     RecordingStopDialog(
                         motion = motion,
@@ -219,11 +224,11 @@ fun SocialDriveApp(
                     AppDestination.Recording -> RecordingScreen(
                         snapshot = RecordingSnapshot(
                             storyId = presentedStory.id,
-                            route = presentedStory.route,
+                            route = displayedRoute,
                             elapsed = "01:24:17",
                             distance = "64.2 km",
                             highlights = presentedStory.highlights,
-                            gps = CapabilityState.Unavailable,
+                            gps = locationCapability.capability,
                             vehicle = vehicleMotion.integration.capability,
                             routeSource = routePrivacy.displayedSource,
                         ),
@@ -264,7 +269,7 @@ fun SocialDriveApp(
                             },
                             routeSource = routePrivacy.displayedSource,
                             onReviewConflict = { navigate(AppDestination.ConflictReview) },
-                            route = presentedStory.route,
+                            route = displayedRoute,
                             highlightCount = presentedStory.highlights,
                             speechRecognition = speechToTextCapability.capability,
                             onDictateTitle = offlineViewModel::requestTitleDictation,

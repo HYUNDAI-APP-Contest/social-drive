@@ -235,7 +235,7 @@ private fun IntegrationSection(
             IntegrationRow("음성 안내", textToSpeechStatus)
             IntegrationRow("음성 인식", speechToTextStatus)
             IntegrationRow("AWS 클라우드", cloudConnectionStatus)
-            UnavailableStatusRow("차량 제어", "준비 중 · 사용 불가")
+            StatusRow("차량 제어", "안전 정책 · 읽기 전용")
             StatusRow("오프라인 초안", "기기에 보존")
         }
     }
