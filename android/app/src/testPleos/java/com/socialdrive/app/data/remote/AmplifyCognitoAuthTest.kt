@@ -2,6 +2,7 @@ package com.socialdrive.app.data.remote
 
 import com.amplifyframework.auth.result.step.AuthSignInStep
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class AmplifyCognitoAuthTest {
@@ -12,7 +13,20 @@ class AmplifyCognitoAuthTest {
     }
 
     @Test
-    fun `알 수 없는 다음 단계는 민감정보 없이 일반 안내한다`() {
-        assertEquals("Cognito 추가 인증 응답", AuthSignInStep.RESET_PASSWORD.challengeLabel())
+    fun `비밀번호 재설정 단계는 잘못된 추가 인증 입력창을 열지 않는다`() {
+        assertNull(AuthSignInStep.RESET_PASSWORD.challengeLabel())
+        assertEquals(
+            "비밀번호 재설정이 필요한 계정입니다. 관리자에게 문의해 주세요",
+            AuthSignInStep.RESET_PASSWORD.unsupportedMessage(),
+        )
+    }
+
+    @Test
+    fun `TOTP 신규 등록 단계는 관리 경계를 명시한다`() {
+        assertNull(AuthSignInStep.CONTINUE_SIGN_IN_WITH_TOTP_SETUP.challengeLabel())
+        assertEquals(
+            "MFA 등록이 필요한 계정입니다. 관리자에게 문의해 주세요",
+            AuthSignInStep.CONTINUE_SIGN_IN_WITH_TOTP_SETUP.unsupportedMessage(),
+        )
     }
 }

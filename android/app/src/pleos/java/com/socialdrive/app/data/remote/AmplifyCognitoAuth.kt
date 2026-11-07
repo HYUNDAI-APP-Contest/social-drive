@@ -79,13 +79,17 @@ internal class AmplifyCognitoAuth(
 
     override suspend fun signOut() {
         mutableState.value = CloudAuthState(CloudAuthPhase.WORKING, "로그아웃 중")
+        clearAmplifySession()
+        PleosCloudRuntime.clearSessionSource()
+        mutableState.value = signedOutState()
+    }
+
+    private suspend fun clearAmplifySession() {
         suspendCancellableCoroutine { continuation ->
             Amplify.Auth.signOut {
                 if (continuation.isActive) continuation.resume(Unit)
             }
         }
-        PleosCloudRuntime.clearSessionSource()
-        mutableState.value = signedOutState()
     }
 
     override suspend fun freshAccessToken(): String = suspendCancellableCoroutine { continuation ->
@@ -156,8 +160,15 @@ internal class AmplifyCognitoAuth(
             mutableState.value = if (valid) signedInState() else CloudAuthState(CloudAuthPhase.ERROR, "AWS 세션 검증에 실패했습니다")
             return
         }
-        val challenge = result.nextStep.signInStep.challengeLabel()
-        mutableState.value = CloudAuthState(CloudAuthPhase.CHALLENGE, "추가 인증이 필요합니다", challenge)
+        val step = result.nextStep.signInStep
+        val challenge = step.challengeLabel()
+        if (challenge == null) {
+            clearAmplifySession()
+            PleosCloudRuntime.clearSessionSource()
+            mutableState.value = CloudAuthState(CloudAuthPhase.ERROR, step.unsupportedMessage())
+        } else {
+            mutableState.value = CloudAuthState(CloudAuthPhase.CHALLENGE, "추가 인증이 필요합니다", challenge)
+        }
     }
 
     private fun initialState() = if (PleosCloudRuntime.configuration == null) {
@@ -170,12 +181,23 @@ internal class AmplifyCognitoAuth(
     private fun signedInState() = CloudAuthState(CloudAuthPhase.SIGNED_IN, "AWS 계정 연결됨")
 }
 
-internal fun AuthSignInStep.challengeLabel(): String = when (this) {
+internal fun AuthSignInStep.challengeLabel(): String? = when (this) {
     AuthSignInStep.CONFIRM_SIGN_IN_WITH_SMS_MFA_CODE -> "문자 인증코드"
     AuthSignInStep.CONFIRM_SIGN_IN_WITH_TOTP_CODE -> "인증 앱 코드"
     AuthSignInStep.CONFIRM_SIGN_IN_WITH_NEW_PASSWORD -> "새 비밀번호"
     AuthSignInStep.CONFIRM_SIGN_IN_WITH_CUSTOM_CHALLENGE -> "추가 인증 응답"
     AuthSignInStep.CONFIRM_SIGN_IN_WITH_OTP -> "일회용 인증코드"
     AuthSignInStep.CONFIRM_SIGN_IN_WITH_PASSWORD -> "비밀번호"
-    else -> "Cognito 추가 인증 응답"
+    else -> null
+}
+
+internal fun AuthSignInStep.unsupportedMessage(): String = when (this) {
+    AuthSignInStep.RESET_PASSWORD -> "비밀번호 재설정이 필요한 계정입니다. 관리자에게 문의해 주세요"
+    AuthSignInStep.CONFIRM_SIGN_UP -> "가입 확인이 필요한 계정입니다. 관리자에게 문의해 주세요"
+    AuthSignInStep.CONTINUE_SIGN_IN_WITH_TOTP_SETUP,
+    AuthSignInStep.CONTINUE_SIGN_IN_WITH_EMAIL_MFA_SETUP -> "MFA 등록이 필요한 계정입니다. 관리자에게 문의해 주세요"
+    AuthSignInStep.CONTINUE_SIGN_IN_WITH_MFA_SETUP_SELECTION,
+    AuthSignInStep.CONTINUE_SIGN_IN_WITH_MFA_SELECTION,
+    AuthSignInStep.CONTINUE_SIGN_IN_WITH_FIRST_FACTOR_SELECTION -> "지원되지 않는 인증 선택 단계입니다. 관리자에게 문의해 주세요"
+    else -> "이 계정의 추가 인증을 앱에서 완료할 수 없습니다. 관리자에게 문의해 주세요"
 }
