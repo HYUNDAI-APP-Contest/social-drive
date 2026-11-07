@@ -35,6 +35,8 @@ PLEOS AVD는 이 흐름에서 `onRoutingCompleted` 없이 `onRouteStarted`를 �
 
 에뮬레이터에 서로 다른 GPS 좌표를 입력하고 녹화를 저장한 뒤 user 10의 Room DB/WAL을 함께 읽었다. `normalized_route_points`에는 0~1 범위의 `horizontal`, `vertical`, 연속 `sequence`, `UNPUBLISHED`만 존재했다. 원본 `latitude`/`longitude` 열은 스키마에 없다. 녹화 종료 후 설정 화면은 `현재 수집하지 않음 · 기존 동의 저장됨`으로 돌아왔다.
 
+커밋 `ccbea23` 이후 같은 AVD에서 데이터 유지 방식으로 APK를 업데이트하고 녹화를 시작한 뒤 `adb emu geo fix`로 서로 다른 네 좌표를 순차 입력했다. 녹화 중 접근성 트리는 `실시간 경로 수집 중인 배경 · 하이라이트 0개`를 표시해, 아직 정규화하지 않은 데모 경로선을 실제 경로처럼 노출하지 않았다. 종료·초안 저장 뒤 홈 카드에는 SDK가 수신한 초기 표본을 포함한 `5개 경로점 · 기기에 보존`과 `실시간 경로`가 표시됐다. 이 검증 중 앱 `FATAL EXCEPTION`과 앱 대상 `SecurityException`은 관찰되지 않았다.
+
 ## 아직 증명하지 않은 범위
 
 - 실제 차량에서의 GNSS 품질, 장시간 주행, 오디오 입력·출력 품질
