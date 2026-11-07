@@ -331,6 +331,7 @@ fun SocialDriveApp(
                             },
                             routeSource = presentedStory.routeSource,
                             onReviewConflict = { navigate(AppDestination.ConflictReview) },
+                            onRenewRouteConsent = { navigate(AppDestination.Settings) },
                             route = localDraftDrive?.route ?: displayedRoute,
                             highlightCount = displayedDraft?.highlightCount ?: presentedStory.highlights,
                             speechRecognition = speechToTextCapability.capability,

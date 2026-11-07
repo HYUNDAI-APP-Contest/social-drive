@@ -584,6 +584,8 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   const workers = read("app/src/main/java/com/socialdrive/app/data/work/PublishWorkers.kt");
   const remote = read("app/src/main/java/com/socialdrive/app/data/remote/RemoteDriveApi.kt");
   const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
+  const appUi = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
+  const publishScreen = read("app/src/main/java/com/socialdrive/app/ui/screens/PublishScreen.kt");
   const demoFactory = read("app/src/demo/java/com/socialdrive/app/data/remote/FlavorRemoteDriveApiFactory.kt");
   const demoFake = read("app/src/demo/java/com/socialdrive/app/data/remote/FakeRemoteDriveApi.kt");
   const actualFactory = read("app/src/pleos/java/com/socialdrive/app/data/remote/FlavorRemoteDriveApiFactory.kt");
@@ -620,6 +622,8 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   assert.match(client, /fun deleteDrive/);
   assert.match(adapter, /clientRequestId = clientRequestId/);
   assert.match(adapter, /CloudFailureKind\.CONSENT_RENEWAL_REQUIRED -> RemoteFailureCode\.CONSENT_RENEWAL_REQUIRED/);
+  assert.match(appUi, /onRenewRouteConsent = \{ navigate\(AppDestination\.Settings\) \}/);
+  assert.match(publishScreen, /UploadState\.NeedsConsentRenewal -> Button\(onClick = onRenewRouteConsent, enabled = canAct/);
   assert.match(adapter, /client\.refreshUploads/);
   assert.match(adapter, /override suspend fun uploadAssets/);
   assert.match(adapter, /MAX_UPLOAD_SESSION_ATTEMPTS = 2/);
