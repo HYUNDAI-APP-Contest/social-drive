@@ -6,22 +6,24 @@
 
 ## 확인된 실행 스냅샷
 
-아래 결과는 앱 코드 커밋 `d1ab8cc`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
+아래 결과는 앱 코드 커밋 `175ca8b`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
 
 - 대상: `emulator-5554`, Android user 10, PLEOS 가로 화면 `2560×1440`
 - 패키지: `com.socialdrive.app`
 - APK: `android/app/build/outputs/apk/pleos/debug/app-pleos-debug.apk`
-- SHA-256: `2a95b767a87719e586b3ab0696dc8c7e4ee4e8759b18069665ebce5e346e4ef3`
+- SHA-256: `cba7062cb8602a9dfc69c84d06c6f8fc5a3354221bd69c33748ea12820e0af94`
 - 설치 결과: `adb install -r` 성공
 - 시작 결과: `com.socialdrive.app/.MainActivity`가 현재 포커스이며 시작 직후 FATAL/ANR 없음
 - 설정 화면: 차량 상태, 차량 내비게이션, 위치 연동, 음성 안내, 음성 인식이 모두 `PLEOS 연결됨`
 - 위치 권한: user 10에서 `pleos.car.permission.FUSED_LOCATION` 허용
 - 설치 권한: `TTS_SERVICE`, `STT_SERVICE`, `CAR_DRIVE`, `NAVI_ROUTE_SEARCH`와 SDK 바인딩 권한 허용
 - AWS 상태: 공개 빌드 출력값을 주입하지 않은 APK이므로 `AWS · 빌드 설정 필요`로 안전하게 닫힘
-- 회귀 검증: 핵심 Kotlin 102개, PLEOS/Demo 전체 단위 테스트와 PLEOS lint 통과
+- 회귀 검증: 핵심 Kotlin 103개, PLEOS/Demo 전체 단위 테스트와 PLEOS lint 통과
 - 게시 복구 계측: Cognito 토큰 시간 초과 뒤 CREATE `retry` → CREATE/UPLOAD/PUBLISH 완료를 별도 disposable AVD에서 `OK (1 test)`로 확인
 
 설정 화면의 `PLEOS 연결됨`은 SDK 초기화 콜백과 권한 상태를 확인한 결과다. 실차의 물리적인 D/R/N 변속, 실제 주행 위치 변화, 마이크 음성 품질과 스피커 출력 품질까지 검증했다는 의미는 아니다.
+
+FusedLocation 콜백은 좌표 유효성뿐 아니라 SDK가 양수 타임스탬프를 제공하는 경우 직전 표본보다 최신인지 검사한다. 같은 시각의 중복 표본과 역순 표본은 원시 메모리 버퍼에 넣지 않으며, 새 녹화·종료·권한 철회·연결 해제 시 시간 기준도 초기화한다. SDK가 타임스탬프를 제공하지 않는 `0` 이하 값은 기존 PLEOS 호환성을 위해 허용하고 거리 계산 단계의 중복·비현실 이동 필터를 적용한다. 이는 단위 테스트와 AVD 설치·기동으로 검증했으며 실제 차량 GNSS 정확도 증거는 아니다.
 
 Cognito 갱신의 시간 초과, Amplify `ServiceException`/`UnknownException`, 내부 `IOException`은 로그인 세션을 지우지 않는 일시 장애로 분류한다. 명시적 로그아웃, 세션 만료, 권한 거부와 API 401만 재인증 경로로 전환한다. 이 구분은 로컬 SDK 타입·Worker 계측으로 검증했으며 실제 AWS 계정 통신 증거는 아니다.
 
