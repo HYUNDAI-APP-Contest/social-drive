@@ -120,6 +120,13 @@ fun SocialDriveApp(
         }
     }
     LaunchedEffect(activeRecording?.id) {
+        val recovered = recoverRecordingDestination(destination, activeRecording != null)
+        if (recovered != destination) {
+            blockedMessage = null
+            destination = recovered
+        }
+    }
+    LaunchedEffect(activeRecording?.id) {
         if (activeRecording == null) return@LaunchedEffect
         while (true) {
             recordingNowEpochMs = System.currentTimeMillis()

@@ -1,5 +1,6 @@
 package com.socialdrive.app.ui
 
+import com.socialdrive.app.domain.AppDestination
 import com.socialdrive.app.domain.RouteSource
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,5 +17,21 @@ class RecordingMetricsTest {
     fun `실시간과 데모 경로 상태를 구분한다`() {
         assertEquals("경로 수집 중", recordingRouteStatus(RouteSource.LiveAvailable))
         assertEquals("데모 경로", recordingRouteStatus(RouteSource.DemoPreset))
+    }
+
+    @Test
+    fun `프로세스 재시작 뒤 활성 녹화 화면을 복원한다`() {
+        assertEquals(
+            AppDestination.Recording,
+            recoverRecordingDestination(AppDestination.Home, hasActiveRecording = true),
+        )
+        assertEquals(
+            AppDestination.Publish,
+            recoverRecordingDestination(AppDestination.Publish, hasActiveRecording = true),
+        )
+        assertEquals(
+            AppDestination.Home,
+            recoverRecordingDestination(AppDestination.Home, hasActiveRecording = false),
+        )
     }
 }
