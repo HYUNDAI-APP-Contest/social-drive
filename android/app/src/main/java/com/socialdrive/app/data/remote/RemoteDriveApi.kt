@@ -34,6 +34,7 @@ data class AssetUploadCommand(
     val checksumSha256Base64: String,
     val contentType: String,
     val content: ByteArray,
+    val syntheticDemoContent: Boolean = false,
 )
 
 data class RemoteDraftRef(val id: String, val version: Int)
@@ -42,10 +43,17 @@ data class RemotePublishAck(val version: Int)
 fun DraftSnapshot.assetUploads(): List<AssetUploadCommand> {
     // Contest-safe placeholders contain no original local reference, coordinate, or raw vehicle field.
     val cover = PublicationCover.bytes()
+    val syntheticRoute = routePoints.size < 2
     val route = routeDocument().toByteArray(Charsets.UTF_8)
     return listOf(
         uploadCommand(AssetKind.COVER, "route-memory-cover-v1", "image/jpeg", cover),
-        uploadCommand(AssetKind.ROUTE, "route-memory-route-v1", "application/json", route),
+        uploadCommand(
+            AssetKind.ROUTE,
+            "route-memory-route-v1",
+            "application/json",
+            route,
+            syntheticDemoContent = syntheticRoute,
+        ),
     )
 }
 
@@ -74,6 +82,7 @@ private fun DraftSnapshot.uploadCommand(
     assetId: String,
     contentType: String,
     content: ByteArray,
+    syntheticDemoContent: Boolean = false,
 ): AssetUploadCommand {
     val digest = MessageDigest.getInstance("SHA-256").digest(content)
     val hex = digest.joinToString("") { "%02x".format(it) }
@@ -87,6 +96,7 @@ private fun DraftSnapshot.uploadCommand(
         checksumSha256Base64 = base64,
         contentType = contentType,
         content = content,
+        syntheticDemoContent = syntheticDemoContent,
     )
 }
 

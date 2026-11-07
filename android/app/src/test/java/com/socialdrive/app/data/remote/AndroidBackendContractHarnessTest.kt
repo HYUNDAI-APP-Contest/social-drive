@@ -9,6 +9,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
+import com.socialdrive.app.domain.NormalizedRoutePoint
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -340,6 +341,10 @@ class AndroidBackendContractHarnessTest {
         coverPreset = "rawVehicle={vin:KMHXX00XXXX000001,speed:173.25,rpm:6200,gear:D}",
         originalContentRef = "local://37.566535,126.977969/raw-vehicle-secret",
         state = "QUEUED",
+        routePoints = listOf(
+            NormalizedRoutePoint(0, .2f, .7f),
+            NormalizedRoutePoint(1, .8f, .3f),
+        ),
     )
 
     companion object {

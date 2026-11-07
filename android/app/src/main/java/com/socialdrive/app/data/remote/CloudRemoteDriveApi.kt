@@ -10,6 +10,9 @@ class CloudRemoteDriveApi(
 ) : RemoteDriveApi {
     override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): RemoteDraftRef = translate {
         require(clientRequestId == draft.clientRequestId)
+        if (draft.routePoints.size < MIN_RECORDED_ROUTE_POINTS) {
+            throw CloudDriveException(CloudFailureKind.VALIDATION, "INSUFFICIENT_RECORDED_ROUTE", false)
+        }
         val assets = draft.assetUploads().map(AssetUploadCommand::manifest)
         val drive = client.createDrive(
             CreateDriveInput(
@@ -29,6 +32,9 @@ class CloudRemoteDriveApi(
     override suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>) = translate {
         if (commands.size != AssetKind.entries.size || commands.map { it.kind }.toSet() != AssetKind.entries.toSet()) {
             throw CloudDriveException(CloudFailureKind.CONTRACT, "INCOMPLETE_UPLOAD_MANIFEST", false)
+        }
+        if (commands.any { it.kind == AssetKind.ROUTE && it.syntheticDemoContent }) {
+            throw CloudDriveException(CloudFailureKind.VALIDATION, "SYNTHETIC_ROUTE_NOT_PUBLISHABLE", false)
         }
         commands.forEach { command ->
             val expectedKey = "${command.clientRequestId}:${command.assetId}:${command.checksumSha256Hex}"
@@ -90,6 +96,7 @@ class CloudRemoteDriveApi(
 }
 
 private const val MAX_UPLOAD_SESSION_ATTEMPTS = 2
+private const val MIN_RECORDED_ROUTE_POINTS = 2
 
 private fun AssetUploadCommand.manifest() = AssetManifest(
     kind = kind,

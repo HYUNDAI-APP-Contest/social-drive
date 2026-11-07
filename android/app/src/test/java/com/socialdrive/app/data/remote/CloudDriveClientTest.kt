@@ -13,8 +13,37 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import com.socialdrive.app.domain.DeleteFailureCode
+import com.socialdrive.app.domain.NormalizedRoutePoint
 
 class CloudDriveClientTest {
+    @Test
+    fun `AWS 게시 어댑터는 합성 데모 경로를 생성 전에 거부한다`() = runBlocking {
+        val harness = Harness()
+        val draft = testDraft().copy(routePoints = emptyList())
+
+        val failure = assertFailsWith<RemoteDriveException> {
+            CloudRemoteDriveApi(harness.client, "2026-11-01").createDrive(draft.clientRequestId, draft)
+        }
+
+        assertEquals(RemoteFailureCode.REJECTED, failure.code)
+        assertFalse(failure.retryable)
+        assertTrue(harness.api.requests.isEmpty())
+    }
+
+    @Test
+    fun `동의 철회 경합으로 합성된 경로 명령은 AWS 업로드 전에 거부한다`() = runBlocking {
+        val harness = Harness()
+        val commands = testDraft().copy(routePoints = emptyList()).assetUploads()
+
+        val failure = assertFailsWith<RemoteDriveException> {
+            CloudRemoteDriveApi(harness.client, "2026-11-01").uploadAssets("drive-remote-0001", commands)
+        }
+
+        assertEquals(RemoteFailureCode.REJECTED, failure.code)
+        assertTrue(harness.api.requests.isEmpty())
+        assertTrue(harness.objects.requests.isEmpty())
+    }
+
     @Test
     fun `토큰 갱신 시간 초과는 로그인 해제가 아닌 재시도 가능한 장애다`() = runBlocking {
         val api = FakeTransport()
@@ -150,6 +179,10 @@ class CloudDriveClientTest {
             highlightCount = 3,
             durationSeconds = 3_661,
             distanceMeters = 128_400,
+            routePoints = listOf(
+                NormalizedRoutePoint(0, .2f, .7f),
+                NormalizedRoutePoint(1, .8f, .3f),
+            ),
         )
         val adapter = CloudRemoteDriveApi(harness.client, "2026-11-01")
         val assets = draft.assetUploads()
@@ -705,6 +738,10 @@ private fun testDraft() = DraftSnapshot(
     coverPreset = "route-memory-default",
     originalContentRef = "local-recording://recording-0001",
     state = "QUEUED",
+    routePoints = listOf(
+        NormalizedRoutePoint(0, .2f, .7f),
+        NormalizedRoutePoint(1, .8f, .3f),
+    ),
 )
 
 private fun driveJson(status: String = "DRAFT", version: Int = 1, extra: String = ""): String {
