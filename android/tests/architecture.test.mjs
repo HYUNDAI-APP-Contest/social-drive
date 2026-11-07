@@ -442,7 +442,10 @@ test("actual adapters fail closed and never fall back to demo state", () => {
   assert.match(demo, /requestSimulation[\s\S]*mutableStatus\.value/);
   assert.match(viewModel, /vehicleMotion\.value\.motion != MotionState\.Parked[\s\S]*NavigationRequestResult\.Rejected/);
   assert.match(app, /LaunchedEffect\(motion\)[\s\S]*motion != MotionState\.Parked[\s\S]*destination = AppDestination\.Home/);
-  assert.match(gearSmoke, /assumeTrue\([\s\S]*InstrumentationRegistry\.getArguments\(\)\.getString\(REQUIRE_PLEOS_GEAR_ARGUMENT\) == "true"[\s\S]*val host = PleosComposeHost\(\)/);
+  assert.match(gearSmoke, /val arguments = InstrumentationRegistry\.getArguments\(\)[\s\S]*assumeTrue\([\s\S]*arguments\.getString\(REQUIRE_PLEOS_GEAR_ARGUMENT\) == "true"[\s\S]*val host = PleosComposeHost\(\)/);
+  assert.match(gearSmoke, /expectedPleosMotion/);
+  assert.match(gearSmoke, /"parked"[\s\S]*MotionState\.Parked/);
+  assert.match(gearSmoke, /"driving" -> MotionState\.Driving/);
   assert.match(gearSmoke, /withTimeoutOrNull\(PARK_CALLBACK_TIMEOUT_MILLIS\)/);
   assert.match(gearSmoke, /IntegrationSource\.Actual/);
   assert.match(gearSmoke, /CapabilityState\.Available/);
@@ -451,7 +454,7 @@ test("actual adapters fail closed and never fall back to demo state", () => {
   assert.match(gearSmoke, /completed\.await\(CLOSE_TIMEOUT_SECONDS, TimeUnit\.SECONDS\)/);
   assert.match(gearSmoke, /AtomicReference<Throwable\?>/);
   assert.match(gearSmoke, /CLOSE_TIMEOUT_SECONDS = 30L/);
-  for (const stage of ["start", "host_launched", "source_acquired", "park_observed", "asserted", "close_start", "close_done"]) {
+  for (const stage of ["start", "host_launched", "source_acquired", "motion_observed", "asserted", "close_start", "close_done"]) {
     assert.ok(gearSmoke.includes(`stage=${stage}`), stage);
   }
   assert.doesNotMatch(gearSmoke, /source\.release\(|source\.initialize\(|println\(|printStackTrace|VehicleGear|status\.motion.*Log/);
