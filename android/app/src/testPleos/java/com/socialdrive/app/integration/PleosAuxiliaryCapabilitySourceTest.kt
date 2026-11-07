@@ -15,6 +15,8 @@ class PleosAuxiliaryCapabilitySourceTest {
         assertFalse(speechInitializedAfterPermissionRefresh(permissionGranted = false, initialized = true))
         assertFalse(speechInitializedAfterPermissionRefresh(permissionGranted = false, initialized = false))
         assertTrue(speechInitializedAfterPermissionRefresh(permissionGranted = true, initialized = true))
+        assertFalse(speechListenerRegisteredAfterPermissionRefresh(permissionGranted = false, listenerRegistered = true))
+        assertTrue(speechListenerRegisteredAfterPermissionRefresh(permissionGranted = true, listenerRegistered = true))
     }
 
     @Test

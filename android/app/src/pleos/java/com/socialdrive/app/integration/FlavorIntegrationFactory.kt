@@ -360,6 +360,13 @@ private class PleosAuxiliaryCapabilitySource(private val context: Context) : Aux
             synchronized(speechOperationLock) {
                 ttsInitializationGeneration += 1
                 ttsInitialized = speechInitializedAfterPermissionRefresh(ttsGranted, ttsInitialized)
+                if (ttsEventListenerRegistered) {
+                    runCatching { tts.removeEventListener(ttsEventListener) }
+                    ttsEventListenerRegistered = speechListenerRegisteredAfterPermissionRefresh(
+                        permissionGranted = ttsGranted,
+                        listenerRegistered = ttsEventListenerRegistered,
+                    )
+                }
                 mutableTts.value = permissionDenied("실차 · TTS 권한 필요")
             }
         }
@@ -765,6 +772,11 @@ internal fun shouldRetrySpeechInitialization(
 
 internal fun speechInitializedAfterPermissionRefresh(permissionGranted: Boolean, initialized: Boolean): Boolean =
     permissionGranted && initialized
+
+internal fun speechListenerRegisteredAfterPermissionRefresh(
+    permissionGranted: Boolean,
+    listenerRegistered: Boolean,
+): Boolean = permissionGranted && listenerRegistered
 
 internal fun speechCapabilityAfterOperationFailure(permissionGranted: Boolean): CapabilityStatus =
     if (permissionGranted) {
