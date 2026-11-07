@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
@@ -28,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.UploadState
+import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.ui.components.MemoryPalette
@@ -58,6 +60,9 @@ fun PublishScreen(
     route: List<RoutePoint> = PublishDemoRoute,
     highlightCount: Int = 4,
     memoryPalette: MemoryPalette = MemoryPalette.Coast,
+    speechRecognition: CapabilityState = CapabilityState.Unavailable,
+    onDictateTitle: () -> Boolean = { false },
+    onDictateDescription: () -> Boolean = { false },
 ) {
     var title by remember(initialTitle) { mutableStateOf(initialTitle) }
     var description by remember(initialDescription) { mutableStateOf(initialDescription) }
@@ -109,28 +114,42 @@ fun PublishScreen(
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Text("2  나의 이야기", style = MaterialTheme.typography.titleLarge)
-                OutlinedTextField(
-                    title,
-                    {
-                        title = it.take(40)
-                        onCopyChanged(title, description)
-                    },
-                    Modifier.fillMaxWidth(),
-                    enabled = canEdit,
-                    label = { Text("제목") },
-                    singleLine = true,
-                )
-                OutlinedTextField(
-                    description,
-                    {
-                        description = it.take(120)
-                        onCopyChanged(title, description)
-                    },
-                    Modifier.fillMaxWidth(),
-                    enabled = canEdit,
-                    label = { Text("짧은 설명") },
-                    minLines = 3,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        title,
+                        {
+                            title = it.take(40)
+                            onCopyChanged(title, description)
+                        },
+                        Modifier.weight(1f),
+                        enabled = canEdit,
+                        label = { Text("제목") },
+                        singleLine = true,
+                    )
+                    IconButton(
+                        onClick = { onDictateTitle() },
+                        enabled = canEdit && speechRecognition == CapabilityState.Available,
+                        modifier = Modifier.size(48.dp),
+                    ) { Icon(Icons.Rounded.Mic, contentDescription = "음성으로 제목 입력") }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        description,
+                        {
+                            description = it.take(120)
+                            onCopyChanged(title, description)
+                        },
+                        Modifier.weight(1f),
+                        enabled = canEdit,
+                        label = { Text("짧은 설명") },
+                        minLines = 3,
+                    )
+                    IconButton(
+                        onClick = { onDictateDescription() },
+                        enabled = canEdit && speechRecognition == CapabilityState.Available,
+                        modifier = Modifier.size(48.dp),
+                    ) { Icon(Icons.Rounded.Mic, contentDescription = "음성으로 설명 입력") }
+                }
                 Text("3  공개 범위 · 전체 공개", style = MaterialTheme.typography.titleMedium)
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(

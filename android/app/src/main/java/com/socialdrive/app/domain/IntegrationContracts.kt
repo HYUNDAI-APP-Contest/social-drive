@@ -99,6 +99,8 @@ interface AuxiliaryCapabilitySource {
 
     suspend fun initialize()
     fun speakFeedback(message: String): Boolean
+    fun startSpeechRecognition(onText: (text: String, isFinal: Boolean) -> Unit): Boolean
+    fun stopSpeechRecognition()
     fun release()
 }
 
@@ -107,3 +109,8 @@ data class IntegrationBundle(
     val navigationGateway: NavigationGateway,
     val auxiliaryCapabilitySource: AuxiliaryCapabilitySource,
 )
+
+object SpeechRecognitionPolicy {
+    fun canStart(motion: MotionState, capability: CapabilityStatus): Boolean =
+        motion == MotionState.Parked && capability.capability == CapabilityState.Available
+}

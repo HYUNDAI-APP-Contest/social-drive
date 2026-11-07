@@ -24,6 +24,7 @@ import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.WithdrawalReceipt
 import com.socialdrive.app.domain.DeleteRequestState
 import com.socialdrive.app.domain.VehicleMotionStatus
+import com.socialdrive.app.domain.SpeechRecognitionPolicy
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -31,6 +32,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 class SocialDriveViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application as SocialDriveApplication
@@ -107,6 +109,22 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
 
     suspend fun updateDraftCopy(title: String, description: String): Boolean =
         latestDraft.value?.let { app.draftRepository.updateCopy(it.id, title, description) } ?: false
+
+    fun requestTitleDictation(): Boolean = requestDictation { draft, text ->
+        app.draftRepository.updateCopy(draft.id, text.take(40), draft.description)
+    }
+
+    fun requestDescriptionDictation(): Boolean = requestDictation { draft, text ->
+        app.draftRepository.updateCopy(draft.id, draft.title, text.take(120))
+    }
+
+    private fun requestDictation(update: suspend (DraftSnapshot, String) -> Unit): Boolean {
+        if (!SpeechRecognitionPolicy.canStart(vehicleMotion.value.motion, speechToTextCapability.value)) return false
+        val draft = latestDraft.value ?: return false
+        return app.auxiliaryCapabilitySource.startSpeechRecognition { text, _ ->
+            if (text.isNotBlank()) viewModelScope.launch { update(draft, text) }
+        }
+    }
 
     suspend fun enqueuePublish(motionState: MotionState): EnqueueResult =
         latestDraft.value?.let { app.publishScheduler.enqueue(it.id, motionState) } ?: EnqueueResult.MissingDraft

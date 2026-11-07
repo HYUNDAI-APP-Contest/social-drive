@@ -21,6 +21,7 @@ import ai.pleos.playground.tts.listener.OnInitializeListener as TtsInitializeLis
 import ai.pleos.playground.stt.SpeechToText
 import ai.pleos.playground.stt.constant.Mode as SttMode
 import ai.pleos.playground.stt.listener.OnInitializeListener as SttInitializeListener
+import ai.pleos.playground.stt.listener.ResultListener
 import com.socialdrive.app.domain.AuxiliaryCapabilitySource
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.CapabilityStatus
@@ -65,6 +66,19 @@ private class PleosAuxiliaryCapabilitySource(context: Context) : AuxiliaryCapabi
     private val mutableLocation = MutableStateFlow(checking)
     private val mutableTts = MutableStateFlow(checking)
     private val mutableStt = MutableStateFlow(checking)
+    @Volatile private var recognitionCallback: ((String, Boolean) -> Unit)? = null
+    private val recognitionListener = object : ResultListener {
+        override fun onUpdated(text: String, isFinal: Boolean) {
+            recognitionCallback?.invoke(text, isFinal)
+            if (isFinal) recognitionCallback = null
+        }
+        override fun onUpdatedEpdData(start: Long, end: Long) = Unit
+        override fun onStartedRecognition() = Unit
+        override fun onEndedRecognition() { recognitionCallback = null }
+        override fun onError(error: ai.pleos.playground.stt.constant.ErrorType) { recognitionCallback = null }
+        override fun onReady() = Unit
+        override fun onUpdatedRms(rms: Double) = Unit
+    }
     override val location: StateFlow<CapabilityStatus> = mutableLocation.asStateFlow()
     override val textToSpeech: StateFlow<CapabilityStatus> = mutableTts.asStateFlow()
     override val speechToText: StateFlow<CapabilityStatus> = mutableStt.asStateFlow()
@@ -86,7 +100,10 @@ private class PleosAuxiliaryCapabilitySource(context: Context) : AuxiliaryCapabi
         }.onFailure { mutableTts.value = unavailable("실차 · 초기화 실패") }
         runCatching {
             stt.initialize(object : SttInitializeListener {
-                override fun onSuccess() { mutableStt.value = available("실차 · 온디바이스") }
+                override fun onSuccess() {
+                    stt.addListener(recognitionListener)
+                    mutableStt.value = available("실차 · 온디바이스")
+                }
                 override fun onFailure(error: ai.pleos.playground.stt.constant.ErrorType) {
                     mutableStt.value = unavailable("실차 · 초기화 실패")
                 }
@@ -99,7 +116,22 @@ private class PleosAuxiliaryCapabilitySource(context: Context) : AuxiliaryCapabi
         return runCatching { tts.speak(message, false) }.isSuccess
     }
 
+    override fun startSpeechRecognition(onText: (String, Boolean) -> Unit): Boolean {
+        if (mutableStt.value.capability != CapabilityState.Available || recognitionCallback != null) return false
+        recognitionCallback = onText
+        return runCatching { stt.request() }
+            .onFailure { recognitionCallback = null }
+            .isSuccess
+    }
+
+    override fun stopSpeechRecognition() {
+        recognitionCallback = null
+        runCatching { stt.stop() }
+    }
+
     override fun release() {
+        stopSpeechRecognition()
+        runCatching { stt.removeListener(recognitionListener) }
         runCatching { fusedLocation.release() }
         runCatching { tts.release() }
         runCatching { stt.release() }

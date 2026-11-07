@@ -238,6 +238,9 @@ fun SocialDriveApp(
                             onReviewConflict = { navigate(AppDestination.ConflictReview) },
                             route = presentedStory.route,
                             highlightCount = presentedStory.highlights,
+                            speechRecognition = speechToTextCapability.capability,
+                            onDictateTitle = offlineViewModel::requestTitleDictation,
+                            onDictateDescription = offlineViewModel::requestDescriptionDictation,
                             memoryPalette = memoryPaletteFor(presentedStory.id),
                         )
                     }

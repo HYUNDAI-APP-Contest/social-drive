@@ -36,6 +36,8 @@ private class DemoAuxiliaryCapabilitySource : AuxiliaryCapabilitySource {
     override val speechToText: StateFlow<CapabilityStatus> = demo.asStateFlow()
     override suspend fun initialize() = Unit
     override fun speakFeedback(message: String): Boolean = false
+    override fun startSpeechRecognition(onText: (String, Boolean) -> Unit): Boolean = false
+    override fun stopSpeechRecognition() = Unit
     override fun release() = Unit
 }
 
