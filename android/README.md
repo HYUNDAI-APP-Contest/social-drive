@@ -70,6 +70,12 @@ bash scripts/gradle-local.sh --offline assemblePleosDebug
 
 `assembleDemoDebug` validates the public demo boundary. `assemblePleosDebug` additionally requires the approved Pleos Maven artifacts to already exist in the local Gradle cache when offline; neither command signs, deploys, or accesses cloud credentials.
 
+PLEOS release builds additionally fail closed through `verifyPleosCloudConfiguration`. They require
+the six validated public API/Cognito Gradle properties documented in
+[`docs/aws-app-connection.md`](../docs/aws-app-connection.md); Demo release and debug variants do
+not require those values. These are public mobile identifiers, never AWS credentials or a Cognito
+client secret.
+
 When Android SDK/Gradle dependencies are unavailable, the deterministic repository and safety contract can still be checked with:
 
 ```bash

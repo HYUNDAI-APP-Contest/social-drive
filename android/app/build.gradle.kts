@@ -198,6 +198,10 @@ android {
 }
 
 afterEvaluate {
+    tasks.named("prePleosReleaseBuild") {
+        dependsOn("verifyPleosCloudConfiguration")
+    }
+
     listOf("Demo", "Pleos").forEach { flavor ->
         tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compile${flavor}DebugScreenshotTestKotlin") {
             compilerOptions.freeCompilerArgs.add("-Xskip-metadata-version-check")
