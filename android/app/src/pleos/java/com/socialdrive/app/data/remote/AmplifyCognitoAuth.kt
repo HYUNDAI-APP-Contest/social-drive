@@ -58,9 +58,9 @@ internal class AmplifyCognitoAuth(
             return
         }
         val normalizedUsername = username.trim()
-        if (normalizedUsername.isEmpty() || password.isEmpty()) {
+        if (!CloudAuthInputPolicy.acceptsCredentials(normalizedUsername, password)) {
             password.fill('\u0000')
-            mutableState.value = CloudAuthState(CloudAuthPhase.ERROR, "아이디와 비밀번호를 입력해 주세요")
+            mutableState.value = CloudAuthState(CloudAuthPhase.ERROR, "아이디와 비밀번호 형식을 확인해 주세요")
             return
         }
         if (!operationGate.tryEnter()) {
@@ -87,7 +87,16 @@ internal class AmplifyCognitoAuth(
     }
 
     override suspend fun confirmSignIn(response: CharArray) {
-        if (response.isEmpty()) return
+        if (!CloudAuthInputPolicy.acceptsChallenge(response)) {
+            response.fill('\u0000')
+            val challengeLabel = mutableState.value.challengeLabel
+            mutableState.value = CloudAuthState(
+                CloudAuthPhase.CHALLENGE,
+                "인증 응답 형식을 확인해 주세요",
+                challengeLabel,
+            )
+            return
+        }
         if (!operationGate.tryEnter()) {
             response.fill('\u0000')
             return

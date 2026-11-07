@@ -602,6 +602,7 @@ test("PLEOS cloud build gate validates all public deployment outputs without sec
   const build = read("app/build.gradle.kts");
   const handoff = read("../docs/aws-app-connection.md");
   const auth = read("app/src/pleos/java/com/socialdrive/app/data/remote/AmplifyCognitoAuth.kt");
+  const inputPolicy = read("app/src/main/java/com/socialdrive/app/data/remote/CloudAuthInputPolicy.kt");
   assert.match(build, /tasks\.register\("verifyPleosCloudConfiguration"\)/);
   assert.match(build, /tasks\.named\("prePleosReleaseBuild"\)[\s\S]*dependsOn\("verifyPleosCloudConfiguration"\)/);
   assert.match(build, /"pleosImplementation"\("com\.amplifyframework:aws-auth-cognito:2\.27\.4"\)/);
@@ -611,6 +612,10 @@ test("PLEOS cloud build gate validates all public deployment outputs without sec
   assert.match(build, /PLEOS cloud public configuration verified/);
   assert.match(build, /!isValidCloudHost\(apiUri\.host\.lowercase\(\)\)/);
   assert.doesNotMatch(build, /cloud.*(?:secret|password|accessKey)/i);
+  assert.match(auth, /CloudAuthInputPolicy\.acceptsCredentials/);
+  assert.match(auth, /CloudAuthInputPolicy\.acceptsChallenge/);
+  assert.match(inputPolicy, /MAX_PASSWORD_CHARS = 256/);
+  assert.match(inputPolicy, /MAX_CHALLENGE_CHARS = 2_048/);
   assert.match(handoff, /\.\/gradlew verifyPleosCloudConfiguration/);
   assert.match(auth, /authenticationFlowType", "USER_SRP_AUTH"/);
   assert.match(auth, /Amplify\.Auth\.fetchAuthSession/);
