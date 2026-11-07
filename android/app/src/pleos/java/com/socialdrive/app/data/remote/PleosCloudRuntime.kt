@@ -9,14 +9,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Process-local bridge for the approved Cognito mobile login component.
  * Tokens are requested per operation and are never persisted by this runtime.
  */
 object PleosCloudRuntime : CloudConnectionStatusSource {
-    @Volatile
-    private var sessionSource: CognitoSessionSource? = null
+    private val sessionSource = AtomicReference<CognitoSessionSource?>(null)
     private val sessionMutex = Mutex()
 
     val configuration: CloudRuntimeConfiguration? by lazy {
@@ -35,12 +35,12 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
     suspend fun installSessionSource(source: CognitoSessionSource): Boolean = sessionMutex.withLock {
         val configured = configuration
         if (configured == null) {
-            sessionSource = null
+            sessionSource.set(null)
             mutableStatus.value = configurationStatus()
             return@withLock false
         }
         val valid = validateCognitoSession(source, CognitoAccessTokenPolicy(configured.cognito))
-        sessionSource = source.takeIf { valid }
+        sessionSource.set(source.takeIf { valid })
         mutableStatus.value = if (valid) {
             signedInStatus()
         } else {
@@ -50,22 +50,24 @@ object PleosCloudRuntime : CloudConnectionStatusSource {
     }
 
     suspend fun clearSessionSource() = sessionMutex.withLock {
-        sessionSource = null
+        sessionSource.set(null)
         mutableStatus.value = configurationStatus()
     }
 
     internal suspend fun reportAuthenticationFailure(label: String) = sessionMutex.withLock {
-        sessionSource = null
+        sessionSource.set(null)
         mutableStatus.value = if (configuration == null) configurationStatus() else signedOutStatus(label)
     }
 
     internal fun clientOrNull(): CloudDriveClient? {
         val configured = configuration ?: return null
-        val session = sessionSource ?: return null
+        val session = sessionSource.get() ?: return null
         val policy = CognitoAccessTokenPolicy(configured.cognito)
         val validatingSession = ValidatingCognitoSessionSource(session, policy) { valid ->
-            if (sessionSource === session) {
-                mutableStatus.value = if (valid) signedInStatus() else signedOutStatus("AWS · 로그인 갱신 필요")
+            if (valid) {
+                if (sessionSource.get() === session) mutableStatus.value = signedInStatus()
+            } else if (sessionSource.compareAndSet(session, null)) {
+                mutableStatus.value = signedOutStatus("AWS · 로그인 갱신 필요")
             }
         }
         val transports = OkHttpCloudTransports.create()

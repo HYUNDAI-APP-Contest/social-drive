@@ -535,6 +535,7 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   const demoFactory = read("app/src/demo/java/com/socialdrive/app/data/remote/FlavorRemoteDriveApiFactory.kt");
   const demoFake = read("app/src/demo/java/com/socialdrive/app/data/remote/FakeRemoteDriveApi.kt");
   const actualFactory = read("app/src/pleos/java/com/socialdrive/app/data/remote/FlavorRemoteDriveApiFactory.kt");
+  const cloudRuntime = read("app/src/pleos/java/com/socialdrive/app/data/remote/PleosCloudRuntime.kt");
   const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
   const coreScript = read("scripts/test-kotlin-core.sh");
   const suite = read("app/src/test/java/com/socialdrive/app/data/remote/CloudDriveClientTest.kt");
@@ -578,6 +579,8 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   assert.doesNotMatch(remote, /class FakeRemoteDriveApi/);
   assert.doesNotMatch(actualFactory, /FakeRemoteDriveApi/);
   assert.match(actualFactory, /SessionAwareRemoteDriveApi/);
+  assert.match(cloudRuntime, /AtomicReference<CognitoSessionSource\?>\(null\)/);
+  assert.match(cloudRuntime, /sessionSource\.compareAndSet\(session, null\)/);
   assert.match(remote, /current\(\) \?: UnavailableRemoteDriveApi\(\)/);
   assert.doesNotMatch(entities, /bearer|token|presigned|uploadUrl|authorization/i);
   assert.doesNotMatch(client + contracts + adapter, /android\.util\.Log|println\(|printStackTrace/);
