@@ -86,6 +86,17 @@ class AmplifyCognitoAuthTest {
     }
 
     @Test
+    fun `재인증 세션 정리 실패를 정상 로그인으로 표시하지 않는다`() {
+        val reauth = CloudAuthState(CloudAuthPhase.REAUTH_REQUIRED, "세션 정리 필요")
+        val reauthFailure = failedCognitoSignOutState(reauth)
+        assertEquals(CloudAuthPhase.REAUTH_REQUIRED, reauthFailure.phase)
+
+        val signedIn = CloudAuthState(CloudAuthPhase.SIGNED_IN, "연결됨")
+        assertEquals(CloudAuthPhase.SIGNED_IN, failedCognitoSignOutState(signedIn).phase)
+        assertEquals(CloudAuthPhase.ERROR, failedCognitoSignOutState(CloudAuthState(CloudAuthPhase.WORKING, "처리 중")).phase)
+    }
+
+    @Test
     fun `TOTP와 문자 MFA를 사용자에게 구분해서 안내한다`() {
         assertEquals("인증 앱 코드", AuthSignInStep.CONFIRM_SIGN_IN_WITH_TOTP_CODE.challengeLabel())
         assertEquals("문자 인증코드", AuthSignInStep.CONFIRM_SIGN_IN_WITH_SMS_MFA_CODE.challengeLabel())

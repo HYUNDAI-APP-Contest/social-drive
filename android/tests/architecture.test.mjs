@@ -686,6 +686,8 @@ test("Cognito sign-out distinguishes complete partial and failed SDK results", (
   assert.match(auth, /AWSCognitoAuthSignOutResult\.PartialSignOut[\s\S]*resume\(false\)/);
   assert.match(auth, /AWSCognitoAuthSignOutResult\.FailedSignOut[\s\S]*resumeWithException/);
   assert.match(auth, /val globallyComplete = withCognitoOperationTimeout[\s\S]*clearSessionSource\(\)/);
+  assert.match(auth, /stateBeforeSignOut[\s\S]*failedCognitoSignOutState\(stateBeforeSignOut\)/);
+  assert.match(auth, /failedCognitoSignOutState[\s\S]*CloudAuthPhase\.REAUTH_REQUIRED -> previous\.copy/);
   assert.match(auth, /CloudAuthPhase\.SIGNED_OUT[\s\S]*전체 로그아웃 상태/);
 });
 

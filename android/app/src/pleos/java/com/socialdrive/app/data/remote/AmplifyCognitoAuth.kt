@@ -124,6 +124,7 @@ internal class AmplifyCognitoAuth(
 
     override suspend fun signOut() {
         if (!operationGate.tryEnter()) return
+        val stateBeforeSignOut = mutableState.value
         mutableState.value = CloudAuthState(CloudAuthPhase.WORKING, "로그아웃 중")
         try {
             try {
@@ -140,7 +141,7 @@ internal class AmplifyCognitoAuth(
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Throwable) {
-                mutableState.value = CloudAuthState(CloudAuthPhase.SIGNED_IN, "로그아웃을 완료하지 못했습니다. 다시 시도해 주세요")
+                mutableState.value = failedCognitoSignOutState(stateBeforeSignOut)
             }
         } finally {
             operationGate.leave()
@@ -284,6 +285,12 @@ internal fun invalidatedCognitoSessionState(current: CloudAuthState): CloudAuthS
     } else {
         current
     }
+
+internal fun failedCognitoSignOutState(previous: CloudAuthState): CloudAuthState = when (previous.phase) {
+    CloudAuthPhase.REAUTH_REQUIRED -> previous.copy(message = "세션 정리를 완료하지 못했습니다. 다시 시도해 주세요")
+    CloudAuthPhase.SIGNED_IN -> previous.copy(message = "로그아웃을 완료하지 못했습니다. 다시 시도해 주세요")
+    else -> CloudAuthState(CloudAuthPhase.ERROR, "로그아웃 상태를 확인하지 못했습니다. 다시 시도해 주세요")
+}
 
 internal suspend fun <T> withCognitoOperationTimeout(
     timeoutMillis: Long = COGNITO_OPERATION_TIMEOUT_MILLIS,
