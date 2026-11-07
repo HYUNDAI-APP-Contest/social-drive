@@ -40,6 +40,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
     val integrationBundle by lazy { FlavorIntegrationFactory.create(this) }
     val vehicleMotionSource get() = integrationBundle.vehicleMotionSource
     val navigationGateway get() = integrationBundle.navigationGateway
+    val auxiliaryCapabilitySource get() = integrationBundle.auxiliaryCapabilitySource
     val parkedExecutionGate by lazy { ParkedExecutionGate(vehicleMotionSource.status.value.motion) }
     val recordingRepository: RecordingRepository by lazy { RecordingRepository(database) }
     val draftRepository: DraftRepository by lazy { DraftRepository(database) }
@@ -94,6 +95,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
         applicationScope.launch {
             vehicleMotionSource.initialize()
             navigationGateway.initialize()
+            auxiliaryCapabilitySource.initialize()
         }
         applicationScope.launch {
             vehicleMotionSource.status.collect { status ->
@@ -109,6 +111,7 @@ open class SocialDriveApplication : Application(), Configuration.Provider {
 
     override fun onTerminate() {
         navigationGateway.release()
+        auxiliaryCapabilitySource.release()
         vehicleMotionSource.release()
         super.onTerminate()
     }

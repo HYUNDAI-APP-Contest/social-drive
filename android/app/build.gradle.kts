@@ -159,6 +159,9 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     "pleosImplementation"("ai.pleos.playground:Vehicle:2.3.2")
     "pleosImplementation"("ai.pleos.playground:NaviHelper:3.0.5")
+    "pleosImplementation"("ai.pleos.playground:FusedLocation:1.1.3")
+    "pleosImplementation"("ai.pleos.playground:TextToSpeech:3.3.1")
+    "pleosImplementation"("ai.pleos.playground:SpeechToText:3.3.1")
     ksp("androidx.room:room-compiler:2.6.1")
 
     testImplementation("junit:junit:4.13.2")

@@ -1,6 +1,11 @@
 package com.socialdrive.app.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -56,6 +61,9 @@ fun SocialDriveApp(
     val vehicleMotion by offlineViewModel.vehicleMotion.collectAsStateWithLifecycle()
     val navigationState by offlineViewModel.navigationState.collectAsStateWithLifecycle()
     val navigationCapability by offlineViewModel.navigationCapability.collectAsStateWithLifecycle()
+    val locationCapability by offlineViewModel.locationCapability.collectAsStateWithLifecycle()
+    val textToSpeechCapability by offlineViewModel.textToSpeechCapability.collectAsStateWithLifecycle()
+    val speechToTextCapability by offlineViewModel.speechToTextCapability.collectAsStateWithLifecycle()
     val routePrivacy by offlineViewModel.routePrivacy.collectAsStateWithLifecycle()
     val deleteRequestState by offlineViewModel.deleteRequestState.collectAsStateWithLifecycle()
     var destination by rememberSaveable { mutableStateOf(AppDestination.Home) }
@@ -141,7 +149,12 @@ fun SocialDriveApp(
                         onConfirm = ::completeRecording,
                     )
                 }
-                when (destination) {
+                AnimatedContent(
+                    targetState = destination,
+                    transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
+                    label = "screen_transition",
+                ) { activeDestination ->
+                when (activeDestination) {
                     AppDestination.Home -> HomeScreen(
                         state = ContentState.Content(repository.drives()),
                         motion = motion,
@@ -264,6 +277,9 @@ fun SocialDriveApp(
                         theme = theme,
                         vehicleStatus = vehicleMotion.integration,
                         navigationStatus = navigationCapability,
+                        locationStatus = locationCapability,
+                        textToSpeechStatus = textToSpeechCapability,
+                        speechToTextStatus = speechToTextCapability,
                         onThemeChange = { theme = it },
                         onBack = { navigate(AppDestination.Home) },
                         routePrivacy = routePrivacy,
@@ -288,6 +304,7 @@ fun SocialDriveApp(
                             }
                         },
                     )
+                }
                 }
             }
         }

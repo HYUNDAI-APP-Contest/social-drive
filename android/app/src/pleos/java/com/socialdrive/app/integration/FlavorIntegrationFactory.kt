@@ -14,6 +14,14 @@ import ai.pleos.playground.vehicle.Vehicle
 import ai.pleos.playground.vehicle.constant.PleosPermission
 import ai.pleos.playground.vehicle.constant.control.VehicleGear
 import ai.pleos.playground.vehicle.listener.GearSelectionListener
+import ai.pleos.playground.location.fused.FusedLocation
+import ai.pleos.playground.tts.TextToSpeech
+import ai.pleos.playground.tts.constant.Mode as TtsMode
+import ai.pleos.playground.tts.listener.OnInitializeListener as TtsInitializeListener
+import ai.pleos.playground.stt.SpeechToText
+import ai.pleos.playground.stt.constant.Mode as SttMode
+import ai.pleos.playground.stt.listener.OnInitializeListener as SttInitializeListener
+import com.socialdrive.app.domain.AuxiliaryCapabilitySource
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.IntegrationBundle
@@ -43,7 +51,54 @@ object FlavorIntegrationFactory {
     fun create(context: Context): IntegrationBundle = IntegrationBundle(
         vehicleMotionSource = PleosVehicleMotionSource(context.applicationContext),
         navigationGateway = PleosNavigationGateway(context.applicationContext),
+        auxiliaryCapabilitySource = PleosAuxiliaryCapabilitySource(context.applicationContext),
     )
+}
+
+private class PleosAuxiliaryCapabilitySource(context: Context) : AuxiliaryCapabilitySource {
+    private val fusedLocation = FusedLocation(context)
+    private val tts = TextToSpeech(context, TtsMode.ON_DEVICE)
+    private val stt = SpeechToText(context, SttMode.ON_DEVICE)
+    private val checking = CapabilityStatus(CapabilityState.Unavailable, IntegrationSource.Actual, "실차 · 확인 중")
+    private fun available(label: String) = CapabilityStatus(CapabilityState.Available, IntegrationSource.Actual, label)
+    private fun unavailable(label: String) = CapabilityStatus(CapabilityState.Unavailable, IntegrationSource.Actual, label)
+    private val mutableLocation = MutableStateFlow(checking)
+    private val mutableTts = MutableStateFlow(checking)
+    private val mutableStt = MutableStateFlow(checking)
+    override val location: StateFlow<CapabilityStatus> = mutableLocation.asStateFlow()
+    override val textToSpeech: StateFlow<CapabilityStatus> = mutableTts.asStateFlow()
+    override val speechToText: StateFlow<CapabilityStatus> = mutableStt.asStateFlow()
+
+    override suspend fun initialize() {
+        runCatching {
+            fusedLocation.initialize()
+            fusedLocation.isSupported()
+        }.onSuccess { supported ->
+            mutableLocation.value = if (supported) available("실차 · SDK 지원") else unavailable("실차 · 위치 미지원")
+        }.onFailure { mutableLocation.value = unavailable("실차 · 초기화 실패") }
+        runCatching {
+            tts.initialize(object : TtsInitializeListener {
+                override fun onSuccess() { mutableTts.value = available("실차 · 온디바이스") }
+                override fun onFailure(error: ai.pleos.playground.tts.constant.ErrorType) {
+                    mutableTts.value = unavailable("실차 · 초기화 실패")
+                }
+            })
+        }.onFailure { mutableTts.value = unavailable("실차 · 초기화 실패") }
+        runCatching {
+            stt.initialize(object : SttInitializeListener {
+                override fun onSuccess() { mutableStt.value = available("실차 · 온디바이스") }
+                override fun onFailure(error: ai.pleos.playground.stt.constant.ErrorType) {
+                    mutableStt.value = unavailable("실차 · 초기화 실패")
+                }
+            })
+        }.onFailure { mutableStt.value = unavailable("실차 · 초기화 실패") }
+    }
+
+    override fun release() {
+        runCatching { fusedLocation.release() }
+        runCatching { tts.release() }
+        runCatching { stt.release() }
+    }
 }
 
 private class PleosVehicleMotionSource(context: Context) : VehicleMotionSource {

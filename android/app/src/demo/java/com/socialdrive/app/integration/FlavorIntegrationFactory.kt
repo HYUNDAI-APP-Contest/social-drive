@@ -3,6 +3,7 @@ package com.socialdrive.app.integration
 import android.content.Context
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.CapabilityStatus
+import com.socialdrive.app.domain.AuxiliaryCapabilitySource
 import com.socialdrive.app.domain.IntegrationBundle
 import com.socialdrive.app.domain.IntegrationSource
 import com.socialdrive.app.domain.MotionState
@@ -24,7 +25,17 @@ object FlavorIntegrationFactory {
     fun create(context: Context): IntegrationBundle = IntegrationBundle(
         vehicleMotionSource = DemoVehicleMotionSource(),
         navigationGateway = DemoNavigationGateway(),
+        auxiliaryCapabilitySource = DemoAuxiliaryCapabilitySource(),
     )
+}
+
+private class DemoAuxiliaryCapabilitySource : AuxiliaryCapabilitySource {
+    private val demo = MutableStateFlow(CapabilityStatus(CapabilityState.Available, IntegrationSource.Demo, "데모"))
+    override val location: StateFlow<CapabilityStatus> = demo.asStateFlow()
+    override val textToSpeech: StateFlow<CapabilityStatus> = demo.asStateFlow()
+    override val speechToText: StateFlow<CapabilityStatus> = demo.asStateFlow()
+    override suspend fun initialize() = Unit
+    override fun release() = Unit
 }
 
 private class DemoVehicleMotionSource : VehicleMotionSource {

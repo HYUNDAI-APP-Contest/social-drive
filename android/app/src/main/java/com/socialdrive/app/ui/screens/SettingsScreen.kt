@@ -50,6 +50,9 @@ fun SettingsScreen(
     theme: ThemeMode,
     vehicleStatus: CapabilityStatus,
     navigationStatus: CapabilityStatus,
+    locationStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "사용 불가"),
+    textToSpeechStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "사용 불가"),
+    speechToTextStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "사용 불가"),
     onThemeChange: (ThemeMode) -> Unit,
     onBack: () -> Unit,
     routePrivacy: RoutePrivacyStatus = RoutePrivacyStatus(
@@ -113,7 +116,7 @@ fun SettingsScreen(
                         Modifier.weight(1f).verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        IntegrationSection(vehicleStatus, navigationStatus)
+                        IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus)
                         DemoBoundaryNotice()
                     }
                 }
@@ -128,7 +131,7 @@ fun SettingsScreen(
                         deleteRequestState, onWithdrawConsent,
                         onDeleteRequest = { showDeleteConfirmation = true },
                     )
-                    IntegrationSection(vehicleStatus, navigationStatus)
+                    IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus)
                     DemoBoundaryNotice()
                 }
             }
@@ -203,14 +206,21 @@ private fun PrivacySection(
 }
 
 @Composable
-private fun IntegrationSection(vehicleStatus: CapabilityStatus, navigationStatus: CapabilityStatus) {
+private fun IntegrationSection(
+    vehicleStatus: CapabilityStatus,
+    navigationStatus: CapabilityStatus,
+    locationStatus: CapabilityStatus,
+    textToSpeechStatus: CapabilityStatus,
+    speechToTextStatus: CapabilityStatus,
+) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("연동 및 보존 상태", style = MaterialTheme.typography.titleLarge)
             IntegrationRow("차량 상태", vehicleStatus)
             IntegrationRow("차량 내비게이션", navigationStatus)
-            UnavailableStatusRow("위치 연동", "준비 중 · 사용 불가")
-            UnavailableStatusRow("음성 안내·인식", "준비 중 · 사용 불가")
+            IntegrationRow("위치 연동", locationStatus)
+            IntegrationRow("음성 안내", textToSpeechStatus)
+            IntegrationRow("음성 인식", speechToTextStatus)
             UnavailableStatusRow("차량 제어", "준비 중 · 사용 불가")
             StatusRow("오프라인 초안", "기기에 보존")
         }

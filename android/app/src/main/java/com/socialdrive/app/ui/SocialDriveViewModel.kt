@@ -62,6 +62,9 @@ class SocialDriveViewModel(application: Application) : AndroidViewModel(applicat
     val vehicleMotion: StateFlow<VehicleMotionStatus> = app.vehicleMotionSource.status
     val navigationState: StateFlow<NavigationState> = app.navigationGateway.state
     val navigationCapability = app.navigationGateway.capability
+    val locationCapability = app.auxiliaryCapabilitySource.location
+    val textToSpeechCapability = app.auxiliaryCapabilitySource.textToSpeech
+    val speechToTextCapability = app.auxiliaryCapabilitySource.speechToText
 
     val routePrivacy: StateFlow<RoutePrivacyStatus> = app.routePrivacyRepository.status
         .stateIn(

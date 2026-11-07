@@ -92,7 +92,17 @@ interface NavigationGateway {
     fun release()
 }
 
+interface AuxiliaryCapabilitySource {
+    val location: StateFlow<CapabilityStatus>
+    val textToSpeech: StateFlow<CapabilityStatus>
+    val speechToText: StateFlow<CapabilityStatus>
+
+    suspend fun initialize()
+    fun release()
+}
+
 data class IntegrationBundle(
     val vehicleMotionSource: VehicleMotionSource,
     val navigationGateway: NavigationGateway,
+    val auxiliaryCapabilitySource: AuxiliaryCapabilitySource,
 )
