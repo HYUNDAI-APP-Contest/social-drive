@@ -55,6 +55,7 @@ class BearerToken private constructor(private val value: String) {
 /** Must obtain a current session for every API operation; implementations must not persist tokens. */
 fun interface AuthSessionProvider {
     suspend fun freshBearerToken(): BearerToken
+    fun onAuthenticationRejected() = Unit
 }
 
 /** SDK boundary for a future configured Cognito client. No Cognito SDK or client secret is embedded here. */
@@ -98,6 +99,12 @@ internal class ValidatingCognitoSessionSource(
             throw IllegalStateException("Cognito session lease expired")
         }
     }
+
+    override fun onSessionInvalidated() {
+        if (!isCurrent()) return
+        runCatching { delegate.onSessionInvalidated() }
+        if (isCurrent()) onValidation(false)
+    }
 }
 
 fun interface AccessTokenValidator {
@@ -124,6 +131,8 @@ class InMemoryCognitoAuthSessionProvider(
         require(validator.isValid(token)) { "Invalid Cognito access token" }
         return BearerToken.inMemory(token)
     }
+
+    override fun onAuthenticationRejected() = source.onSessionInvalidated()
 }
 
 enum class DriveStatus { DRAFT, PUBLISHED }

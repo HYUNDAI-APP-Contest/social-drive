@@ -180,4 +180,29 @@ class ValidatingCognitoSessionSourceTest {
         }
         assertEquals(false, invalidated)
     }
+
+    @Test
+    fun `서버가 거부한 현재 세션만 SDK와 연결 상태에서 무효화한다`() {
+        var current = true
+        var delegateInvalidations = 0
+        val states = mutableListOf<Boolean>()
+        val source = ValidatingCognitoSessionSource(
+            delegate = object : CognitoSessionSource {
+                override suspend fun freshAccessToken() = "token"
+                override fun onSessionInvalidated() { delegateInvalidations += 1 }
+            },
+            validator = AccessTokenValidator { true },
+            onValidation = states::add,
+            isCurrent = { current },
+        )
+
+        source.onSessionInvalidated()
+        assertEquals(1, delegateInvalidations)
+        assertEquals(listOf(false), states)
+
+        current = false
+        source.onSessionInvalidated()
+        assertEquals(1, delegateInvalidations)
+        assertEquals(listOf(false), states)
+    }
 }

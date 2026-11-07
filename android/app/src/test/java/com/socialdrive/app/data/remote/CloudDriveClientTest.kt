@@ -419,6 +419,29 @@ class CloudDriveClientTest {
     }
 
     @Test
+    fun `서버 401은 현재 Cognito 세션을 즉시 무효화한다`() = runBlocking {
+        var invalidated = false
+        val session = object : CognitoSessionSource {
+            override suspend fun freshAccessToken() = "valid-looking-token"
+            override fun onSessionInvalidated() { invalidated = true }
+        }
+        val api = FakeTransport().also {
+            it.responses += errorResponse(401, "TOKEN_REJECTED", retryable = false)
+        }
+        val client = CloudDriveClient(
+            config = CloudDriveClientConfig(URI("https://api.example.test/dev"), setOf("upload.example.test")),
+            auth = InMemoryCognitoAuthSessionProvider(session),
+            apiTransport = api,
+            objectTransport = FakeObjectTransport(),
+        )
+
+        val failure = assertFailsWith<CloudDriveException> { client.feed() }
+
+        assertEquals(CloudFailureKind.AUTHENTICATION, failure.kind)
+        assertTrue(invalidated)
+    }
+
+    @Test
     fun `동의 갱신 요구는 작업 대기열까지 전용 실패로 전달한다`() = runBlocking {
         val harness = Harness()
         harness.api.responses += errorResponse(422, "CONSENT_RENEWAL_REQUIRED", retryable = false)
