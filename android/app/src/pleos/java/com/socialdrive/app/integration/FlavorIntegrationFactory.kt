@@ -240,6 +240,13 @@ private class PleosNaviPort(private val helper: NaviHelper) : NavigationVendorPo
     override fun addListener(listener: NavigationVendorListener) {
         val sdkListener = object : NaviHelperEventListener {
             override fun onRouteStarted(routeStartInfo: RouteStartInfo) = listener.onRouteStarted()
+
+            // PLEOS Connect Emulator 2.1.0 still emits the legacy completion callback.
+            // NaviHelper 3.0.5 deprecates it in favor of onRoutingCompleted(), so normalize
+            // both SDK generations to the same application-owned terminal event.
+            @Suppress("DEPRECATION")
+            override fun onRouteEnded() = listener.onRoutingCompleted()
+
             override fun onRoutingCompleted() = listener.onRoutingCompleted()
             override fun onError(errorCode: NaviErrorCode) = listener.onError(errorCode.safeUserMessage())
         }

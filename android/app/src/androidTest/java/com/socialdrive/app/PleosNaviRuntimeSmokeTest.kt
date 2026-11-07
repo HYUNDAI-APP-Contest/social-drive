@@ -49,6 +49,7 @@ class PleosNaviRuntimeSmokeTest {
         val evidence = gateway as? NavigationRuntimeEvidenceSource
             ?: throw AssertionError("Production navigation evidence boundary is unavailable")
 
+        var primaryFailure: Throwable? = null
         try {
             runBlocking {
                 val capability = withTimeout(INITIALIZE_DEADLINE_MILLIS) {
@@ -64,18 +65,36 @@ class PleosNaviRuntimeSmokeTest {
                 Log.i(LOG_TAG, STAGE_REQUESTED)
 
                 val terminal = withTimeout(REQUEST_DEADLINE_MILLIS) {
-                    gateway.state.filter { it is NavigationState.Active || it is NavigationState.Failed }.first()
+                    gateway.state.filter { state ->
+                        state is NavigationState.Failed ||
+                            evidence.navigationRuntimeEvidence().any {
+                                it.stage == NavigationRuntimeStage.TERMINAL_COMPLETED
+                            }
+                    }.first()
                 }
                 assertTrue(terminal is NavigationState.Active)
                 Log.i(LOG_TAG, STAGE_TERMINAL)
             }
 
             assertSuccessfulRequestEvidence(evidence.navigationRuntimeEvidence())
-        } finally {
-            releaseWithinDeadline(gateway::release)
-            assertSuccessfulReleaseEvidence(evidence.navigationRuntimeEvidence())
-            Log.i(LOG_TAG, STAGE_RELEASED)
+        } catch (failure: Throwable) {
+            primaryFailure = failure
         }
+
+        val cleanupFailure = runCatching {
+            releaseWithinDeadline(gateway::release)
+            assertReleaseEvidence(
+                evidence.navigationRuntimeEvidence(),
+                requireCompletedRequest = primaryFailure == null,
+            )
+            Log.i(LOG_TAG, STAGE_RELEASED)
+        }.exceptionOrNull()
+
+        primaryFailure?.let { failure ->
+            cleanupFailure?.let(failure::addSuppressed)
+            throw failure
+        }
+        cleanupFailure?.let { throw it }
     }
 
     private fun releaseWithinDeadline(release: () -> Unit) {
@@ -126,11 +145,18 @@ class PleosNaviRuntimeSmokeTest {
         assertFalse(sameLifecycle.any { it.stage in FAIL_CLOSED_STAGES })
     }
 
-    private fun assertSuccessfulReleaseEvidence(actual: List<NavigationRuntimeEvidence>) {
-        val terminal = actual.single { it.stage == NavigationRuntimeStage.TERMINAL_COMPLETED }
+    private fun assertReleaseEvidence(
+        actual: List<NavigationRuntimeEvidence>,
+        requireCompletedRequest: Boolean,
+    ) {
+        val terminal = actual.singleOrNull { it.stage == NavigationRuntimeStage.TERMINAL_COMPLETED }
+        if (requireCompletedRequest) assertTrue(terminal != null)
+        val lifecycleGeneration = terminal?.lifecycleGeneration
+            ?: actual.lastOrNull { it.stage == NavigationRuntimeStage.INITIALIZE_STARTED }?.lifecycleGeneration
+            ?: throw AssertionError("Pleos Navi lifecycle evidence is unavailable")
         assertTrue(
             actual.any {
-                it.lifecycleGeneration == terminal.lifecycleGeneration &&
+                it.lifecycleGeneration == lifecycleGeneration &&
                     it.requestGeneration == 0L &&
                     it.stage == NavigationRuntimeStage.RELEASED
             },

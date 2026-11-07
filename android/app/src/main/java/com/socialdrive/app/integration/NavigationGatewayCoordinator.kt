@@ -143,7 +143,7 @@ internal class NavigationGatewayCoordinator(
                 is RequestStart.Accepted -> {
                     record(start.token, NavigationRuntimeStage.REQUEST_VALIDATED)
                     val listener = requestListener(session, start.token)
-                    val requestContext = RequestContext(start.token, listener, listenerAdded = true)
+                    val requestContext = RequestContext(start.token, listener)
                     session.request = requestContext
                     observer.onStateChanged(start.state)
                     AcceptedRequest(session, requestContext)
@@ -166,16 +166,35 @@ internal class NavigationGatewayCoordinator(
         }
         if (!timeoutKept) timeout.cancel()
 
+        var dispatched = false
         val invoked = invokeVendor(accepted.session) { port ->
             port.addListener(accepted.request.listener)
+            val listenerKept = synchronized(lock) {
+                if (isCurrentRequestLocked(accepted.session, accepted.request.token)) {
+                    accepted.request.listenerAdded = true
+                    true
+                } else {
+                    accepted.session.pendingRemovals += ListenerRemoval(
+                        accepted.request.listener,
+                        accepted.request.token,
+                    )
+                    false
+                }
+            }
+            if (!listenerKept) return@invokeVendor
             record(accepted.request.token, NavigationRuntimeStage.REQUEST_DISPATCHED)
+            dispatched = true
             port.requestRoute(request)
         }
         if (!invoked.success) {
             handleInvocationFailure(accepted.session, accepted.request.token)
             return NavigationRequestResult.Rejected(REQUEST_FAILED_SHORT)
         }
-        return if (invoked.started) NavigationRequestResult.Accepted else NavigationRequestResult.Rejected(CONNECTION_UNAVAILABLE)
+        return if (invoked.started && dispatched) {
+            NavigationRequestResult.Accepted
+        } else {
+            NavigationRequestResult.Rejected(CONNECTION_UNAVAILABLE)
+        }
     }
 
     fun rejectLocally(userMessage: String) {

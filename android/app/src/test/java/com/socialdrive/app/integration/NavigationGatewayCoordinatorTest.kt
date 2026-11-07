@@ -141,6 +141,23 @@ class NavigationGatewayCoordinatorTest {
     }
 
     @Test
+    fun `duplicate route completion callbacks settle exactly once`() {
+        val harness = Harness()
+        harness.coordinator.initialize()
+        val port = harness.ports.single()
+        harness.coordinator.requestRoute(request("duplicate-completion", "완료 중복"))
+        val listener = requireNotNull(port.listener)
+
+        listener.onRoutingCompleted()
+        listener.onRoutingCompleted()
+        harness.scheduler.advanceBy(250)
+
+        assertEquals(NavigationState.Active("완료 중복"), harness.observer.states.last())
+        assertEquals(1, harness.evidence.stages().count { it == NavigationRuntimeStage.TERMINAL_COMPLETED })
+        assertEquals(1, port.events.count { it == "removeListener" })
+    }
+
+    @Test
     fun `listener removal failure prevents active success and release failure is visible`() {
         val harness = Harness { port ->
             port.removeFailure = true
@@ -229,6 +246,7 @@ class NavigationGatewayCoordinatorTest {
         assertIs<NavigationState.Failed>(harness.observer.states.last())
         assertEquals(0, port.events.count { it == "requestRoute" })
         assertTrue(NavigationRuntimeStage.REQUEST_DISPATCHED !in harness.evidence.stages())
+        assertTrue(NavigationRuntimeStage.LISTENER_REMOVED !in harness.evidence.stages())
     }
 
     @Test

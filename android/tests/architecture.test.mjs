@@ -455,6 +455,8 @@ test("navigation validates named coordinates and serializes requests without log
   assert.match(pleos, /NavigationRequestValidator\.validate\(request\)[\s\S]*coordinator\.requestRoute\(request\)/);
   assert.match(pleos, /NavigationRuntimeEvidenceSource/);
   assert.match(pleos, /NaviHelperEventListener/);
+  assert.match(pleos, /override fun onRouteEnded\(\) = listener\.onRoutingCompleted\(\)/);
+  assert.match(pleos, /override fun onRoutingCompleted\(\) = listener\.onRoutingCompleted\(\)/);
   assert.match(pleos, /safeUserMessage/);
   assert.doesNotMatch(pleos, /android\.util\.Log|println\(|printStackTrace/);
   assert.match(evidence, /data class NavigationRuntimeEvidence\([\s\S]*lifecycleGeneration: Long,[\s\S]*requestGeneration: Long,[\s\S]*stage: NavigationRuntimeStage/);
@@ -465,6 +467,8 @@ test("navigation validates named coordinates and serializes requests without log
   assert.match(naviSmoke, /NavigationRequestResult\.Accepted/);
   assert.match(naviSmoke, /terminal is NavigationState\.Active/);
   assert.match(naviSmoke, /releaseWithinDeadline\(gateway::release\)/);
+  assert.match(naviSmoke, /primaryFailure[\s\S]*addSuppressed/);
+  assert.match(naviSmoke, /singleOrNull \{ it\.stage == NavigationRuntimeStage\.TERMINAL_COMPLETED \}/);
   assert.match(naviSmoke, /NavigationRuntimeStage\.LISTENER_REMOVED/);
   assert.match(naviSmoke, /NavigationRuntimeStage\.RELEASED/);
   assert.match(naviSmoke, /it\.lifecycleGeneration == terminal\.lifecycleGeneration/);
@@ -509,7 +513,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 91/);
+  assert.match(coreRunner, /expectedTests = 92/);
   assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 
