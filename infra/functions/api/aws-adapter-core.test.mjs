@@ -160,6 +160,7 @@ test("published deletion removes the feed index and returns the prior drive for 
   const deleted = await repository.deleteDrive({
     driveId: published.id,
     userId: published.ownerId,
+    idempotencyKey: "d".repeat(64),
     now: "2026-11-01T11:00:00.000Z",
   });
 
@@ -167,7 +168,41 @@ test("published deletion removes the feed index and returns the prior drive for 
   assert.equal(deleted.status, "PUBLISHED");
   assert.match(update.input.UpdateExpression, /REMOVE FeedPK, FeedSK/);
   assert.equal(update.input.ExpressionAttributeValues[":deleted"], "DELETED");
+  assert.equal(update.input.ExpressionAttributeValues[":idempotencyKey"], "d".repeat(64));
   assert.equal(update.input.ConditionExpression, "ownerId = :owner AND #status <> :deleted");
+});
+
+test("deleted Dynamo records accept only the original deletion identity", async () => {
+  const deletedDrive = {
+    ...draftRequest.draft,
+    id: draftRequest.driveId,
+    ownerId: draftRequest.userId,
+    status: "DELETED",
+    version: 3,
+    deleteIdempotencyKey: "d".repeat(64),
+  };
+  const repository = new DynamoRepository({
+    tableName: "demo",
+    client: { send: async () => ({ Item: { PK: "DRIVE#drive-demo-001", SK: "META", entity: "DRIVE", ...deletedDrive } }) },
+    commands: dynamoCommands,
+  });
+
+  const replay = await repository.deleteDrive({
+    driveId: deletedDrive.id,
+    userId: deletedDrive.ownerId,
+    idempotencyKey: deletedDrive.deleteIdempotencyKey,
+    now: "2026-11-01T11:00:00.000Z",
+  });
+  assert.equal(replay.status, "DELETED");
+  await assert.rejects(
+    repository.deleteDrive({
+      driveId: deletedDrive.id,
+      userId: deletedDrive.ownerId,
+      idempotencyKey: "e".repeat(64),
+      now: "2026-11-01T11:00:00.000Z",
+    }),
+    (error) => error instanceof Error && error.code === "IDEMPOTENCY_CONFLICT" && error.status === 409,
+  );
 });
 
 test("asset deletion targets every manifest object under the private drive prefix", async () => {

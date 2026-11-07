@@ -4,6 +4,7 @@ import { createHandler } from "./app.mjs";
 import { MemoryAssets, MemoryRepository } from "./memory-adapters.mjs";
 
 const digest = "a".repeat(64);
+const deleteKey = "d".repeat(64);
 const draft = (clientDraftId = "client-draft-001") => ({
   clientDraftId, schemaVersion: 1, title: "데모 바닷길", summary: "공개에 동의한 데모 경로",
   visibility: "PUBLIC", distanceMeters: 12000, durationSeconds: 1800, highlightCount: 2,
@@ -37,6 +38,10 @@ function harness() {
   return { handler, repository, assets, logs };
 }
 const parse = (result) => result.body ? JSON.parse(result.body) : null;
+const deleteEvent = (driveId, key = deleteKey) => event("DELETE /drives/{driveId}", {
+  driveId,
+  headers: { "Idempotency-Key": key },
+});
 
 async function createDrive(ctx, { key = "idempotency-demo-001", payload = draft(), userId = "user-demo-a" } = {}) {
   const result = await ctx.handler(event("POST /drives", { userId, body: payload, headers: { "Idempotency-Key": key } }));
@@ -129,9 +134,22 @@ test("patch and delete are owner-only, versioned, and delete is idempotent", asy
   assert.equal(denied.statusCode, 404);
   const updated = parse(await ctx.handler(event("PATCH /drives/{driveId}", { driveId: drive.id, body: { expectedVersion: 1, title: "안전한 새 제목" } }))).drive;
   assert.equal(updated.version, 2); assert.equal(updated.title, "안전한 새 제목");
-  const deleted = await ctx.handler(event("DELETE /drives/{driveId}", { driveId: drive.id }));
-  const repeated = await ctx.handler(event("DELETE /drives/{driveId}", { driveId: drive.id }));
+  const deleted = await ctx.handler(deleteEvent(drive.id));
+  const repeated = await ctx.handler(deleteEvent(drive.id));
   assert.equal(deleted.statusCode, 204); assert.equal(repeated.statusCode, 204);
+});
+
+test("delete requires one stable lowercase SHA-256 idempotency key", async () => {
+  const ctx = harness(); const created = await createDrive(ctx); const drive = created.body.drive;
+  const missing = await ctx.handler(event("DELETE /drives/{driveId}", { driveId: drive.id }));
+  const malformed = await ctx.handler(deleteEvent(drive.id, "D".repeat(64)));
+  assert.equal(missing.statusCode, 400); assert.equal(parse(missing).error.code, "IDEMPOTENCY_KEY_REQUIRED");
+  assert.equal(malformed.statusCode, 400); assert.equal(parse(malformed).error.code, "IDEMPOTENCY_KEY_REQUIRED");
+
+  assert.equal((await ctx.handler(deleteEvent(drive.id))).statusCode, 204);
+  const conflictingReplay = await ctx.handler(deleteEvent(drive.id, "e".repeat(64)));
+  assert.equal(conflictingReplay.statusCode, 409);
+  assert.equal(parse(conflictingReplay).error.code, "IDEMPOTENCY_CONFLICT");
 });
 
 test("deleting a published drive removes it from feed and detail and cleans every asset", async () => {
@@ -139,7 +157,7 @@ test("deleting a published drive removes it from feed and detail and cleans ever
   await completeAndPublish(ctx, drive);
   assert.equal(parse(await ctx.handler(event("GET /feed"))).items.length, 1);
 
-  const deleted = await ctx.handler(event("DELETE /drives/{driveId}", { driveId: drive.id }));
+  const deleted = await ctx.handler(deleteEvent(drive.id));
 
   assert.equal(deleted.statusCode, 204);
   assert.equal((await ctx.repository.getDrive(drive.id)).status, "DELETED");
@@ -164,11 +182,11 @@ test("delete remains successful and retryable when private asset cleanup is temp
   const ctx = harness(); const created = await createDrive(ctx); const drive = created.body.drive;
   const originalDelete = ctx.assets.deleteAssets.bind(ctx.assets);
   ctx.assets.deleteAssets = async () => { throw new Error("private provider detail"); };
-  const first = await ctx.handler(event("DELETE /drives/{driveId}", { driveId: drive.id }));
+  const first = await ctx.handler(deleteEvent(drive.id));
   assert.equal(first.statusCode, 204);
   assert.ok(ctx.logs.some((entry) => entry.errorCode === "ASSET_CLEANUP_PENDING"));
   assert.equal(JSON.stringify(ctx.logs).includes("private provider detail"), false);
   ctx.assets.deleteAssets = originalDelete;
-  const second = await ctx.handler(event("DELETE /drives/{driveId}", { driveId: drive.id }));
+  const second = await ctx.handler(deleteEvent(drive.id));
   assert.equal(second.statusCode, 204); assert.ok(ctx.assets.deleted.has(`${drive.id}:COVER`));
 });

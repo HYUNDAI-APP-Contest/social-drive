@@ -159,7 +159,9 @@ export function createHandler({ repository, assets, clock = () => new Date(), id
         const updated = await repository.updateDrive({ driveId, userId, expectedVersion: body.expectedVersion, changes, now: now.toISOString() });
         result = response(200, { drive: publicDrive(updated) }, requestId);
       } else if (routeKey === "DELETE /drives/{driveId}") {
-        const deleted = await repository.deleteDrive({ driveId, userId, now: now.toISOString() });
+        const idempotencyKey = header(event, "idempotency-key");
+        if (!/^[a-f0-9]{64}$/.test(idempotencyKey ?? "")) throw new ApiError(400, "IDEMPOTENCY_KEY_REQUIRED", "삭제 요청 식별 정보를 확인해 주세요.");
+        const deleted = await repository.deleteDrive({ driveId, userId, idempotencyKey, now: now.toISOString() });
         if (deleted) {
           try { await assets.deleteAssets(deleted); }
           catch { logger.warn?.({ requestId, routeKey, status: 204, errorCode: "ASSET_CLEANUP_PENDING" }); }
