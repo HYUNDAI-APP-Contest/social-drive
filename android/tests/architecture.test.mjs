@@ -482,12 +482,14 @@ test("navigation validates named coordinates and serializes requests without log
   assert.match(build, /gradleProperty\("privacySafeBuildDir"\)/);
   assert.match(gradleLauncher, /SOCIAL_DRIVE_ANDROID_USER_HOME/);
   assert.match(runtimeVerifier, /mktemp -d[\s\S]*privacySafeBuildDir/);
+  assert.match(runtimeVerifier, /--offline --no-daemon/);
   assert.match(runtimeVerifier, /status --porcelain --untracked-files=normal/);
   assert.equal((runtimeVerifier.match(/assert_source_unchanged/g) ?? []).length, 3);
   assert.match(runtimeVerifier, /PleosNaviSmoke:\\s\+stage=/);
   assert.match(runtimeVerifier, /rawVendorLogRetained: false/);
   assert.match(runtimeVerifier, /trap cleanup EXIT/);
   assert.match(runtimeVerifier, /rm -rf "\$temporary_root"/);
+  assert.match(runtimeVerifier, /! -e "\$temporary_root"/);
   assert.doesNotMatch(runtimeVerifier, /cp .*logcat|mv .*logcat/);
   assert.match(pleosGatewayTest, /invalid production request never registers listener or calls vendor request/);
   assert.match(pleosGatewayTest, /assertEquals\(0, port\.addListenerCalls\)/);

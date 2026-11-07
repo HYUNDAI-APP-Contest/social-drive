@@ -47,7 +47,9 @@ assert_source_unchanged() {
     fail 'the source tree changed during verification; evidence was not published.'
 }
 temporary_root="$(mktemp -d "${TMPDIR:-/tmp}/social-drive-pleos-navi.XXXXXX")"
-cleanup() { rm -rf "$temporary_root"; }
+cleanup() {
+  [[ -z "${temporary_root:-}" || ! -e "$temporary_root" ]] || rm -rf "$temporary_root"
+}
 trap cleanup EXIT
 isolated_build="$temporary_root/app-build"
 export SOCIAL_DRIVE_ANDROID_USER_HOME="$temporary_root/android-user-home"
@@ -64,7 +66,7 @@ for stale in \
 done
 
 status 'Running the exact connected smoke in an isolated, disposable result directory.'
-ANDROID_SERIAL="$serial" bash "$android_root/scripts/gradle-local.sh" --offline \
+ANDROID_SERIAL="$serial" bash "$android_root/scripts/gradle-local.sh" --offline --no-daemon \
   -PprivacySafeBuildDir="$isolated_build" \
   :app:connectedPleosDebugAndroidTest \
   -Pandroid.testInstrumentationRunnerArguments.class=com.socialdrive.app.PleosNaviRuntimeSmokeTest \
@@ -74,7 +76,7 @@ assert_source_unchanged
 evidence_directory="$android_root/build/pleos-runtime-evidence"
 mkdir -p "$evidence_directory"
 evidence_temp="$(mktemp "$evidence_directory/.${source_sha}.XXXXXX")"
-trap 'rm -rf "$temporary_root"; rm -f "$evidence_temp"' EXIT
+trap 'cleanup; rm -f "$evidence_temp"' EXIT
 
 node - "$isolated_build" "$evidence_temp" "$source_sha" "$avd_name" "$api_level" <<'NODE'
 const fs = require("node:fs");
@@ -135,6 +137,9 @@ const evidence = {
 };
 fs.writeFileSync(output, `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
 NODE
+
+cleanup
+[[ ! -e "$temporary_root" ]] || fail 'disposable UTP output could not be destroyed; evidence was not published.'
 
 for forbidden in 'latitude=' 'longitude=' '"lat"' '"lon"' 'RouteInfo(' 'GeoPoint(' 'poiName' '공개 검증 목적지'; do
   if grep -Fq "$forbidden" "$evidence_temp"; then
