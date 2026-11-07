@@ -6,12 +6,12 @@
 
 ## 확인된 실행 스냅샷
 
-아래 결과는 앱 코드 커밋 `79b1a5c`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
+아래 결과는 앱 코드 커밋 `44d1d3e`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
 
 - 대상: `emulator-5554`, Android user 10, PLEOS 가로 화면 `2560×1440`
 - 패키지: `com.socialdrive.app`
 - APK: `android/app/build/outputs/apk/pleos/debug/app-pleos-debug.apk`
-- SHA-256: `76ae128ee10f6b28cd57c48bbd8ac1dfb04452b654a97f3a4bd7adcbf89f26b0`
+- SHA-256: `d5d0c683f94f6c9a66c48d32ccdcc7ad9d1a8827f8e24b22fc548a2c27078b8a`
 - 설치 결과: `adb install -r` 성공
 - 시작 결과: `com.socialdrive.app/.MainActivity`가 현재 포커스이며 시작 직후 FATAL/ANR 없음
 - 설정 화면: 차량 상태, 차량 내비게이션, 위치 연동, 음성 안내, 음성 인식이 모두 `PLEOS 연결됨`
@@ -26,6 +26,8 @@
 TTS 초기화 성공 뒤 SDK `EventListener`를 등록해 발화 요청 이후 발생하는 오디오 엔진·권한·타임아웃 등의 비동기 `onError`도 서비스 연결 장애 상태로 반영한다. 앱 해제 시 리스너를 제거한다. SDK 바이너리 시그니처와 PLEOS 빌드·기동은 확인했지만 실제 스피커에서 각 오류를 강제 발생시킨 증거는 아니다.
 
 STT `ResultListener.onError`는 SDK 오류 종류를 구분한다. `TIMEOUT`은 capability를 유지한 채 `인식된 음성 없음`으로 종료하고, 마이크·오디오·온디바이스 엔진·권한·지원 언어 등의 오류는 서비스 장애로 전환해 재초기화 대상이 된다. enum 기반 분류는 PLEOS 단위 테스트로 확인했지만 실제 마이크 오류 강제 발생 증거는 아니다.
+
+리스너 제거 뒤 이전 STT 세션에서 늦은 오류가 도착하더라도 현재 세션 번호와 일치해 실제 활성 세션을 종료한 경우에만 capability 장애를 반영한다. 이전 엔진·권한 오류가 새 인식 세션을 끊지 않는 세대 격리는 PLEOS 단위 테스트로 확인했다.
 
 키보드와 STT로 입력한 제목·설명은 UTF-16 문자 수가 아니라 Unicode 코드포인트 기준으로 제한하고 저장소에서도 같은 제한을 다시 적용한다. 경계의 supplementary 문자를 반쪽 surrogate로 저장하지 않는 것은 핵심 단위 테스트로 확인했으며, 실제 한국어 STT 결과 품질을 검증했다는 의미는 아니다.
 
