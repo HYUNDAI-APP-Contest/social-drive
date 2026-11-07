@@ -559,6 +559,18 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   ]) assert.ok(suite.includes(marker), marker);
 });
 
+test("PLEOS cloud build gate validates all public deployment outputs without secret fields", () => {
+  const build = read("app/build.gradle.kts");
+  const handoff = read("../docs/aws-app-connection.md");
+  assert.match(build, /tasks\.register\("verifyPleosCloudConfiguration"\)/);
+  for (const marker of [
+    "apiBaseUrl", "uploadHosts", "consentPolicyVersion", "cognitoRegion", "cognitoUserPoolId", "cognitoClientId",
+  ]) assert.ok(build.includes(`\"${marker}\"`), marker);
+  assert.match(build, /PLEOS cloud public configuration verified/);
+  assert.doesNotMatch(build, /cloud.*(?:secret|password|accessKey)/i);
+  assert.match(handoff, /\.\/gradlew verifyPleosCloudConfiguration/);
+});
+
 test("publish concurrency and upload recovery retain frozen versions and bounded durable rewinds", () => {
   const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
   const daos = read("app/src/main/java/com/socialdrive/app/data/local/Daos.kt");

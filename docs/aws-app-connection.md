@@ -24,6 +24,12 @@
 -PsocialDrive.cloud.cognitoClientId=xxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
+출력값을 받은 뒤 APK를 만들기 전에 같은 `-P` 인자와 함께 다음 게이트를 실행한다. 이 작업은 값을 로그에 출력하지 않고 누락, HTTP URL, 스킴이 포함된 업로드 호스트, 리전이 다른 User Pool, 잘못된 모바일 Client ID를 거부한다.
+
+```text
+./gradlew verifyPleosCloudConfiguration
+```
+
 로그인 어댑터는 `PleosCloudRuntime.configuration.cognito`의 검증된 공개 식별자를 사용한다. 현재 액세스 토큰을 매 요청마다 반환하는 `CognitoSessionSource`를 구현하고 로그인 성공 뒤 coroutine에서 `PleosCloudRuntime.installSessionSource(source)`를 호출한다. 이 함수가 `true`를 반환해야 설정 화면이 `AWS · 로그인 검증됨`으로 바뀐다. 잘못된 토큰 또는 예외를 반환한 공급자는 저장하지 않는다. 로그아웃 때도 coroutine에서 `PleosCloudRuntime.clearSessionSource()`를 호출한다. 토큰은 Room, WorkManager 입력, 로그에 저장하지 않는다.
 
 클라이언트는 API 요청 직전에 JWT의 `iss`, `client_id`, `token_use=access`, `iat`, `exp`를 검증한다. 승인된 User Pool·모바일 Client ID와 다르거나 만료가 30초 이내인 토큰은 네트워크로 보내지 않고 `AUTH_SESSION_UNAVAILABLE`로 중단한다. JWT 서명 검증은 Cognito JWT authorizer가 담당하며 앱은 서명 검증 성공을 주장하지 않는다.

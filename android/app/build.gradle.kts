@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -30,6 +32,50 @@ val cloudConsentPolicyVersion = providers.gradleProperty("socialDrive.cloud.cons
 val cloudCognitoRegion = providers.gradleProperty("socialDrive.cloud.cognitoRegion").orElse("")
 val cloudCognitoUserPoolId = providers.gradleProperty("socialDrive.cloud.cognitoUserPoolId").orElse("")
 val cloudCognitoClientId = providers.gradleProperty("socialDrive.cloud.cognitoClientId").orElse("")
+
+tasks.register("verifyPleosCloudConfiguration") {
+    group = "verification"
+    description = "Validates the public AWS/Cognito configuration without printing its values."
+    doLast {
+        val values = linkedMapOf(
+            "apiBaseUrl" to cloudApiBaseUrl.get(),
+            "uploadHosts" to cloudUploadHosts.get(),
+            "consentPolicyVersion" to cloudConsentPolicyVersion.get(),
+            "cognitoRegion" to cloudCognitoRegion.get(),
+            "cognitoUserPoolId" to cloudCognitoUserPoolId.get(),
+            "cognitoClientId" to cloudCognitoClientId.get(),
+        )
+        val missing = values.filterValues { it.isBlank() }.keys
+        if (missing.isNotEmpty()) {
+            throw GradleException("PLEOS cloud configuration is incomplete: ${missing.joinToString()} are required.")
+        }
+        val apiUri = runCatching { URI(values.getValue("apiBaseUrl")) }.getOrNull()
+        if (apiUri == null || !apiUri.scheme.equals("https", true) || apiUri.host == null ||
+            apiUri.userInfo != null || apiUri.query != null || apiUri.fragment != null ||
+            (apiUri.port != -1 && apiUri.port != 443)
+        ) {
+            throw GradleException("PLEOS cloud API URL must be an origin/path HTTPS URL without credentials, query, or fragment.")
+        }
+        val hosts = values.getValue("uploadHosts").split(',').map(String::trim).filter(String::isNotEmpty)
+        if (hosts.isEmpty() || hosts.any { it != it.lowercase() || !it.matches(Regex("[a-z0-9.-]+")) }) {
+            throw GradleException("PLEOS cloud upload hosts must be lowercase host names without schemes or paths.")
+        }
+        val policy = values.getValue("consentPolicyVersion")
+        if (!policy.matches(Regex("[A-Za-z0-9._-]{1,32}"))) {
+            throw GradleException("PLEOS cloud consent policy version has an invalid format.")
+        }
+        val region = values.getValue("cognitoRegion").trim().lowercase()
+        val pool = values.getValue("cognitoUserPoolId").trim()
+        val client = values.getValue("cognitoClientId").trim().lowercase()
+        val regionPattern = Regex("[a-z]{2}(?:-gov)?-[a-z]+-\\d")
+        val poolPattern = Regex("(${regionPattern.pattern})_[A-Za-z0-9]{9}")
+        val poolRegion = poolPattern.matchEntire(pool)?.groupValues?.get(1)
+        if (!regionPattern.matches(region) || poolRegion != region || !client.matches(Regex("[a-z0-9]{26}"))) {
+            throw GradleException("PLEOS Cognito region, User Pool ID, or public mobile Client ID has an invalid format.")
+        }
+        logger.lifecycle("PLEOS cloud public configuration verified.")
+    }
+}
 
 // Inspect the resolved graph, not the user-supplied task spelling. This catches Gradle
 // abbreviations and lifecycle tasks whose dependencies create a release artifact.
