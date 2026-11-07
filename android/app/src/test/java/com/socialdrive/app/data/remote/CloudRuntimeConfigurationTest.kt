@@ -1,10 +1,25 @@
 package com.socialdrive.app.data.remote
 
+import java.net.URI
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 
 class CloudRuntimeConfigurationTest {
+    @Test
+    fun `하위 클라이언트 구성도 공개 DNS 호스트만 허용한다`() {
+        assertFailsWith<IllegalArgumentException> {
+            CloudDriveClientConfig(URI("https://localhost/prod"), setOf("upload.example.com"))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            CloudDriveClientConfig(URI("https://api.example.com/prod"), setOf("127.0.0.1"))
+        }
+        assertFailsWith<IllegalArgumentException> {
+            CloudDriveClientConfig(URI("https://api.example.com/prod"), setOf("upload.example.com/path"))
+        }
+    }
+
     @Test
     fun `승인된 HTTPS 구성만 파싱한다`() {
         val config = CloudRuntimeConfiguration.parse(

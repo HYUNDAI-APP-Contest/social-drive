@@ -259,7 +259,8 @@ data class CloudDriveClientConfig(
         require(apiBaseUri.scheme.equals("https", ignoreCase = true))
         require(apiBaseUri.userInfo == null && apiBaseUri.query == null && apiBaseUri.fragment == null)
         require(apiBaseUri.host != null && (apiBaseUri.port == -1 || apiBaseUri.port == 443))
+        require(apiBaseUri.host.lowercase().isValidCloudHost())
         require(allowedUploadHosts.isNotEmpty())
-        require(allowedUploadHosts.all { it.isNotBlank() && it == it.lowercase() })
+        require(allowedUploadHosts.all { it == it.lowercase() && it.isValidCloudHost() })
     }
 }
