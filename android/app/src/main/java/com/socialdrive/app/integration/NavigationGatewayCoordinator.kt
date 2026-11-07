@@ -353,12 +353,18 @@ internal class NavigationGatewayCoordinator(
     private fun completeRequest(completion: RequestCompletion) {
         cancelTasks(completion.tasks)
         val cleaned = runMaintenance(completion.maintenance)
-        synchronized(lock) {
-            observer.onStateChanged(
-                if (cleaned) completion.terminalState else NavigationState.Failed(CLEANUP_FAILED),
-            )
+        val stillCurrent = synchronized(lock) {
+            if (current !== completion.session || completion.session.detached) {
+                record(completion.token, NavigationRuntimeStage.STALE_IGNORED)
+                false
+            } else {
+                observer.onStateChanged(
+                    if (cleaned) completion.terminalState else NavigationState.Failed(CLEANUP_FAILED),
+                )
+                true
+            }
         }
-        scheduleQuarantine(completion.session, completion.token)
+        if (stillCurrent) scheduleQuarantine(completion.session, completion.token)
     }
 
     private fun scheduleQuarantine(session: Session, token: RequestToken) {

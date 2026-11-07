@@ -9,6 +9,7 @@ import com.socialdrive.app.domain.NavigationPlace
 import com.socialdrive.app.domain.NavigationRequest
 import com.socialdrive.app.domain.NavigationRequestResult
 import com.socialdrive.app.domain.NavigationState
+import com.socialdrive.app.integration.NavigationRuntimeEvidence
 import com.socialdrive.app.integration.NavigationRuntimeEvidenceSource
 import com.socialdrive.app.integration.NavigationRuntimeStage
 import kotlinx.coroutines.flow.filter
@@ -69,22 +70,10 @@ class PleosNaviRuntimeSmokeTest {
                 Log.i(LOG_TAG, STAGE_TERMINAL)
             }
 
-            val stages = evidence.navigationRuntimeEvidence().map { it.stage }
-            assertOrdered(
-                stages,
-                NavigationRuntimeStage.INITIALIZE_STARTED,
-                NavigationRuntimeStage.INITIALIZE_CONNECTED,
-                NavigationRuntimeStage.REQUEST_VALIDATED,
-                NavigationRuntimeStage.REQUEST_DISPATCHED,
-                NavigationRuntimeStage.TERMINAL_COMPLETED,
-                NavigationRuntimeStage.LISTENER_REMOVED,
-            )
-            assertFalse(stages.contains(NavigationRuntimeStage.CLEANUP_FAILED))
+            assertSuccessfulRequestEvidence(evidence.navigationRuntimeEvidence())
         } finally {
             releaseWithinDeadline(gateway::release)
-            val stages = evidence.navigationRuntimeEvidence().map { it.stage }
-            assertTrue(stages.contains(NavigationRuntimeStage.RELEASED))
-            assertFalse(stages.contains(NavigationRuntimeStage.CLEANUP_FAILED))
+            assertSuccessfulReleaseEvidence(evidence.navigationRuntimeEvidence())
             Log.i(LOG_TAG, STAGE_RELEASED)
         }
     }
@@ -110,6 +99,45 @@ class PleosNaviRuntimeSmokeTest {
         }
     }
 
+    private fun assertSuccessfulRequestEvidence(actual: List<NavigationRuntimeEvidence>) {
+        val terminal = actual.single { it.stage == NavigationRuntimeStage.TERMINAL_COMPLETED }
+        assertTrue(terminal.lifecycleGeneration > 0L)
+        assertTrue(terminal.requestGeneration > 0L)
+        val sameLifecycle = actual.filter { it.lifecycleGeneration == terminal.lifecycleGeneration }
+        val requestStages = sameLifecycle
+            .filter { it.requestGeneration == terminal.requestGeneration }
+            .map { it.stage }
+        val lifecycleStages = sameLifecycle
+            .filter { it.requestGeneration == 0L }
+            .map { it.stage }
+
+        assertOrdered(
+            lifecycleStages,
+            NavigationRuntimeStage.INITIALIZE_STARTED,
+            NavigationRuntimeStage.INITIALIZE_CONNECTED,
+        )
+        assertOrdered(
+            requestStages,
+            NavigationRuntimeStage.REQUEST_VALIDATED,
+            NavigationRuntimeStage.REQUEST_DISPATCHED,
+            NavigationRuntimeStage.TERMINAL_COMPLETED,
+            NavigationRuntimeStage.LISTENER_REMOVED,
+        )
+        assertFalse(sameLifecycle.any { it.stage in FAIL_CLOSED_STAGES })
+    }
+
+    private fun assertSuccessfulReleaseEvidence(actual: List<NavigationRuntimeEvidence>) {
+        val terminal = actual.single { it.stage == NavigationRuntimeStage.TERMINAL_COMPLETED }
+        assertTrue(
+            actual.any {
+                it.lifecycleGeneration == terminal.lifecycleGeneration &&
+                    it.requestGeneration == 0L &&
+                    it.stage == NavigationRuntimeStage.RELEASED
+            },
+        )
+        assertFalse(actual.any { it.stage == NavigationRuntimeStage.CLEANUP_FAILED })
+    }
+
     private fun assertOrdered(actual: List<NavigationRuntimeStage>, vararg required: NavigationRuntimeStage) {
         var cursor = -1
         required.forEach { stage ->
@@ -130,6 +158,15 @@ class PleosNaviRuntimeSmokeTest {
         const val STAGE_REQUESTED = "stage=requested"
         const val STAGE_TERMINAL = "stage=terminal_completed"
         const val STAGE_RELEASED = "stage=released"
+
+        val FAIL_CLOSED_STAGES = setOf(
+            NavigationRuntimeStage.PERMISSION_DENIED,
+            NavigationRuntimeStage.SERVICE_UNAVAILABLE,
+            NavigationRuntimeStage.TERMINAL_ERROR,
+            NavigationRuntimeStage.TIMED_OUT,
+            NavigationRuntimeStage.STALE_IGNORED,
+            NavigationRuntimeStage.CLEANUP_FAILED,
+        )
 
         val PRIVACY_REVIEWED_PUBLIC_FIXTURE = NavigationRequest(
             requestId = "pleos-runtime-smoke",

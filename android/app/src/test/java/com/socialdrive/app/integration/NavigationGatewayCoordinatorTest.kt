@@ -13,6 +13,9 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 class NavigationGatewayCoordinatorTest {
     @Test
@@ -260,6 +263,41 @@ class NavigationGatewayCoordinatorTest {
         assertTrue(harness.schedulers.first().cancelledAll)
     }
 
+    @Test
+    fun `release during terminal cleanup prevents stale active state`() {
+        val removalEntered = CountDownLatch(1)
+        val allowRemoval = CountDownLatch(1)
+        val releaseDetached = CountDownLatch(1)
+        val harness = Harness { port ->
+            port.removeAction = {
+                removalEntered.countDown()
+                assertTrue(allowRemoval.await(2, TimeUnit.SECONDS))
+            }
+        }
+        harness.coordinator.initialize()
+        harness.observer.capabilityAction = { available ->
+            if (!available) releaseDetached.countDown()
+        }
+        val port = harness.ports.single()
+        harness.coordinator.requestRoute(request("stale-cleanup", "정리 중 해제"))
+        requireNotNull(port.listener).onRoutingCompleted()
+
+        val completion = thread(name = "navigation-terminal-cleanup") {
+            harness.scheduler.advanceBy(250)
+        }
+        assertTrue(removalEntered.await(2, TimeUnit.SECONDS))
+        val release = thread(name = "navigation-release") { harness.coordinator.release() }
+        assertTrue(releaseDetached.await(2, TimeUnit.SECONDS))
+        allowRemoval.countDown()
+        completion.join(2_000)
+        release.join(2_000)
+
+        assertTrue(!completion.isAlive)
+        assertTrue(!release.isAlive)
+        assertIs<NavigationState.Idle>(harness.observer.states.last())
+        assertTrue(NavigationRuntimeStage.STALE_IGNORED in harness.evidence.stages())
+    }
+
     private fun request(id: String, label: String) = NavigationRequest(
         requestId = id,
         destination = NavigationPlace(label, 0.0, 0.0),
@@ -298,7 +336,11 @@ class NavigationGatewayCoordinatorTest {
     private class RecordingObserver : NavigationCoordinatorObserver {
         val capabilities = mutableListOf<Boolean>()
         val states = mutableListOf<NavigationState>()
-        override fun onCapabilityChanged(available: Boolean) { capabilities += available }
+        var capabilityAction: (Boolean) -> Unit = {}
+        override fun onCapabilityChanged(available: Boolean) {
+            capabilities += available
+            capabilityAction(available)
+        }
         override fun onStateChanged(state: NavigationState) { states += state }
     }
 
@@ -313,6 +355,7 @@ class NavigationGatewayCoordinatorTest {
         var addFailure = false
         var removeFailure = false
         var releaseFailure = false
+        var removeAction: () -> Unit = {}
 
         override fun initialize(callback: NavigationInitializationCallback) = initializeAction(callback)
         override fun addListener(listener: NavigationVendorListener) {
@@ -326,6 +369,7 @@ class NavigationGatewayCoordinatorTest {
         }
         override fun removeListener(listener: NavigationVendorListener) {
             events += "removeListener"
+            removeAction()
             if (removeFailure) throw IllegalStateException("remove failed")
             if (this.listener === listener) this.listener = null
         }

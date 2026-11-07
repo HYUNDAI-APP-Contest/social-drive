@@ -467,6 +467,10 @@ test("navigation validates named coordinates and serializes requests without log
   assert.match(naviSmoke, /releaseWithinDeadline\(gateway::release\)/);
   assert.match(naviSmoke, /NavigationRuntimeStage\.LISTENER_REMOVED/);
   assert.match(naviSmoke, /NavigationRuntimeStage\.RELEASED/);
+  assert.match(naviSmoke, /it\.lifecycleGeneration == terminal\.lifecycleGeneration/);
+  assert.match(naviSmoke, /it\.requestGeneration == terminal\.requestGeneration/);
+  assert.match(naviSmoke, /requestGeneration == 0L[\s\S]*NavigationRuntimeStage\.RELEASED/);
+  assert.match(naviSmoke, /FAIL_CLOSED_STAGES/);
   assert.doesNotMatch(naviSmoke, /Log\.[a-z]+\([^,]+,\s*(?:PRIVACY_REVIEWED_PUBLIC_FIXTURE|.*latitude|.*longitude|.*requestId)/i);
   assert.match(pleosGatewayTest, /invalid production request never registers listener or calls vendor request/);
   assert.match(pleosGatewayTest, /assertEquals\(0, port\.addListenerCalls\)/);
@@ -505,7 +509,7 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 90/);
+  assert.match(coreRunner, /expectedTests = 91/);
   assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
 });
 
