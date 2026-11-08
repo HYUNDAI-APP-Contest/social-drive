@@ -6,12 +6,12 @@
 
 ## 확인된 실행 스냅샷
 
-아래 결과는 앱 코드 커밋 `df88f6e`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
+아래 결과는 앱 코드 커밋 `3b5526b`에서 만든 디버그 APK를 관측한 스냅샷이다. 이후 커밋의 최신 APK 여부는 파일 해시를 다시 계산해 판단하며, 이 문서의 과거 해시를 최신 산출물 식별자로 사용하지 않는다.
 
 - 대상: `emulator-5554`, Android user 10, PLEOS 가로 화면 `2560×1440`
 - 패키지: `com.socialdrive.app`
 - APK: `android/app/build/outputs/apk/pleos/debug/app-pleos-debug.apk`
-- SHA-256: `fccc0845c5b3bb2c4eda0a06a0d7b7bb3c2d632385182d769855a69ff767cdfc`
+- SHA-256: `d02d2732662c3a4b7c882399dfa1cfc6dd2036361ccd7516eb2274bcf4e71084`
 - 설치 결과: `adb install -r` 성공
 - 시작 결과: `com.socialdrive.app/.MainActivity`가 현재 포커스이며 시작 직후 FATAL/ANR 없음
 - 설정 화면: 차량 상태, 차량 내비게이션, 위치 연동, 음성 안내, 음성 인식이 모두 `PLEOS 연결됨`
@@ -68,6 +68,8 @@ API와 presigned object 요청은 리디렉션·암묵적 연결 재시도를 �
 공개 커버 다운로드는 백엔드 업로드 계약과 동일하게 JPEG와 WebP를 허용한다. WebP는 `RIFF` 선언 길이가 실제 바이트 길이와 일치하고 `WEBP` 및 승인된 VP8 청크 식별자가 있는 경우에만 이미지 디코더로 전달하며, 위장된 RIFF 데이터는 계약 오류로 거부한다.
 
 AWS API 및 업로드 호스트는 런타임 구성 파서뿐 아니라 하위 `CloudDriveClientConfig` 생성자에서도 공개 DNS 형식을 강제한다. localhost, IP 리터럴, 스킴·경로가 섞인 업로드 호스트는 transport 생성 전에 거부한다.
+
+API 기준 URL의 stage 경로는 빌드 검증기·런타임 파서·하위 클라이언트 생성자에서 동일하게 검사한다. `..` 경로, 중복 슬래시, percent-encoded 경로, 공백·역슬래시와 512자 초과 경로는 요청 생성 전에 거부한다. 정상 합성 공개 구성의 빌드 검증 성공과 경로 우회 구성의 빌드 검증 실패를 각각 실행해 확인했다.
 
 서버가 반환한 읽기·업로드 URL은 HTTPS, 허용 호스트, 기본 HTTPS 포트, userinfo·fragment 부재뿐 아니라 8 KiB 길이 상한과 비어 있지 않은 object 경로를 만족해야 한다. 공백·역슬래시·과대 URL과 호스트 루트 URL은 transport 전에 계약 오류로 거부하며 경계 사례는 코어 테스트로 확인했다.
 
