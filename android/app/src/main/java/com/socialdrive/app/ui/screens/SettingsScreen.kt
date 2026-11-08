@@ -21,6 +21,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -285,6 +286,7 @@ private fun PrivacySection(
     onDeleteRequest: () -> Unit,
 ) {
     var showLiveRouteConsent by remember { mutableStateOf(false) }
+    var showWithdrawalConfirmation by remember { mutableStateOf(false) }
     if (showLiveRouteConsent) {
         AlertDialog(
             onDismissRequest = { showLiveRouteConsent = false },
@@ -308,6 +310,31 @@ private fun PrivacySection(
                     onClick = { showLiveRouteConsent = false },
                     modifier = Modifier.heightIn(min = 48.dp),
                 ) { Text("동의하지 않음") }
+            },
+        )
+    }
+    if (showWithdrawalConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showWithdrawalConfirmation = false },
+            title = { Text("실시간 경로 동의를 철회할까요?") },
+            text = {
+                Text(
+                    "실시간 위치 수집을 즉시 중지하고 미게시 경로를 기기에서 삭제합니다. " +
+                        "게시 대기 중인 전송도 취소하며, 다시 사용하려면 새로 동의해야 합니다.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { showWithdrawalConfirmation = false; onWithdrawConsent() },
+                    enabled = motion == MotionState.Parked,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("동의 철회 및 삭제", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showWithdrawalConfirmation = false },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("유지") }
             },
         )
     }
@@ -344,8 +371,8 @@ private fun PrivacySection(
                             modifier = Modifier.heightIn(min = 48.dp),
                         ) { Text("위치 권한 다시 확인") }
                     }
-                    Button(
-                        onClick = onWithdrawConsent,
+                    OutlinedButton(
+                        onClick = { showWithdrawalConfirmation = true },
                         enabled = motion == MotionState.Parked,
                         modifier = Modifier.heightIn(min = 48.dp),
                     ) { Text("동의 철회") }
