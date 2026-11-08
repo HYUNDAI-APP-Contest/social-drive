@@ -56,6 +56,7 @@ import com.socialdrive.app.ui.screens.SettingsScreen
 import com.socialdrive.app.ui.screens.cloudPublicationBlockReason
 import com.socialdrive.app.ui.components.memoryPaletteFor
 import com.socialdrive.app.ui.theme.SocialDriveTheme
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 
@@ -118,6 +119,7 @@ fun SocialDriveApp(
     var cloudDetailRequestGeneration by remember { mutableIntStateOf(0) }
     var demoUploadState by rememberSaveable { mutableStateOf<UploadState?>(null) }
     var stopConfirmationRequested by rememberSaveable { mutableStateOf(false) }
+    var recordingStartPending by remember { mutableStateOf(false) }
     var privacyMessage by rememberSaveable { mutableStateOf<String?>(null) }
     val locationPermissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         offlineViewModel.refreshLocationPermission()
@@ -328,10 +330,22 @@ fun SocialDriveApp(
                             }
                             navigate(AppDestination.Detail)
                         },
-                        onRecord = {
-                            memoryStory = memoryStory.beginRecording(defaultStoryDrive)
-                            navigate(AppDestination.Recording)
-                            scope.launch { offlineViewModel.startRecording() }
+                        onRecord = onRecord@{
+                            if (recordingStartPending) return@onRecord
+                            recordingStartPending = true
+                            scope.launch {
+                                try {
+                                    offlineViewModel.startRecording()
+                                    memoryStory = memoryStory.beginRecording(defaultStoryDrive)
+                                    navigate(AppDestination.Recording)
+                                } catch (cancelled: CancellationException) {
+                                    throw cancelled
+                                } catch (_: Throwable) {
+                                    blockedMessage = "기록을 시작하지 못했어요. 저장 공간과 앱 상태를 확인한 뒤 다시 시도해 주세요."
+                                } finally {
+                                    recordingStartPending = false
+                                }
+                            }
                         },
                         onSettings = { navigate(AppDestination.Settings) },
                         onRetry = offlineViewModel::refreshDriveFeed,
