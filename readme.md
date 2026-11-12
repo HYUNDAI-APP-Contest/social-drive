@@ -16,7 +16,6 @@ RoadStory는 드라이브 코스를 단순히 안내하는 데서 그치지 않�
 
 ### 1. 실행 환경
 
-- macOS
 - JDK 17
 - Android SDK 35
 - PLEOS Connect Emulator 2.1.0 — Android 14(API 34), 2560 × 1440
