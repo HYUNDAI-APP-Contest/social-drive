@@ -8,6 +8,10 @@ plugins {
     id("com.android.compose.screenshot")
 }
 
+providers.gradleProperty("privacySafeBuildDir").orNull?.let { isolatedBuildDirectory ->
+    layout.buildDirectory.set(file(isolatedBuildDirectory))
+}
+
 val releaseSigningEnvironment = listOf(
     "SOCIAL_DRIVE_RELEASE_STORE_FILE",
     "SOCIAL_DRIVE_RELEASE_STORE_PASSWORD",

@@ -19,6 +19,7 @@ internal interface NavigationInitializationCallback {
 
 internal interface NavigationVendorListener {
     fun onRouteStarted()
+    fun onLegacyRoutingCompleted() = onRoutingCompleted()
     fun onRoutingCompleted()
     fun onError(userMessage: String)
 }
@@ -52,6 +53,8 @@ internal class NavigationGatewayCoordinator(
     private val observer: NavigationCoordinatorObserver,
     disconnectedState: NavigationState,
     connectedState: NavigationState,
+    private val evidence: NavigationRuntimeEvidenceSink = NavigationRuntimeEvidenceSink {},
+    private val initializationTimeoutMillis: Long = 10_000L,
     private val minimumFeedbackMillis: Long = 250L,
     private val requestTimeoutMillis: Long = 15_000L,
     private val staleEventQuarantineMillis: Long = 750L,
@@ -59,22 +62,35 @@ internal class NavigationGatewayCoordinator(
     private val lock = Any()
     private val controller = NavigationRequestController(disconnectedState, connectedState)
     private var current: Session? = null
+    private var cleanupFailed = false
 
-    fun initialize() {
+    fun initialize(permissionGranted: Boolean = true) {
         val transition = synchronized(lock) {
             val old = current?.let(::detachLocked)
             val token = controller.beginInitialization()
+            record(token, NavigationRuntimeStage.INITIALIZE_STARTED)
             observer.onCapabilityChanged(false)
             observer.onStateChanged(controller.state())
             InitializationTransition(token, old)
         }
         cancelTasks(transition.old?.tasks.orEmpty())
-        runMaintenance(transition.old?.maintenance)
+        if (!runMaintenance(transition.old?.maintenance)) return
+        synchronized(lock) { cleanupFailed = false }
+
+        if (!permissionGranted) {
+            synchronized(lock) {
+                record(transition.token, NavigationRuntimeStage.PERMISSION_DENIED)
+                val update = controller.initializationFailed(transition.token, PERMISSION_DENIED)
+                if (update is ControllerUpdate.Applied) observer.onStateChanged(update.state)
+            }
+            return
+        }
 
         val resources = runCatching(vendorSessionFactory).getOrElse {
             synchronized(lock) {
                 val update = controller.initializationFailed(transition.token, INITIALIZATION_FAILED)
                 if (update is ControllerUpdate.Applied) {
+                    record(transition.token, NavigationRuntimeStage.SERVICE_UNAVAILABLE)
                     observer.onCapabilityChanged(false)
                     observer.onStateChanged(update.state)
                 }
@@ -89,9 +105,25 @@ internal class NavigationGatewayCoordinator(
             }
         }
         if (!attached) {
-            releaseOrphan(resources)
+            releaseOrphan(resources, transition.token)
             return
         }
+
+        val initializationTimeout = runCatching {
+            resources.scheduleScope.schedule(initializationTimeoutMillis) {
+                handleInitializationTimeout(session)
+            }
+        }.getOrElse {
+            handleInitializationFailure(session)
+            return
+        }
+        val timeoutKept = synchronized(lock) {
+            if (current === session && controller.isInitializing(session.lifecycleToken)) {
+                session.initializationTimeoutTask = initializationTimeout
+                true
+            } else false
+        }
+        if (!timeoutKept) initializationTimeout.cancel()
 
         val invoked = invokeVendor(session) { port ->
             port.initialize(object : NavigationInitializationCallback {
@@ -104,13 +136,15 @@ internal class NavigationGatewayCoordinator(
 
     fun requestRoute(request: NavigationRequest): NavigationRequestResult {
         val accepted = synchronized(lock) {
+            if (cleanupFailed) return NavigationRequestResult.Rejected(CLEANUP_FAILED)
             val session = current ?: return NavigationRequestResult.Rejected(CONNECTION_UNAVAILABLE)
             when (val start = controller.beginRequest(request.requestId, request.destination.name)) {
                 RequestStart.Busy -> return NavigationRequestResult.Busy
                 RequestStart.Unavailable -> return NavigationRequestResult.Rejected(CONNECTION_UNAVAILABLE)
                 is RequestStart.Accepted -> {
+                    record(start.token, NavigationRuntimeStage.REQUEST_VALIDATED)
                     val listener = requestListener(session, start.token)
-                    val requestContext = RequestContext(start.token, listener, listenerAdded = true)
+                    val requestContext = RequestContext(start.token, listener)
                     session.request = requestContext
                     observer.onStateChanged(start.state)
                     AcceptedRequest(session, requestContext)
@@ -133,15 +167,35 @@ internal class NavigationGatewayCoordinator(
         }
         if (!timeoutKept) timeout.cancel()
 
+        var dispatched = false
         val invoked = invokeVendor(accepted.session) { port ->
             port.addListener(accepted.request.listener)
+            val listenerKept = synchronized(lock) {
+                if (isCurrentRequestLocked(accepted.session, accepted.request.token)) {
+                    accepted.request.listenerAdded = true
+                    true
+                } else {
+                    accepted.session.pendingRemovals += ListenerRemoval(
+                        accepted.request.listener,
+                        accepted.request.token,
+                    )
+                    false
+                }
+            }
+            if (!listenerKept) return@invokeVendor
+            record(accepted.request.token, NavigationRuntimeStage.REQUEST_DISPATCHED)
+            dispatched = true
             port.requestRoute(request)
         }
         if (!invoked.success) {
             handleInvocationFailure(accepted.session, accepted.request.token)
             return NavigationRequestResult.Rejected(REQUEST_FAILED_SHORT)
         }
-        return if (invoked.started) NavigationRequestResult.Accepted else NavigationRequestResult.Rejected(CONNECTION_UNAVAILABLE)
+        return if (invoked.started && dispatched) {
+            NavigationRequestResult.Accepted
+        } else {
+            NavigationRequestResult.Rejected(CONNECTION_UNAVAILABLE)
+        }
     }
 
     fun rejectLocally(userMessage: String) {
@@ -156,7 +210,11 @@ internal class NavigationGatewayCoordinator(
             val session = current?.let(::detachLocked)
             val update = controller.release()
             observer.onCapabilityChanged(false)
-            if (update is ControllerUpdate.Applied) observer.onStateChanged(update.state)
+            if (update is ControllerUpdate.Applied) {
+                observer.onStateChanged(
+                    if (cleanupFailed && session == null) NavigationState.Failed(CLEANUP_FAILED) else update.state,
+                )
+            }
             ReleaseTransition(session)
         }
         cancelTasks(detached.detached?.tasks.orEmpty())
@@ -164,22 +222,53 @@ internal class NavigationGatewayCoordinator(
     }
 
     private fun handleConnected(session: Session) {
-        synchronized(lock) {
-            if (current !== session) return
+        val timeout = synchronized(lock) {
+            if (current !== session) {
+                record(session.lifecycleToken, NavigationRuntimeStage.STALE_IGNORED)
+                return
+            }
             controller.connected(session.lifecycleToken).also { update ->
                 if (update is ControllerUpdate.Applied) {
+                    record(session.lifecycleToken, NavigationRuntimeStage.INITIALIZE_CONNECTED)
                     observer.onCapabilityChanged(true)
                     observer.onStateChanged(update.state)
                 }
             }
+            session.initializationTimeoutTask.also { session.initializationTimeoutTask = null }
         }
+        timeout?.cancel()
     }
 
     private fun handleInitializationFailure(session: Session) {
         val transition = synchronized(lock) {
-            if (current !== session) return
+            if (current !== session) {
+                record(session.lifecycleToken, NavigationRuntimeStage.STALE_IGNORED)
+                return
+            }
             val update = controller.initializationFailed(session.lifecycleToken, INITIALIZATION_FAILED)
+            if (update !is ControllerUpdate.Applied) {
+                record(session.lifecycleToken, NavigationRuntimeStage.STALE_IGNORED)
+                return
+            }
+            record(session.lifecycleToken, NavigationRuntimeStage.SERVICE_UNAVAILABLE)
+            observer.onCapabilityChanged(false)
+            observer.onStateChanged(update.state)
+            InitializationFailureTransition(detachLocked(session))
+        }
+        cancelTasks(transition.detached.tasks)
+        runMaintenance(transition.detached.maintenance)
+    }
+
+    private fun handleInitializationTimeout(session: Session) {
+        val transition = synchronized(lock) {
+            if (current !== session || !controller.isInitializing(session.lifecycleToken)) {
+                record(session.lifecycleToken, NavigationRuntimeStage.STALE_IGNORED)
+                return
+            }
+            session.initializationTimeoutTask = null
+            val update = controller.initializationFailed(session.lifecycleToken, INITIALIZATION_TIMED_OUT)
             if (update !is ControllerUpdate.Applied) return
+            record(session.lifecycleToken, NavigationRuntimeStage.TIMED_OUT)
             observer.onCapabilityChanged(false)
             observer.onStateChanged(update.state)
             InitializationFailureTransition(detachLocked(session))
@@ -190,6 +279,7 @@ internal class NavigationGatewayCoordinator(
 
     private fun requestListener(session: Session, token: RequestToken) = object : NavigationVendorListener {
         override fun onRouteStarted() = handleEvent(session, token, VendorEvent.RouteStarted)
+        override fun onLegacyRoutingCompleted() = handleEvent(session, token, VendorEvent.LegacyRoutingCompleted)
         override fun onRoutingCompleted() = handleEvent(session, token, VendorEvent.RoutingCompleted)
         override fun onError(userMessage: String) = handleEvent(session, token, VendorEvent.Error(userMessage))
     }
@@ -197,13 +287,27 @@ internal class NavigationGatewayCoordinator(
     private fun handleEvent(session: Session, token: RequestToken, event: VendorEvent) {
         var cancelTimeout: NavigationScheduledTask? = null
         val shouldScheduleSettle = synchronized(lock) {
-            if (!isCurrentRequestLocked(session, token)) return
+            if (!isCurrentRequestLocked(session, token)) {
+                record(token, NavigationRuntimeStage.STALE_IGNORED)
+                return
+            }
             val update = when (event) {
                 VendorEvent.RouteStarted -> controller.routeStarted(token)
+                VendorEvent.LegacyRoutingCompleted,
                 VendorEvent.RoutingCompleted -> controller.routingCompleted(token)
                 is VendorEvent.Error -> controller.requestError(token, event.userMessage)
             }
             if (update == ControllerUpdate.TerminalPending) {
+                if (event is VendorEvent.LegacyRoutingCompleted) {
+                    record(token, NavigationRuntimeStage.LEGACY_COMPLETION_CALLBACK)
+                }
+                record(
+                    token,
+                    if (event is VendorEvent.RoutingCompleted || event is VendorEvent.LegacyRoutingCompleted) {
+                        NavigationRuntimeStage.TERMINAL_COMPLETED
+                    }
+                    else NavigationRuntimeStage.TERMINAL_ERROR,
+                )
                 cancelTimeout = session.request?.timeoutTask
                 session.request?.timeoutTask = null
                 session.request?.settleTask == null
@@ -244,6 +348,7 @@ internal class NavigationGatewayCoordinator(
             session.request?.timeoutTask = null
             val update = controller.timeout(token, REQUEST_TIMED_OUT)
             if (update !is ControllerUpdate.Applied || !update.terminal) return
+            record(token, NavigationRuntimeStage.TIMED_OUT)
             finishRequestLocked(session, token, update)
         }
         completeRequest(transition)
@@ -267,16 +372,31 @@ internal class NavigationGatewayCoordinator(
         val request = requireNotNull(session.request)
         session.request = null
         val tasks = listOfNotNull(request.timeoutTask, request.settleTask)
-        if (request.listenerAdded) session.pendingRemovals += request.listener
-        observer.onStateChanged(update.state)
-        val maintenance = claimMaintenanceLocked(session)
-        return RequestCompletion(session, token, tasks, maintenance)
+        if (request.listenerAdded) session.pendingRemovals += ListenerRemoval(request.listener, request.token)
+        val completion = RequestCompletion(session, token, tasks, update.state)
+        session.pendingCompletions += completion
+        completion.maintenance = claimMaintenanceLocked(session)
+        return completion
     }
 
     private fun completeRequest(completion: RequestCompletion) {
         cancelTasks(completion.tasks)
         runMaintenance(completion.maintenance)
-        scheduleQuarantine(completion.session, completion.token)
+    }
+
+    private fun publishCompletion(completion: RequestCompletion, cleaned: Boolean) {
+        val stillCurrent = synchronized(lock) {
+            if (current !== completion.session || completion.session.detached) {
+                record(completion.token, NavigationRuntimeStage.STALE_IGNORED)
+                false
+            } else {
+                observer.onStateChanged(
+                    if (cleaned) completion.terminalState else NavigationState.Failed(CLEANUP_FAILED),
+                )
+                true
+            }
+        }
+        if (stillCurrent) scheduleQuarantine(completion.session, completion.token)
     }
 
     private fun scheduleQuarantine(session: Session, token: RequestToken) {
@@ -332,38 +452,75 @@ internal class NavigationGatewayCoordinator(
         val tasks = listOfNotNull(
             request?.timeoutTask,
             request?.settleTask,
+            session.initializationTimeoutTask,
             session.quarantineTask,
         )
+        session.initializationTimeoutTask = null
         session.quarantineTask = null
-        if (request?.listenerAdded == true) session.pendingRemovals += request.listener
+        if (request?.listenerAdded == true) {
+            session.pendingRemovals += ListenerRemoval(request.listener, request.token)
+        }
         return DetachedSession(tasks, claimMaintenanceLocked(session))
     }
 
     private fun claimMaintenanceLocked(session: Session): VendorMaintenance? {
-        if (session.vendorCalls != 0) return null
+        if (session.vendorCalls != 0 || session.maintenanceClaimed) return null
         val listeners = session.pendingRemovals.toList()
+        val completions = session.pendingCompletions.toList()
         session.pendingRemovals.clear()
+        session.pendingCompletions.clear()
         val shouldRelease = session.disposeRequested && !session.disposed
         if (shouldRelease) session.disposed = true
-        if (listeners.isEmpty() && !shouldRelease) return null
-        return VendorMaintenance(session, listeners, shouldRelease)
+        if (listeners.isEmpty() && completions.isEmpty() && !shouldRelease) return null
+        session.maintenanceClaimed = true
+        return VendorMaintenance(session, listeners, completions, shouldRelease)
     }
 
-    private fun runMaintenance(maintenance: VendorMaintenance?) {
-        if (maintenance == null) return
-        synchronized(maintenance.session.vendorLock) {
-            maintenance.listeners.forEach { listener ->
-                runCatching { maintenance.session.resources.port.removeListener(listener) }
+    private fun runMaintenance(maintenance: VendorMaintenance?): Boolean {
+        if (maintenance == null) return true
+        var next: VendorMaintenance? = maintenance
+        var allSuccessful = true
+        while (next != null) {
+            val currentMaintenance = next
+            var successful = true
+            synchronized(currentMaintenance.session.vendorLock) {
+                currentMaintenance.listeners.forEach { listener ->
+                    runCatching { currentMaintenance.session.resources.port.removeListener(listener.listener) }
+                        .onSuccess { record(listener.token, NavigationRuntimeStage.LISTENER_REMOVED) }
+                        .onFailure { successful = false }
+                }
+                if (currentMaintenance.release) {
+                    runCatching { currentMaintenance.session.resources.port.release() }
+                        .onSuccess { record(currentMaintenance.session.lifecycleToken, NavigationRuntimeStage.RELEASED) }
+                        .onFailure { successful = false }
+                }
             }
-            if (maintenance.release) {
-                runCatching { maintenance.session.resources.port.release() }
+            if (currentMaintenance.release) currentMaintenance.session.resources.scheduleScope.cancelAll()
+            if (!successful) {
+                allSuccessful = false
+                synchronized(lock) { cleanupFailed = true }
+                record(currentMaintenance.session.lifecycleToken, NavigationRuntimeStage.CLEANUP_FAILED)
+                observer.onCapabilityChanged(false)
+                observer.onStateChanged(NavigationState.Failed(CLEANUP_FAILED))
             }
+            next = synchronized(lock) {
+                currentMaintenance.session.maintenanceClaimed = false
+                claimMaintenanceLocked(currentMaintenance.session)
+            }
+            currentMaintenance.completions.forEach { publishCompletion(it, successful) }
         }
-        if (maintenance.release) maintenance.session.resources.scheduleScope.cancelAll()
+        return allSuccessful
     }
 
-    private fun releaseOrphan(resources: NavigationVendorSession) {
+    private fun releaseOrphan(resources: NavigationVendorSession, token: LifecycleToken) {
         runCatching { resources.port.release() }
+            .onSuccess { record(token, NavigationRuntimeStage.RELEASED) }
+            .onFailure {
+                synchronized(lock) { cleanupFailed = true }
+                record(token, NavigationRuntimeStage.CLEANUP_FAILED)
+                observer.onCapabilityChanged(false)
+                observer.onStateChanged(NavigationState.Failed(CLEANUP_FAILED))
+            }
         resources.scheduleScope.cancelAll()
     }
 
@@ -376,13 +533,16 @@ internal class NavigationGatewayCoordinator(
         val lifecycleToken: LifecycleToken,
         val resources: NavigationVendorSession,
         val vendorLock: Any = Any(),
-        val pendingRemovals: MutableSet<NavigationVendorListener> = linkedSetOf(),
+        val pendingRemovals: MutableSet<ListenerRemoval> = linkedSetOf(),
+        val pendingCompletions: MutableList<RequestCompletion> = mutableListOf(),
         var request: RequestContext? = null,
+        var initializationTimeoutTask: NavigationScheduledTask? = null,
         var quarantineTask: NavigationScheduledTask? = null,
         var vendorCalls: Int = 0,
         var detached: Boolean = false,
         var disposeRequested: Boolean = false,
         var disposed: Boolean = false,
+        var maintenanceClaimed: Boolean = false,
     )
 
     private data class RequestContext(
@@ -401,25 +561,38 @@ internal class NavigationGatewayCoordinator(
         val session: Session,
         val token: RequestToken,
         val tasks: List<NavigationScheduledTask>,
-        val maintenance: VendorMaintenance?,
+        val terminalState: NavigationState,
+        var maintenance: VendorMaintenance? = null,
     )
     private data class DetachedSession(val tasks: List<NavigationScheduledTask>, val maintenance: VendorMaintenance?)
     private data class VendorMaintenance(
         val session: Session,
-        val listeners: List<NavigationVendorListener>,
+        val listeners: List<ListenerRemoval>,
+        val completions: List<RequestCompletion>,
         val release: Boolean,
     )
+    private data class ListenerRemoval(val listener: NavigationVendorListener, val token: RequestToken)
     private data class VendorInvocation(val started: Boolean, val success: Boolean)
 
     private sealed interface VendorEvent {
         data object RouteStarted : VendorEvent
+        data object LegacyRoutingCompleted : VendorEvent
         data object RoutingCompleted : VendorEvent
         data class Error(val userMessage: String) : VendorEvent
     }
 
+    private fun record(token: LifecycleToken, stage: NavigationRuntimeStage) =
+        evidence.record(NavigationRuntimeEvidence(token.epoch, 0L, stage))
+
+    private fun record(token: RequestToken, stage: NavigationRuntimeStage) =
+        evidence.record(NavigationRuntimeEvidence(token.lifecycleEpoch, token.generation, stage))
+
     private companion object {
         const val CONNECTION_UNAVAILABLE = "차량 내비게이션 연결을 확인해 주세요."
         const val INITIALIZATION_FAILED = "차량 내비게이션에 연결할 수 없어요."
+        const val INITIALIZATION_TIMED_OUT = "차량 내비게이션 연결이 지연되고 있어요."
+        const val PERMISSION_DENIED = "차량 내비게이션 권한을 확인해 주세요."
+        const val CLEANUP_FAILED = "차량 내비게이션 연결을 안전하게 정리하지 못했어요."
         const val REQUEST_FAILED = "경로 요청을 전달하지 못했어요. 잠시 후 다시 시도해 주세요."
         const val REQUEST_FAILED_SHORT = "경로 요청을 전달하지 못했어요."
         const val REQUEST_TIMED_OUT = "차량 내비게이션 응답이 지연되고 있어요. 다시 시도해 주세요."

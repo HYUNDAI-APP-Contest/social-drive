@@ -7,7 +7,9 @@
 2026-11-02 현재 Android 앱 PR #2의 병합 커밋 `dcffaad`가 이 작업공간 HEAD의 조상이며 `android/` 소스가 통합돼 있습니다. 제출용 서명 release APK와 clean-install 증거는 승인된 signing material 및 PLEOS AVD 검증 전이므로 아직 없습니다.
 
 - Vehicle SDK 2.3.2와 NaviHelper 3.0.5 adapter의 최초 구현 커밋은 `6475287`이며 1차 독립 검토에서 `CHANGES_REQUIRED`였습니다.
-- 최신 Android 검토 HEAD는 `4f2b559116fd98ee3fe05e05fc6431b59888d0d6`입니다. PLEOS Connect Emulator 2.1.0(Android 14, user 10)에서 instrumentation 51/51, SDK-independent Kotlin 74/74, 정적 계약 29/29이 통과했습니다.
+- Issue #28 NaviHelper 경계는 client AAR 3.0.5와 PLEOS Connect Emulator 2.1.0/API 34의 Navi service 3.0.4 조합에서 검증했습니다. service가 보낸 legacy `onRouteEnded`를 production adapter가 안전하게 정규화했고, exact smoke는 1/1, 실패·오류·skip 0으로 `terminal_completed`와 `released`까지 관찰했습니다. 이는 물리 차량, signed release, AWS 또는 vendor System Back 증거를 의미하지 않습니다.
+- 2026-11-07 최종 hardening은 release가 이미 claim된 listener 제거를 추월하지 못하도록 session별 단일 maintenance drainer를 적용하고, terminal 관찰부터 cleanup 증거까지 하나의 20초 예산으로 제한했습니다. 전체 정적 50/50, Kotlin core 94/94, Demo unit 124/124, Pleos unit 112/112가 통과했습니다. 전용 verifier는 전체 UTP/logcat을 임시 디렉터리에서만 처리하고 source SHA·1/0/0/0 결과·앱이 기록한 callback 종류·allowlisted stage만 JSON으로 남긴 뒤 raw 경로/좌표/payload를 폐기합니다. GitHub에서 fetch한 `origin/main` `8a068c3b72cf081d59f41686fa0e15d02e398a7b`는 이 issue 브랜치의 조상입니다.
+- `4f2b559116fd98ee3fe05e05fc6431b59888d0d6`은 Issue #28 이전 Android 통합 검증의 역사적 HEAD이며 현재 Issue #28 검토 HEAD가 아닙니다. 당시 PLEOS Connect Emulator 2.1.0(Android 14, user 10)에서 instrumentation 51/51, SDK-independent Kotlin 74/74, 정적 계약 29/29이 통과했습니다.
 - Gradle clean, Demo/Pleos 단위 테스트, Demo release lint, Demo Debug/Release, Pleos Debug와 Pleos AndroidTest 조립이 179개 task로 성공했습니다. Demo release 산출물은 unsigned이므로 공모전 제출용 서명·설치 검증은 아직 남아 있습니다.
 - Room v7에는 실제 경로 거리와 durable 409 conflict review, parked-only published-delete tombstone, bounded retry가 구현돼 있습니다. PLEOS 클라우드는 공개 Cognito/API 설정이 없으면 fail closed합니다.
 - `88b4938`은 최신 앱 HEAD가 아니라 P0-3A의 재현 가능한 local bootstrap/doctor와 offline zero-network fail-fast를 남긴 **역사적 증거**입니다.
@@ -37,7 +39,7 @@ Social Drive의 목표 흐름은 다음과 같습니다.
 1. 주행 중에는 기록 상태와 `방금 좋았어` 같은 최소 입력만 제공합니다.
 2. recording session, `highlightCount`, draft와 pending queue를 로컬에 보존합니다.
 3. 편집과 게시 확인은 주차 상태에서만 허용합니다.
-4. Vehicle/NaviHelper 검증 후 공개 코스의 목적지·경유지를 차량 Navigation 앱으로 전달합니다.
+4. Parked 경계를 유지한 채 공개 코스의 목적지·경유지를 차량 Navigation 앱으로 전달합니다. 현재 증거는 production NaviHelper adapter를 직접 호출한 공개 목적지 1건의 emulator application-boundary smoke이며, 실제 UI 전체 여정이나 물리 차량 증거는 아닙니다.
 
 ### 핵심 안전 원칙
 
@@ -53,7 +55,7 @@ Social Drive의 목표 흐름은 다음과 같습니다.
 | `앱 구현` | Driving/Unknown 잠금, recording/draft/queue, consent/withdraw, 409 review, published delete | PR #2 병합 커밋 `dcffaad` 포함. 기존 PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29 증거가 있으나 actual cloud는 미완료 |
 | `앱 구현` | Pleos flavor 초기화·수명주기, Compose 안전 UI, Room/WorkManager | 통합 소스 존재. 기존 Pleos Connect Android 14 user 10 검증은 실제 Vehicle state callback이나 physical system Back 전달 증거가 아님 |
 | `역사적 도구 증거` | P0-3A runtime bootstrap/doctor | `88b4938`; offline zero-network fail-fast 확인. tasks/variants/assemble 또는 앱 실행 성공 증거가 아님 |
-| `앱 구현` | Vehicle/NaviHelper와 cloud production 경계 | vendor 초기화/수명주기와 fail-closed production port는 통합. 실제 Vehicle callback·Navi route callback·actual cloud는 별도 증거 필요 |
+| `앱 구현` / NaviHelper `실제 SDK` | Vehicle/NaviHelper와 cloud production 경계 | production port 통합. NaviHelper는 API 34 emulator에서 공개 목적지 1건의 initialize/request/terminal/listener removal/release를 application boundary로 확인. 실제 Vehicle callback·UI 전체 여정·actual cloud는 별도 증거 필요 |
 | `데모 데이터` | preset route / fake motion | 실제 위치나 실제 Vehicle callback이 아님 |
 | `미구현` | 실제 위치·경로점 수집, signed submission release APK, actual cloud E2E | release pipeline 코드는 있으나 승인 서명·clean-install 산출물이 없어 제출 release 완료 증거는 없음 |
 | `실제 연동` | FusedLocation, SpeechToText, TextToSpeech | 현재 PLEOS 공개 SDK를 사용하며 권한·동의 후에만 활성화 |
@@ -137,7 +139,7 @@ Pleos 실기 검증 전 다음을 확인해야 합니다.
 
 ### 검증 완료 조건
 
-아래 증거가 모두 생기기 전에는 `실제 SDK` 또는 실행 완료로 표시하지 않습니다.
+`실제 SDK` 표시는 기능별 증거 범위에 한정합니다. 아래에서 완료된 NaviHelper 공개 목적지 1건은 application boundary의 제한적 실제 SDK 증거로 표시할 수 있지만, 체크되지 않은 Vehicle·복구·AWS 항목이나 앱 전체 실행 완료까지 뜻하지 않습니다.
 
 - [x] Android Gradle build 성공 로그와 commit SHA (`4f2b559`)
 - [x] Pleos AVD 설치·실행 및 instrumentation 51/51

@@ -28,8 +28,9 @@ esac
 mkdir -p "$runtime_root/gradle-user-home" "$runtime_root/tmp" "$runtime_root/android-user-home"
 export JAVA_HOME="$selected_java_home"
 export GRADLE_USER_HOME="$runtime_root/gradle-user-home"
-export ANDROID_USER_HOME="$runtime_root/android-user-home"
-export TMPDIR="$runtime_root/tmp"
+export ANDROID_USER_HOME="${SOCIAL_DRIVE_ANDROID_USER_HOME:-$runtime_root/android-user-home}"
+export TMPDIR="${SOCIAL_DRIVE_TMPDIR:-$runtime_root/tmp}"
+mkdir -p "$ANDROID_USER_HOME" "$TMPDIR"
 export GRADLE_OPTS="${GRADLE_OPTS:+$GRADLE_OPTS }-Dorg.gradle.project.kotlin.compiler.execution.strategy=in-process"
 
 if [[ -z "${ANDROID_HOME:-}" ]] && [[ "$(uname -s)" == "Darwin" ]]; then

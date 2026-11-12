@@ -12,7 +12,7 @@
 
 1. 실제 앱 화면과 실제 실행 증거를 먼저 보여 준다.
 2. `실제 SDK`, `앱 구현`, `코드 존재(미통합)`, `데모 데이터`, `미구현`, `향후 기능`을 같은 색상 체계로 끝까지 구분한다.
-3. 현재 통합 소스는 PR #2 병합 커밋 `dcffaad`를 포함하며 PLEOS·cloud·route-consent, Room v6 conflict review와 published-delete lifecycle은 `앱 구현` 상태다. 기존 PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29와 Gradle build/lint 증거가 있다. actual cloud·실제 Vehicle/Navi callback·signed submission release는 미완료이고 PLEOS system Back은 `UNRESOLVED`다.
+3. 현재 통합 소스는 PR #2 병합 커밋 `dcffaad`를 포함하며 PLEOS·cloud·route-consent, Room v6 conflict review와 published-delete lifecycle은 `앱 구현` 상태다. Issue #28은 production NaviHelper adapter의 공개 목적지 1건을 API 34 emulator application boundary에서 검증했다. actual cloud·실제 Vehicle callback·NaviHelper UI 전체 여정·signed submission release는 미완료이고 PLEOS system Back은 `UNRESOLVED`다.
 4. FusedLocation, STT, TTS, Vehicle Control은 실제 기능으로 말하지 않는다.
 5. MAU와 retention은 산식·검증 방법을 제시하고 근거 없는 숫자를 만들지 않는다.
 
@@ -59,7 +59,8 @@
 
 - Compose/Room/Worker: 현재 `앱 구현`(PR #2 통합)
 - preset 경로: `데모 데이터`
-- Vehicle/NaviHelper: HEAD `4f2b559`의 Pleos build·AVD 안전 UI 증거는 있으나 실제 P/D/R/N·route callback은 미검증. callback 실기 성공 후에만 `실제 SDK`
+- Vehicle: HEAD `4f2b559`의 Pleos build·AVD 안전 UI 증거는 있으나 실제 P/D/R/N callback은 미검증
+- NaviHelper: Issue #28 production adapter의 공개 목적지 1건은 API 34 emulator에서 terminal callback·cleanup·release 확인. `실제 SDK` 표기는 이 application-boundary 범위에만 사용
 
 ### 4장 — 모바일이 아니라 차량이어야 완성된다
 
@@ -72,7 +73,7 @@
 
 발표 문장:
 
-> 구현 목표는 Vehicle 상태로 사용자가 입력할 수 있는 순간을 결정하고 NaviHelper로 콘텐츠를 실제 주행에 연결하는 것입니다. HEAD `4f2b559`은 PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29과 Gradle build/lint를 통과했지만 실제 Vehicle/Navi callback은 미검증이며, Coming Soon SDK도 실제 기능으로 주장하지 않습니다.
+> 구현 목표는 Vehicle 상태로 사용자가 입력할 수 있는 순간을 결정하고 NaviHelper로 콘텐츠를 실제 주행에 연결하는 것입니다. 실제 Vehicle callback은 미검증이지만, Issue #28은 production NaviHelper adapter로 공개 목적지 1건의 emulator application-boundary callback·cleanup·release를 확인했습니다. Coming Soon SDK는 실제 기능으로 주장하지 않습니다.
 
 평가 연결: 기술 활용성. [공식 개발 환경](https://appdevchallenge.auto-hmg.io/guide/development), [공식 SDK 상태](https://document.pleos.ai/en/docs/pleos-only/create-my-project)
 
@@ -108,7 +109,7 @@ Parked
 - 테스트 소스: 안전 정책, Room migration, 오프라인 복구, API security
 - 작업 브랜치 실행 증거: `4f2b559`, PLEOS 51/51, Kotlin 74/74, static 29/29, Gradle 179 tasks. 409 durable stop·explicit adopt·publish-only replay 포함
 - consent/withdraw와 demo/unavailable 구분, Room v6 published-delete lifecycle은 코드·계측에 있으나 실제 위치 수집과 actual cloud delete는 없음
-- 아직 없는 증거: 실제 경로점·위치 수집, concrete cloud 설정, 실제 Vehicle/Navi callback, 앱-AWS E2E, signed submission release, physical PLEOS Back 수용 시험
+- 아직 없는 증거: 실제 경로점·위치 수집, concrete cloud 설정, 실제 Vehicle callback, NaviHelper UI 전체 여정·경유지 실행·물리 차량, 앱-AWS E2E, signed submission release, physical PLEOS Back 수용 시험
 - 역사적 `88b4938` P0-3A doctor는 missing wrapper 8.9·platform 35를 보고하고 offline zero-network fail-fast. 최신 앱 HEAD나 tasks/variants/assemble 성공 증거가 아님
 - root `readme.md`: 공식 네 항목과 검토 브랜치 build·AVD·build APK 증거 반영. 제출용 signed APK 링크·hash는 미완료
 
@@ -136,7 +137,7 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 - 11/15 선택 가산점 목표: GitHub, 소스, release APK, 시연 영상
 - 11/23: 1차 결과
 - 12/3~4: 실제 동작 앱 PT
-- 남은 P0: 실제 SDK callback, Android-AWS E2E, signed release·checksum·clean install, physical PLEOS Back 수용 시험, 제출 검수
+- 남은 P0: 실제 Vehicle callback, NaviHelper UI 전체 여정·경유지 실행, Android-AWS E2E, signed release·checksum·clean install, physical PLEOS Back 수용 시험, 제출 검수
 
 마무리 문장:
 
@@ -153,7 +154,7 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 | 0–7초 | 로고, 앱명, 차량 화면 | 없음 | “한 번의 터치가 다음 사람의 드라이브가 됩니다.” |
 | 7–17초 | SNS→지도→내비 재입력 Before | 문제 정의 | “좋은 코스를 발견해도 장소를 다시 찾아야 합니다.” |
 | 17–29초 | 피드와 드라이브 상세 | 현재 `앱 구현`; preset 위치는 `데모 데이터` | 코스, 하이라이트, preset 목적지 확인 |
-| 29–43초 | `이 코스 따라가기` 데모 화면 | 현재 `앱 구현`; 실제 callback 성공 시에만 `실제 SDK` | 통합 coordinator/build 증거. NaviHelper route callback은 미실행이므로 현재는 데모로 명시 |
+| 29–43초 | `이 코스 따라가기` 데모 화면 | UI는 `앱 구현`; 별도 증거 카드만 제한적 `실제 SDK` | production adapter의 공개 목적지 1건은 API 34 emulator application boundary에서 callback·cleanup·release 확인. UI 전체 여정이나 preset 화면을 실제 SDK 실행처럼 표현 금지 |
 | 43–57초 | Driving/Unknown 안전 잠금과 앱 내 기록 종료 CTA | 검토 브랜치의 PLEOS 실행 증거 | UI instrumentation으로 안전 잠금·dispatcher dialog 계약 검증. system Back 성공 장면으로 편집 금지 |
 | 57–70초 | 기록 화면에서 `방금 좋았어` 한 번 터치 | 현재 `앱 구현`; preset 위치는 `데모 데이터` | 주행 중 긴 입력이 없음을 보여 줌 |
 | 70–80초 | 앱 종료·재실행 후 세션/초안 복원 | 검증 후 `앱 구현` | session·draft·queue persistence 증거. 실제 경로점 저장으로 표현 금지 |
@@ -167,7 +168,7 @@ MAU는 `[A × B% × C%]` 산식과 각 근거 출처를 표시한다.
 ### 촬영 규칙
 
 - `실제 SDK` 배지는 Pleos AVD 실기와 callback이 확인된 장면에만 사용한다.
-- NaviHelper 실제 callback 증거가 없으면 29–43초를 `앱 구현` 설명 카드로 유지하고 fake 화면에는 `데모 데이터`를 표시한다.
+- NaviHelper 증거 카드는 공개 목적지 1건의 API 34 emulator application-boundary 결과만 `실제 SDK`로 표시한다. UI 흐름과 fake/preset 화면은 계속 `앱 구현` 또는 `데모 데이터`로 표시한다.
 - 실제 Vehicle callback 증거가 없으면 P/D 전환을 실제 SDK로 연출하지 않는다.
 - FusedLocation/STT/TTS/Vehicle Control 화면은 본편 실제 흐름에 넣지 않는다.
 - 민감한 계정, 토큰, Client Secret, 정확한 개인 위치, 콘솔 자격증명을 촬영하지 않는다.
@@ -283,7 +284,7 @@ No-Go 대응:
 
 ### 모바일 앱과 무엇이 다른가?
 
-완성 목표에서는 Vehicle 상태가 입력 가능 범위를 결정하고 NaviHelper가 콘텐츠를 차량의 실제 경로 안내로 전환한다. PR #2 소스는 병합됐고 기존 PLEOS instrumentation 51/51과 Gradle build/lint 증거가 있지만 실제 Vehicle/Navi callback은 미검증이다. callback 실기까지 완료되면 모바일과 달리 차량 상태 기반 안전 전환부터 차량 Navigation 앱까지 흐름을 완결할 수 있다.
+완성 목표에서는 Vehicle 상태가 입력 가능 범위를 결정하고 NaviHelper가 콘텐츠를 차량의 실제 경로 안내로 전환한다. 실제 Vehicle callback과 UI 전체 여정은 미검증이지만, Issue #28은 production NaviHelper adapter가 공개 목적지 1건을 API 34 emulator에서 요청하고 terminal callback·cleanup·release까지 관찰했다. 이 제한적 application-boundary 증거를 전체 차량 여정으로 확대하지 않는다.
 
 ### 주행 중 안전을 어떻게 강제하는가?
 
@@ -295,7 +296,7 @@ No-Go 대응:
 
 ### 실제 SDK와 데모 기능은 무엇인가?
 
-`docs/contest/official-requirements.md`의 truth table과 당일 실기 증거를 기준으로 답한다. AVD callback 증거가 없는 기능은 실제 SDK로 말하지 않는다.
+`docs/contest/official-requirements.md`의 truth table과 당일 실기 증거를 기준으로 답한다. NaviHelper는 공개 목적지 1건의 API 34 emulator application-boundary 증거 범위에서만 실제 SDK로 말하고, 그 밖의 callback 증거가 없는 기능은 실제 SDK로 말하지 않는다.
 
 ### MAU와 retention의 근거는 무엇인가?
 
