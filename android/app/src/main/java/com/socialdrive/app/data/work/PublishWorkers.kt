@@ -7,6 +7,8 @@ import androidx.work.ListenableWorker
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import com.socialdrive.app.data.DraftSnapshot
+import com.socialdrive.app.data.recordedDurationSeconds
+import com.socialdrive.app.data.plausibleDistanceMeters
 import com.socialdrive.app.data.local.ConflictState
 import com.socialdrive.app.data.local.DraftEntity
 import com.socialdrive.app.data.local.LocalState
@@ -16,6 +18,7 @@ import com.socialdrive.app.data.local.UploadQueueEntity
 import com.socialdrive.app.data.remote.RemoteDriveApi
 import com.socialdrive.app.data.remote.RemoteDriveException
 import com.socialdrive.app.data.remote.assetUploads
+import com.socialdrive.app.domain.NormalizedRoutePoint
 import com.socialdrive.app.safety.ParkedExecutionGate
 import com.socialdrive.app.safety.ParkedExecutionResult
 import kotlinx.coroutines.CancellationException
@@ -92,16 +95,27 @@ abstract class StagedPublishWorker(
         return if (remote?.retryable == true && runAttemptCount < MAX_RETRY_ATTEMPTS) Result.retry() else Result.failure()
     }
 
-    protected fun DraftEntity.snapshot() = DraftSnapshot(
-        id = id,
-        recordingId = recordingId,
-        clientRequestId = clientRequestId,
-        title = title,
-        description = description,
-        coverPreset = coverPreset,
-        originalContentRef = originalContentRef,
-        state = state,
-    )
+    protected suspend fun DraftEntity.snapshot(): DraftSnapshot {
+        val recording = dependencies.database.recordingDao().find(recordingId)
+        val durationSeconds = recording.recordedDurationSeconds()
+        return DraftSnapshot(
+            id = id,
+            recordingId = recordingId,
+            clientRequestId = clientRequestId,
+            title = title,
+            description = description,
+            coverPreset = coverPreset,
+            originalContentRef = originalContentRef,
+            state = state,
+            highlightCount = recording?.highlightCount?.coerceIn(0, 100) ?: 0,
+            durationSeconds = durationSeconds,
+            distanceMeters = plausibleDistanceMeters(recording?.distanceMeters ?: 0, durationSeconds),
+            createdAtEpochMs = createdAtEpochMs,
+            routePoints = dependencies.database.routePrivacyDao().pointsForRecording(recordingId).map { point ->
+                NormalizedRoutePoint(point.sequence, point.horizontal, point.vertical)
+            },
+        )
+    }
 
     companion object {
         const val KEY_DRAFT_ID = "draftId"
@@ -224,6 +238,7 @@ class PublishDriveWorker(
                     if (dependencies.database.uploadQueueDao().completePublishStage(id, lease.attempt, now) != 1) {
                         throw StaleWorkerTransition()
                     }
+                    dependencies.database.routePrivacyDao().markRecordingPublished(draft.recordingId)
                     dependencies.database.publishConflictDao().resolveReplay(id, now)
                 }
             } catch (_: StaleWorkerTransition) { return Result.success() }

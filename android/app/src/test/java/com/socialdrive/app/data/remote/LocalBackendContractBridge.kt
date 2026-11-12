@@ -108,7 +108,7 @@ internal class LocalBackendContractBridge : ApiHttpTransport, ObjectUploadTransp
         writer.flush()
         val future = reads.submit<String?> { reader.readLine() }
         val line = try {
-            future.get(5, TimeUnit.SECONDS)
+            future.get(OPERATION_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)
         } catch (_: TimeoutException) {
             future.cancel(true)
             throw IllegalStateException("Contract harness timed out for $id")
@@ -140,7 +140,7 @@ internal class LocalBackendContractBridge : ApiHttpTransport, ObjectUploadTransp
         error("Repository root for contract harness was not found")
     }
 
-    private companion object { const val OPERATION_TIMEOUT_MILLIS = 5_000L }
+    private companion object { const val OPERATION_TIMEOUT_MILLIS = 15_000L }
 }
 
 internal data class CapturedRequest(

@@ -9,11 +9,16 @@ command -v node >/dev/null 2>&1 || {
 }
 
 cd "$android_root"
-bash scripts/gradle-local.sh \
-  :app:testDemoDebugUnitTest \
-  :app:testPleosDebugUnitTest \
-  --rerun-tasks \
-  --tests 'com.socialdrive.app.data.remote.AndroidBackendContractHarnessTest' &
+(
+  bash scripts/gradle-local.sh \
+    :app:testDemoDebugUnitTest \
+    --rerun-tasks \
+    --tests 'com.socialdrive.app.data.remote.AndroidBackendContractHarnessTest'
+  bash scripts/gradle-local.sh \
+    :app:testPleosDebugUnitTest \
+    --rerun-tasks \
+    --tests 'com.socialdrive.app.data.remote.AndroidBackendContractHarnessTest'
+) &
 harness_pid=$!
 
 (

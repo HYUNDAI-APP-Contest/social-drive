@@ -6,8 +6,15 @@ import com.socialdrive.app.data.local.LocalState
 import com.socialdrive.app.data.local.RecordingEntity
 import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.local.UploadQueueEntity
+import com.socialdrive.app.data.local.NormalizedRoutePointEntity
+import com.socialdrive.app.domain.FutureRouteCollector
+import com.socialdrive.app.domain.DRAFT_DESCRIPTION_MAX_CODE_POINTS
+import com.socialdrive.app.domain.DRAFT_TITLE_MAX_CODE_POINTS
+import com.socialdrive.app.domain.NormalizedRoutePoint
 import com.socialdrive.app.domain.MotionState
+import com.socialdrive.app.domain.RouteConsentState
 import com.socialdrive.app.domain.UploadState
+import com.socialdrive.app.domain.takeCodePoints
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -33,32 +40,68 @@ class RecordingRepository(
     private val database: SocialDriveDatabase,
     private val ids: IdFactory = RandomIdFactory,
     private val clock: () -> Long = System::currentTimeMillis,
+    private val routeCollector: FutureRouteCollector? = null,
 ) {
     val active: Flow<RecordingEntity?> = database.recordingDao().observeActive()
 
-    suspend fun start(): RecordingEntity = database.withTransaction {
-        database.recordingDao().findActive()?.let { return@withTransaction it }
-        RecordingEntity(
-            id = ids.create(),
-            state = LocalState.RECORDING,
-            startedAtEpochMs = clock(),
-            endedAtEpochMs = null,
-            highlightCount = 0,
-        ).also { database.recordingDao().insert(it) }
+    suspend fun start(): RecordingEntity {
+        var created = false
+        val recording = database.withTransaction {
+            database.recordingDao().findActive()?.let { return@withTransaction it }
+            RecordingEntity(
+                id = ids.create(),
+                state = LocalState.RECORDING,
+                startedAtEpochMs = clock(),
+                endedAtEpochMs = null,
+                highlightCount = 0,
+            ).also {
+                database.recordingDao().insert(it)
+                created = true
+            }
+        }
+        if (created) routeCollector?.beginRecording()
+        return recording
+    }
+
+    /** Reattaches the process-local collector to a Room-backed recording after process death. */
+    suspend fun restoreActiveCollection(): Boolean {
+        if (database.recordingDao().findActive() == null) return false
+        routeCollector?.beginRecording()
+        return routeCollector != null
     }
 
     suspend fun addHighlight(id: String) {
         database.recordingDao().incrementHighlight(id)
     }
 
-    suspend fun finishAsDraft(id: String): DraftSnapshot? = database.withTransaction {
-        database.draftDao().findByRecording(id)?.toSnapshot(
-            database.recordingDao().find(id)?.highlightCount ?: 0,
-        )?.let { return@withTransaction it }
-        val recording = database.recordingDao().find(id) ?: return@withTransaction null
-        val now = clock()
-        database.recordingDao().update(recording.copy(state = LocalState.DRAFTED, endedAtEpochMs = now))
-        val draft = DraftEntity(
+    suspend fun finishAsDraft(id: String): DraftSnapshot? {
+        database.draftDao().findByRecording(id)?.let { existing ->
+            val recording = database.recordingDao().find(id)
+            return existing.toSnapshot(
+                recording?.highlightCount ?: 0,
+                database.routePrivacyDao().pointsForRecording(id).map { it.toDomain() },
+                recording.recordedDurationSeconds(),
+                recording?.distanceMeters ?: 0,
+            )
+        }
+        val collectedRoute = routeCollector?.snapshotAndClear() ?: com.socialdrive.app.domain.CollectedRoute.Empty
+        return database.withTransaction {
+            val recording = database.recordingDao().find(id) ?: return@withTransaction null
+            val privacy = database.routePrivacyDao().find()
+            val mayRetainRoute = effectiveRouteConsentState(
+                privacy?.consentState,
+                privacy?.consentPolicyVersion,
+            ) == RouteConsentState.Granted
+            val normalizedPoints = collectedRoute.points.takeIf { mayRetainRoute }.orEmpty()
+            val retainedDistanceMeters = collectedRoute.distanceMeters.takeIf { mayRetainRoute } ?: 0
+            val now = clock()
+            val finishedRecording = recording.copy(
+                state = LocalState.DRAFTED,
+                endedAtEpochMs = now,
+                distanceMeters = retainedDistanceMeters,
+            )
+            database.recordingDao().update(finishedRecording)
+            val draft = DraftEntity(
             id = ids.create(),
             recordingId = recording.id,
             clientRequestId = "drive-${ids.create()}",
@@ -72,9 +115,20 @@ class RecordingRepository(
             createdAtEpochMs = now,
             updatedAtEpochMs = now,
             publishedAtEpochMs = null,
-        )
-        database.draftDao().insert(draft)
-        draft.toSnapshot(recording.highlightCount)
+            )
+            database.draftDao().insert(draft)
+            normalizedPoints.forEach { point ->
+                database.routePrivacyDao().insertPoint(
+                    NormalizedRoutePointEntity(recording.id, point.sequence, point.horizontal, point.vertical, "UNPUBLISHED"),
+                )
+            }
+            draft.toSnapshot(
+                recording.highlightCount,
+                normalizedPoints,
+                finishedRecording.recordedDurationSeconds(),
+                finishedRecording.distanceMeters,
+            )
+        }
     }
 
     suspend fun finishActiveAsDraft(): DraftSnapshot? =
@@ -87,16 +141,33 @@ class DraftRepository(
 ) {
     val drafts: Flow<List<DraftSnapshot>> = database.draftDao().observeAll().map { items ->
         items.map { entity ->
-            entity.toSnapshot(database.recordingDao().find(entity.recordingId)?.highlightCount ?: 0)
+            val recording = database.recordingDao().find(entity.recordingId)
+            entity.toSnapshot(
+                recording?.highlightCount ?: 0,
+                database.routePrivacyDao().pointsForRecording(entity.recordingId).map { it.toDomain() },
+                recording.recordedDurationSeconds(),
+                recording?.distanceMeters ?: 0,
+            )
         }
     }
 
     suspend fun find(id: String): DraftSnapshot? = database.draftDao().find(id)?.let { entity ->
-        entity.toSnapshot(database.recordingDao().find(entity.recordingId)?.highlightCount ?: 0)
+        val recording = database.recordingDao().find(entity.recordingId)
+        entity.toSnapshot(
+            recording?.highlightCount ?: 0,
+            database.routePrivacyDao().pointsForRecording(entity.recordingId).map { it.toDomain() },
+            recording.recordedDurationSeconds(),
+            recording?.distanceMeters ?: 0,
+        )
     }
 
     suspend fun updateCopy(id: String, title: String, description: String): Boolean =
-        database.draftDao().updateEditableCopy(id, title.take(40), description.take(120), clock()) == 1
+        database.draftDao().updateEditableCopy(
+            id,
+            title.takeCodePoints(DRAFT_TITLE_MAX_CODE_POINTS),
+            description.takeCodePoints(DRAFT_DESCRIPTION_MAX_CODE_POINTS),
+            clock(),
+        ) == 1
 }
 
 class PublishQueueRepository(
@@ -104,19 +175,7 @@ class PublishQueueRepository(
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     fun observeState(draftId: String): Flow<UploadState> = database.uploadQueueDao().observe(draftId).map { item ->
-        when (item?.status) {
-            null -> UploadState.Draft
-            LocalState.QUEUED -> UploadState.Queued
-            LocalState.RUNNING -> UploadState.Uploading
-            LocalState.FAILED -> if (item.lastErrorCode == LocalState.VERSION_CONFLICT) {
-                UploadState.NeedsConflictReview
-            } else {
-                UploadState.Failed
-            }
-            LocalState.PAUSED_MOTION -> UploadState.Queued
-            LocalState.PUBLISHED -> UploadState.Published
-            else -> UploadState.Draft
-        }
+        queueUploadState(item?.status, item?.lastErrorCode)
     }
 
     suspend fun enqueue(draftId: String, motionState: MotionState): EnqueueResult {
@@ -152,6 +211,9 @@ class PublishQueueRepository(
 
     suspend fun recoverable(): List<UploadQueueEntity> = database.uploadQueueDao().recoverable()
 
+    suspend fun resumeAuthenticationFailures(): Int =
+        database.uploadQueueDao().resumeAuthenticationFailures(clock())
+
     suspend fun isPublishOnlyConflictReplay(draftId: String): Boolean =
         database.publishConflictDao().find(draftId)?.state == com.socialdrive.app.data.local.ConflictState.REPLAY_QUEUED
 
@@ -169,7 +231,26 @@ class PublishQueueRepository(
     }
 }
 
-private fun DraftEntity.toSnapshot(highlightCount: Int) = DraftSnapshot(
+internal fun queueUploadState(status: String?, lastErrorCode: String?): UploadState = when (status) {
+    null -> UploadState.Draft
+    LocalState.QUEUED, LocalState.PAUSED_MOTION -> UploadState.Queued
+    LocalState.RUNNING -> UploadState.Uploading
+    LocalState.FAILED -> when (lastErrorCode) {
+        LocalState.VERSION_CONFLICT -> UploadState.NeedsConflictReview
+        LocalState.CONSENT_RENEWAL_REQUIRED -> UploadState.NeedsConsentRenewal
+        "REJECTED", "NOT_FOUND", "CONFIGURATION" -> UploadState.Rejected
+        else -> UploadState.Failed
+    }
+    LocalState.PUBLISHED -> UploadState.Published
+    else -> UploadState.Draft
+}
+
+private fun DraftEntity.toSnapshot(
+    highlightCount: Int,
+    routePoints: List<NormalizedRoutePoint> = emptyList(),
+    durationSeconds: Int = 0,
+    distanceMeters: Int = 0,
+) = DraftSnapshot(
     id = id,
     recordingId = recordingId,
     clientRequestId = clientRequestId,
@@ -179,5 +260,11 @@ private fun DraftEntity.toSnapshot(highlightCount: Int) = DraftSnapshot(
     originalContentRef = originalContentRef,
     state = state,
     highlightCount = highlightCount.coerceIn(0, 100),
+    durationSeconds = durationSeconds,
+    distanceMeters = plausibleDistanceMeters(distanceMeters, durationSeconds),
     storyId = coverPreset.removePrefix("route-memory-").takeIf { it.startsWith("demo-") } ?: "demo-coast",
+    routePoints = routePoints,
+    createdAtEpochMs = createdAtEpochMs,
 )
+
+private fun NormalizedRoutePointEntity.toDomain() = NormalizedRoutePoint(sequence, horizontal, vertical)

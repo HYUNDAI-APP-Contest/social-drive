@@ -3,6 +3,10 @@ package com.socialdrive.app.integration
 import android.content.Context
 import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.CapabilityStatus
+import com.socialdrive.app.domain.CollectedRoute
+import com.socialdrive.app.domain.AuxiliaryCapabilitySource
+import com.socialdrive.app.domain.FutureRouteCollector
+import com.socialdrive.app.domain.NormalizedRoutePoint
 import com.socialdrive.app.domain.IntegrationBundle
 import com.socialdrive.app.domain.IntegrationSource
 import com.socialdrive.app.domain.MotionState
@@ -14,6 +18,7 @@ import com.socialdrive.app.domain.NavigationState
 import com.socialdrive.app.domain.NavigationValidation
 import com.socialdrive.app.domain.VehicleMotionSource
 import com.socialdrive.app.domain.VehicleMotionStatus
+import com.socialdrive.app.domain.SpeechRecognitionState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -24,7 +29,36 @@ object FlavorIntegrationFactory {
     fun create(context: Context): IntegrationBundle = IntegrationBundle(
         vehicleMotionSource = DemoVehicleMotionSource(),
         navigationGateway = DemoNavigationGateway(),
+        auxiliaryCapabilitySource = DemoAuxiliaryCapabilitySource(),
+        routeCollector = DemoRouteCollector,
     )
+}
+
+private class DemoAuxiliaryCapabilitySource : AuxiliaryCapabilitySource {
+    private val demo = MutableStateFlow(CapabilityStatus(CapabilityState.Available, IntegrationSource.Demo, "데모"))
+    override val location: StateFlow<CapabilityStatus> = demo.asStateFlow()
+    override val textToSpeech: StateFlow<CapabilityStatus> = demo.asStateFlow()
+    override val speechToText: StateFlow<CapabilityStatus> = demo.asStateFlow()
+    override val speechRecognitionActive: StateFlow<Boolean> = MutableStateFlow(false).asStateFlow()
+    override val speechRecognitionState: StateFlow<SpeechRecognitionState> =
+        MutableStateFlow(SpeechRecognitionState.Idle).asStateFlow()
+    override val locationPermission: String? = null
+    override val speechPermissions: List<String> = emptyList()
+    override suspend fun initialize() = Unit
+    override fun speakFeedback(message: String): Boolean = false
+    override fun startSpeechRecognition(onText: (String, Boolean) -> Unit): Boolean = false
+    override fun stopSpeechRecognition() = Unit
+    override fun resetSpeechRecognitionState() = Unit
+    override fun refreshLocationPermission() = Unit
+    override fun refreshSpeechPermissions() = Unit
+    override fun release() = Unit
+}
+
+private object DemoRouteCollector : FutureRouteCollector {
+    override suspend fun start() = Unit
+    override suspend fun beginRecording() = Unit
+    override suspend fun snapshotAndClear(): CollectedRoute = CollectedRoute.Empty
+    override suspend fun stopAndAwait() = Unit
 }
 
 private class DemoVehicleMotionSource : VehicleMotionSource {

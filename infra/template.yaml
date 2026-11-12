@@ -14,6 +14,10 @@ Parameters:
     Type: Number
     Default: 20
     MinValue: 1
+  ConsentPolicyVersion:
+    Type: String
+    Default: '2026-11-07.v1'
+    AllowedValues: ['2026-11-07.v1']
 
 Conditions:
   CreateBudget: !Not [!Equals [!Ref BudgetEmail, '']]
@@ -32,6 +36,7 @@ Globals:
         MEDIA_BUCKET: !Ref MediaBucket
         UPLOAD_URL_TTL_SECONDS: '600'
         READ_URL_TTL_SECONDS: '300'
+        CONSENT_POLICY_VERSION: !Ref ConsentPolicyVersion
 
 Resources:
   UserPool:
@@ -316,6 +321,8 @@ Resources:
               SubscriptionType: EMAIL
 
 Outputs:
+  CloudRegion:
+    Value: !Ref AWS::Region
   ApiUrl:
     Value: !Sub https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Environment}
   UserPoolId:
@@ -324,4 +331,9 @@ Outputs:
     Value: !Ref MobileAppClient
   MediaBucketName:
     Value: !Ref MediaBucket
+  UploadHost:
+    Description: Exact allow-list host for socialDrive.cloud.uploadHosts
+    Value: !Sub ${MediaBucket}.s3.${AWS::Region}.${AWS::URLSuffix}
+  ConsentPolicyVersion:
+    Value: !Ref ConsentPolicyVersion
 

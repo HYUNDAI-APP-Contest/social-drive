@@ -1,6 +1,7 @@
 package com.socialdrive.app.data.remote
 
 import com.socialdrive.app.data.DraftSnapshot
+import com.socialdrive.app.data.hasPublishableRecordedRoute
 import kotlinx.coroutines.CancellationException
 
 /** Worker-facing production adapter. Every retry reuses the frozen manifest and stable request id. */
@@ -10,15 +11,18 @@ class CloudRemoteDriveApi(
 ) : RemoteDriveApi {
     override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): RemoteDraftRef = translate {
         require(clientRequestId == draft.clientRequestId)
+        if (!draft.hasPublishableRecordedRoute()) {
+            throw CloudDriveException(CloudFailureKind.VALIDATION, "INSUFFICIENT_RECORDED_ROUTE", false)
+        }
         val assets = draft.assetUploads().map(AssetUploadCommand::manifest)
         val drive = client.createDrive(
             CreateDriveInput(
                 clientRequestId = clientRequestId,
                 title = draft.title,
                 summary = draft.description,
-                distanceMeters = 0,
-                durationSeconds = 0,
-                highlightCount = 0,
+                distanceMeters = draft.distanceMeters.coerceIn(0, 2_000_000),
+                durationSeconds = draft.durationSeconds.coerceIn(0, 259_200),
+                highlightCount = draft.highlightCount.coerceIn(0, 100),
                 consentPolicyVersion = consentPolicyVersion,
                 assets = assets,
             ),
@@ -30,7 +34,13 @@ class CloudRemoteDriveApi(
         if (commands.size != AssetKind.entries.size || commands.map { it.kind }.toSet() != AssetKind.entries.toSet()) {
             throw CloudDriveException(CloudFailureKind.CONTRACT, "INCOMPLETE_UPLOAD_MANIFEST", false)
         }
+        if (commands.any { it.kind == AssetKind.ROUTE && it.syntheticDemoContent }) {
+            throw CloudDriveException(CloudFailureKind.VALIDATION, "SYNTHETIC_ROUTE_NOT_PUBLISHABLE", false)
+        }
         commands.forEach { command ->
+            if (!command.hasMatchingPayloadChecksum()) {
+                throw CloudDriveException(CloudFailureKind.CONTRACT, "UPLOAD_PAYLOAD_CHANGED", false)
+            }
             val expectedKey = "${command.clientRequestId}:${command.assetId}:${command.checksumSha256Hex}"
             if (command.idempotencyKey != expectedKey) {
                 throw CloudDriveException(CloudFailureKind.CONTRACT, "INVALID_UPLOAD_IDEMPOTENCY", false)
@@ -78,6 +88,7 @@ class CloudRemoteDriveApi(
                 CloudFailureKind.VERSION_CONFLICT -> RemoteFailureCode.VERSION_CONFLICT
                 CloudFailureKind.UPLOAD_INCOMPLETE -> RemoteFailureCode.UPLOAD_INCOMPLETE
                 CloudFailureKind.UPLOAD_EXPIRED -> RemoteFailureCode.UPLOAD_EXPIRED
+                CloudFailureKind.CONSENT_RENEWAL_REQUIRED -> RemoteFailureCode.CONSENT_RENEWAL_REQUIRED
                 CloudFailureKind.IDEMPOTENCY_CONFLICT -> RemoteFailureCode.REJECTED
                 CloudFailureKind.VALIDATION, CloudFailureKind.CONTRACT -> RemoteFailureCode.REJECTED
                 CloudFailureKind.RETRYABLE -> RemoteFailureCode.SERVER_BUSY
@@ -89,7 +100,6 @@ class CloudRemoteDriveApi(
 }
 
 private const val MAX_UPLOAD_SESSION_ATTEMPTS = 2
-
 private fun AssetUploadCommand.manifest() = AssetManifest(
     kind = kind,
     contentType = contentType,

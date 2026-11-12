@@ -2,6 +2,8 @@ package com.socialdrive.app.data.fake
 
 import com.socialdrive.app.domain.DriveMoment
 import com.socialdrive.app.domain.DriveSummary
+import com.socialdrive.app.domain.NavigationPlace
+import com.socialdrive.app.domain.NavigationRequest
 import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.RouteSource
 
@@ -41,6 +43,14 @@ class FakeDriveRepository : DriveRepository {
                 DriveMoment("m4", "19:17", "야경이 빛나는 길", "오늘의 마지막 하이라이트예요."),
             ),
             routeSource = RouteSource.DemoPreset,
+            navigationRequest = NavigationRequest(
+                requestId = "demo-public-destination-seoul",
+                destination = NavigationPlace(
+                    name = "공개 데모 목적지",
+                    latitude = 37.5665,
+                    longitude = 126.9780,
+                ),
+            ),
         ),
         DriveSummary(
             id = "demo-mountain",

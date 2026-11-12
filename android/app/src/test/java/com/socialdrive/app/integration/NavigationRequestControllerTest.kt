@@ -13,13 +13,13 @@ class NavigationRequestControllerTest {
     private val idle = NavigationState.Idle(unavailable)
 
     @Test
-    fun `route started then completed settles once and double callbacks are ignored`() {
+    fun `route started is successful terminal evidence and double callbacks are ignored`() {
         val controller = connectedController()
         val request = accepted(controller, "one", "첫 경로")
 
-        assertEquals(ControllerUpdate.Awaiting, controller.routeStarted(request))
-        assertEquals(ControllerUpdate.Awaiting, controller.routeStarted(request))
-        assertEquals(ControllerUpdate.TerminalPending, controller.routingCompleted(request))
+        assertEquals(ControllerUpdate.TerminalPending, controller.routeStarted(request))
+        assertEquals(ControllerUpdate.Ignored, controller.routeStarted(request))
+        assertEquals(ControllerUpdate.Ignored, controller.routingCompleted(request))
         assertEquals(ControllerUpdate.Ignored, controller.timeout(request, "late timeout"))
         assertEquals(ControllerUpdate.Ignored, controller.requestError(request, "late error"))
         assertEquals(
@@ -41,8 +41,8 @@ class NavigationRequestControllerTest {
         val current = accepted(controller, "new", "새 경로")
 
         assertEquals(ControllerUpdate.Ignored, controller.routingCompleted(old))
-        assertEquals(ControllerUpdate.Awaiting, controller.routeStarted(current))
-        assertEquals(ControllerUpdate.TerminalPending, controller.routingCompleted(current))
+        assertEquals(ControllerUpdate.TerminalPending, controller.routeStarted(current))
+        assertEquals(ControllerUpdate.Ignored, controller.routingCompleted(current))
         assertEquals(
             ControllerUpdate.Applied(NavigationState.Active("새 경로"), terminal = true),
             controller.settle(current),
@@ -80,7 +80,7 @@ class NavigationRequestControllerTest {
         )
         assertEquals(ControllerUpdate.Awaiting, controller.endQuarantine(failed))
         val replay = accepted(controller, "replay", "재시도 경로")
-        assertEquals(ControllerUpdate.Awaiting, controller.routeStarted(replay))
+        assertEquals(ControllerUpdate.TerminalPending, controller.routeStarted(replay))
     }
 
     @Test

@@ -12,9 +12,12 @@ import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.ContentState
 import com.socialdrive.app.domain.IntegrationSource
+import com.socialdrive.app.domain.LiveUnavailableReason
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.NavigationState
 import com.socialdrive.app.domain.RecordingSnapshot
+import com.socialdrive.app.domain.RouteConsentState
+import com.socialdrive.app.domain.RoutePrivacyStatus
 import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.ThemeMode
 import com.socialdrive.app.domain.UploadState
@@ -50,11 +53,11 @@ private val unavailableNavigation = CapabilityStatus(CapabilityState.Unavailable
 fun VisualScenarioFixture(
     scenario: VisualScenario,
     theme: ThemeMode,
-    modifier: Modifier = Modifier.fillMaxSize(),
+    modifier: Modifier = Modifier,
 ) {
     SocialDriveTheme(theme) {
         Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-            Box(modifier.testTag(VISUAL_FIXTURE_TAG)) {
+            Box(modifier.fillMaxSize().testTag(VISUAL_FIXTURE_TAG)) {
                 when (scenario) {
                     VisualScenario.HomeContent -> FixtureHome(ContentState.Content(fixtureRepository.drives()))
                     VisualScenario.HomeLoading -> FixtureHome(ContentState.Loading)
@@ -66,7 +69,7 @@ fun VisualScenarioFixture(
                             storyId = "demo-coast",
                             route = requireNotNull(fixtureRepository.drive("demo-coast")).route,
                             elapsed = "01:24:17",
-                            distance = "64.2 km",
+                            distance = "데모 경로",
                             highlights = 3,
                             gps = CapabilityState.Unavailable,
                             vehicle = CapabilityState.Unavailable,
@@ -80,6 +83,11 @@ fun VisualScenarioFixture(
                         theme = theme,
                         vehicleStatus = demoVehicle,
                         navigationStatus = unavailableNavigation,
+                        routePrivacy = RoutePrivacyStatus(
+                            displayedSource = RouteSource.DemoPreset,
+                            liveSource = RouteSource.LiveUnavailable(LiveUnavailableReason.PERMISSION_DENIED),
+                            consentState = RouteConsentState.Granted,
+                        ),
                         onThemeChange = {},
                         onBack = {},
                     )

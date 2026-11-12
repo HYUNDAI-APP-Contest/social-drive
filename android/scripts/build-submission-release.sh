@@ -37,8 +37,25 @@ inspect_apk_for_sensitive_material() {
     fail 'APK contains a forbidden credential or environment file.'
   fi
   if unzip -p "$apk_path" | strings | grep -Ei \
-    'AKIA[0-9A-Z]{16}|aws_secret_access_key|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|https?://[^[:space:]]*(webhook|/hooks/)|https?://(localhost|127\.0\.0\.1|10\.0\.2\.2)([:/]|$)' >/dev/null; then
+    'AKIA[0-9A-Z]{16}|aws_secret_access_key[[:space:]]*[=:][[:space:]]*[A-Za-z0-9/+=]{40}([^A-Za-z0-9/+=]|$)|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY|https?://[^[:space:]]*(webhook|/hooks/)|https?://(localhost|127\.0\.0\.1|10\.0\.2\.2)([:/]|$)' >/dev/null; then
     fail 'APK contains a credential, webhook, private key, or debug endpoint marker.'
+  fi
+}
+
+inspect_apk_manifest_policy() {
+  local apk_path="$1"
+  local manifest_report
+  manifest_report="$($aapt2_bin dump xmltree "$apk_path" --file AndroidManifest.xml)" ||
+    fail 'APK manifest inspection failed.'
+  if printf '%s\n' "$manifest_report" | grep -Eq ':debuggable\([^)]*\)=true'; then
+    fail 'release APK is debuggable.'
+  fi
+  printf '%s\n' "$manifest_report" | grep -Eq ':allowBackup\([^)]*\)=false' ||
+    fail 'release APK must disable Android backup.'
+  printf '%s\n' "$manifest_report" | grep -Eq ':usesCleartextTraffic\([^)]*\)=false' ||
+    fail 'release APK must disable cleartext traffic.'
+  if printf '%s\n' "$manifest_report" | grep -Eq 'PreviewActivity|androidx\.activity\.ComponentActivity|E: instrumentation'; then
+    fail 'release APK contains a debug or test component.'
   fi
 }
 
@@ -138,6 +155,7 @@ for index in 0 1; do
   package_name="$(printf '%s\n' "$package_report" | sed -n "s/^package: name='\([^']*\)'.*/\1/p" | head -1)"
   [[ "$package_name" == "${expected_packages[$index]}" ]] ||
     fail "${variants[$index]} APK package does not match the expected product flavor."
+  inspect_apk_manifest_policy "$input_apk"
 
   signer_report="$($apksigner_bin verify --verbose --print-certs "$input_apk")" ||
     fail "${variants[$index]} APK signature verification failed."

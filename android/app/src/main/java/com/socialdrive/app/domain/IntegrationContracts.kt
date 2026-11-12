@@ -92,7 +92,49 @@ interface NavigationGateway {
     fun release()
 }
 
+interface AuxiliaryCapabilitySource {
+    val location: StateFlow<CapabilityStatus>
+    val textToSpeech: StateFlow<CapabilityStatus>
+    val speechToText: StateFlow<CapabilityStatus>
+    val speechRecognitionActive: StateFlow<Boolean>
+    val speechRecognitionState: StateFlow<SpeechRecognitionState>
+    val locationPermission: String?
+    val speechPermissions: List<String>
+
+    suspend fun initialize()
+    fun speakFeedback(message: String): Boolean
+    fun startSpeechRecognition(onText: (text: String, isFinal: Boolean) -> Unit): Boolean
+    fun stopSpeechRecognition()
+    fun resetSpeechRecognitionState()
+    fun refreshLocationPermission()
+    fun refreshSpeechPermissions()
+    fun release()
+}
+
+enum class SpeechRecognitionState { Idle, Listening, Applied, NoResult, Cancelled, Failed }
+
 data class IntegrationBundle(
     val vehicleMotionSource: VehicleMotionSource,
     val navigationGateway: NavigationGateway,
+    val auxiliaryCapabilitySource: AuxiliaryCapabilitySource,
+    val routeCollector: FutureRouteCollector,
 )
+
+object SpeechRecognitionPolicy {
+    fun canStart(motion: MotionState, capability: CapabilityStatus): Boolean =
+        motion == MotionState.Parked && capability.capability == CapabilityState.Available
+
+    fun shouldCommit(text: String, isFinal: Boolean): Boolean = isFinal && text.isNotBlank()
+
+    fun canCommit(motion: MotionState, text: String, isFinal: Boolean): Boolean =
+        motion == MotionState.Parked && shouldCommit(text, isFinal)
+}
+
+const val DRAFT_TITLE_MAX_CODE_POINTS = 40
+const val DRAFT_DESCRIPTION_MAX_CODE_POINTS = 120
+
+fun String.takeCodePoints(maxCodePoints: Int): String {
+    require(maxCodePoints >= 0)
+    if (codePointCount(0, length) <= maxCodePoints) return this
+    return substring(0, offsetByCodePoints(0, maxCodePoints))
+}

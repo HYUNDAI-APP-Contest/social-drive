@@ -156,6 +156,29 @@ class PublishedDeleteWorkTest {
     }
 
     @Test
+    fun successfulAuthenticationRequeuesAuthRequiredDeletionAndResetsItsAttemptBudget() = runTest {
+        seed("draft-delete-auth", state = DeleteRequestState.AUTH_REQUIRED, attempts = 4)
+        val manager = WorkManager.getInstance(context)
+        val scheduler = DeleteWorkScheduler(manager, database, motion, clock = { 2_000L })
+
+        scheduler.resumeAfterAuthentication()
+
+        val pending = requireNotNull(database.publishedDeleteDao().find("draft-delete-auth"))
+        assertEquals(DeleteRequestState.DELETE_PENDING.name, pending.state)
+        assertEquals(0, pending.attempts)
+        val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
+        manager.getWorkInfosForUniqueWork(DeleteWorkScheduler.uniqueName("draft-delete-auth"))
+            .get(5, TimeUnit.SECONDS).filter { !it.state.isFinished }.forEach {
+                driver.setInitialDelayMet(it.id)
+                driver.setAllConstraintsMet(it.id)
+            }
+        awaitRealCondition {
+            database.publishedDeleteDao().find("draft-delete-auth")?.state == DeleteRequestState.CONFIRMED.name
+        }
+        assertEquals(1, remote.calls)
+    }
+
+    @Test
     fun externalCancellationDurablyHandsOffLeaseAndSameProcessReplayConfirms() = runTest {
         seed("draft-delete-6")
         remote.blockUntilCancelled = true

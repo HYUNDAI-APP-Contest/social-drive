@@ -31,7 +31,14 @@ class PublishScheduler(
         return result
     }
 
-    suspend fun recoverAfterProcessRestart() = recoveryMutex.withLock {
+    suspend fun recoverAfterProcessRestart() = recoveryMutex.withLock { recoverLocked() }
+
+    suspend fun resumeAfterAuthentication() = recoveryMutex.withLock {
+        queue.resumeAuthenticationFailures()
+        recoverLocked()
+    }
+
+    private suspend fun recoverLocked() {
         executionGate.coordinateRecovery(
             whenNotParked = { queue.pauseRecoverableForMotion() },
             whenParked = {

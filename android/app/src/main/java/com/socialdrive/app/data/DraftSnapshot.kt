@@ -1,5 +1,7 @@
 package com.socialdrive.app.data
 
+import com.socialdrive.app.domain.NormalizedRoutePoint
+
 /**
  * Immutable, privacy-minimized local publication input.
  *
@@ -16,5 +18,28 @@ data class DraftSnapshot(
     val originalContentRef: String,
     val state: String,
     val highlightCount: Int = 0,
+    val durationSeconds: Int = 0,
+    val distanceMeters: Int = 0,
     val storyId: String = "demo-coast",
+    val routePoints: List<NormalizedRoutePoint> = emptyList(),
+    val createdAtEpochMs: Long = 0L,
 )
+
+/** A publishable recording must preserve order and describe movement, not only contain two rows. */
+fun DraftSnapshot.hasPublishableRecordedRoute(): Boolean =
+    routePoints.size >= 2 &&
+        routePoints.zipWithNext().all { (previous, next) -> previous.sequence < next.sequence } &&
+        routePoints.asSequence().map { it.horizontal to it.vertical }.distinct().take(2).count() == 2
+
+/**
+ * Rejects legacy/stale-fix distance aggregates that imply physically impossible road travel.
+ * A generous 1 km acquisition allowance plus 100 m/s keeps this a corruption guard, not a
+ * driving-style judgement. The persisted source remains untouched for audit/recovery.
+ */
+internal fun plausibleDistanceMeters(distanceMeters: Int, durationSeconds: Int): Int {
+    if (distanceMeters <= 0 || durationSeconds <= 0) return 0
+    val boundedDistance = distanceMeters.coerceAtMost(2_000_000)
+    val boundedDuration = durationSeconds.coerceAtMost(259_200)
+    val maximumPlausible = 1_000L + boundedDuration.toLong() * 100L
+    return boundedDistance.takeIf { it.toLong() <= maximumPlausible } ?: 0
+}

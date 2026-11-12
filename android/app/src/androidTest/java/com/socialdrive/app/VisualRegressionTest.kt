@@ -4,6 +4,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.runtime.Composable
+import androidx.activity.compose.setContent
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -51,7 +52,7 @@ class VisualRegressionTest {
     fun representativeStatesExposeKoreanStatusAndActions() {
         assertScenario(VisualScenario.HomeContent, "오늘의 드라이브")
         assertScenario(VisualScenario.RecordingActive, "데모 경로를 기록하고 있어요")
-        assertScenario(VisualScenario.ConsentLiveUnavailable, "실시간 경로 SDK 준비 중")
+        assertScenario(VisualScenario.ConsentLiveUnavailable, "PLEOS 위치 권한 필요")
         compose.onNodeWithText("실시간 경로 사용 확인").assertDoesNotExist()
         assertScenario(VisualScenario.MemoryDetailDemo, "개인 위치를 제거한 비정밀 경로 아트워크")
         assertScenario(VisualScenario.HomeLoading, "드라이브를 불러오고 있어요")
@@ -62,6 +63,33 @@ class VisualRegressionTest {
         compose.onNodeWithText("기기에 저장된 초안과 기록은 삭제되지 않았습니다.").assertIsDisplayed()
         compose.onNodeWithText("다시 시도").assertIsDisplayed()
         assertScenario(VisualScenario.PublishDraft, "좋았던 순간을 한 장의 이야기로")
+    }
+
+    @Test
+    fun homeCategoryFiltersUpdateTheVisibleDriveCollection() {
+        show(VisualScenario.HomeContent)
+        compose.onNodeWithText("오늘의 드라이브").assertIsDisplayed()
+        compose.onNodeWithText("산").performClick()
+        compose.onNodeWithText("가을, 단풍이 머문 길").assertIsDisplayed()
+        compose.onNodeWithText("빛나는 해안도로의 저녁").assertDoesNotExist()
+        compose.onNodeWithText("도심 속 특별한 저녁").assertDoesNotExist()
+    }
+
+    @Test
+    fun runtimeMemoryFlowOpensDetailAndPublish() {
+        compose.onNodeWithText("빛나는 해안도로의 저녁").performClick()
+        compose.onNodeWithText("개인 위치를 제거한 비정밀 경로 아트워크").assertIsDisplayed()
+        compose.onNodeWithText("이 드라이브 게시하기").performClick()
+        compose.onNodeWithText("드라이브 게시").assertIsDisplayed()
+        compose.onNodeWithText("좋았던 순간을 한 장의 이야기로").assertIsDisplayed()
+    }
+
+    @Test
+    fun runtimeRecordingFlowOpensDistractionMinimizedScreen() {
+        compose.onNodeWithText("기록 시작", substring = true).performClick()
+        compose.onNodeWithText("데모 경로를 기록하고 있어요").assertIsDisplayed()
+        compose.onNodeWithText("방금 좋았어", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("기록 종료", substring = true).assertIsDisplayed()
     }
 
     @Test
@@ -135,7 +163,7 @@ class VisualRegressionTest {
         val expectations = listOf(
             Triple(VisualScenario.HomeContent, "오늘의 드라이브", "기록 시작"),
             Triple(VisualScenario.RecordingActive, "데모 경로를 기록하고 있어요", "기록 종료"),
-            Triple(VisualScenario.ConsentLiveUnavailable, "경로 데이터 및 동의", "실시간 경로 SDK 준비 중"),
+            Triple(VisualScenario.ConsentLiveUnavailable, "경로 데이터 및 동의", "PLEOS 위치 권한 필요"),
             Triple(VisualScenario.MemoryDetailDemo, "빛나는 해안도로의 저녁", "차량 내비게이션 연결 안내"),
             Triple(VisualScenario.HomeLoading, "드라이브를 불러오고 있어요", "저장된 기록을 확인하는 중입니다."),
             Triple(VisualScenario.HomeEmpty, "아직 남긴 드라이브가 없어요", "첫 드라이브 기록하기"),
@@ -194,9 +222,9 @@ class VisualRegressionTest {
     }
 
     private fun show(scenario: VisualScenario, theme: ThemeMode = ThemeMode.Day) {
-        compose.setContent {
+        compose.activity.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 1f)) {
-                VisualScenarioFixture(scenario, theme, judgeViewportModifier())
+                VisualScenarioFixture(scenario, theme, Modifier.judgeViewport())
             }
         }
         compose.waitForIdle()
@@ -204,9 +232,9 @@ class VisualRegressionTest {
     }
 
     private fun showLargeText(scenario: VisualScenario) {
-        compose.setContent {
+        compose.activity.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 1.3f)) {
-                VisualScenarioFixture(scenario, ThemeMode.Day, judgeViewportModifier())
+                VisualScenarioFixture(scenario, ThemeMode.Day, Modifier.judgeViewport())
             }
         }
         compose.waitForIdle()
@@ -235,10 +263,10 @@ class VisualRegressionTest {
     }
 
     private fun setJudgeContent(content: @Composable () -> Unit) {
-        compose.setContent {
+        compose.activity.setContent {
             CompositionLocalProvider(LocalDensity provides Density(1f, fontScale = 1f)) {
                 SocialDriveTheme(ThemeMode.Day) {
-                    Box(judgeViewportModifier().testTag(VISUAL_FIXTURE_TAG)) { content() }
+                    Box(Modifier.judgeViewport().testTag(VISUAL_FIXTURE_TAG)) { content() }
                 }
             }
         }
@@ -246,7 +274,7 @@ class VisualRegressionTest {
         assertJudgeViewport()
     }
 
-    private fun judgeViewportModifier() = Modifier.requiredSize(
+    private fun Modifier.judgeViewport() = requiredSize(
         JUDGE_VIEWPORT_WIDTH_PX.dp,
         JUDGE_VIEWPORT_HEIGHT_PX.dp,
     )

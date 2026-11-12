@@ -1,6 +1,8 @@
 package com.socialdrive.app.ui.components
 
+import android.graphics.BitmapFactory
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -25,14 +27,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
@@ -41,13 +47,24 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
+import com.socialdrive.app.R
 import com.socialdrive.app.domain.DriveSummary
+import com.socialdrive.app.domain.EphemeralCoverImage
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.IntegrationSource
 import com.socialdrive.app.domain.RoutePoint
 import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.UploadState
 import com.socialdrive.app.ui.theme.LocalRouteMemoryColors
+import com.socialdrive.app.ui.theme.MemoryArtworkTopScrim
+import com.socialdrive.app.ui.theme.MemoryArtworkMiddleScrim
+import com.socialdrive.app.ui.theme.MemoryArtworkBottomScrim
+import com.socialdrive.app.ui.theme.MemoryCardMiddleScrim
+import com.socialdrive.app.ui.theme.MemoryCardBottomScrim
+import com.socialdrive.app.ui.theme.MemoryCardDate
+import com.socialdrive.app.ui.theme.MemoryCardSummary
+import com.socialdrive.app.ui.theme.MemoryCardMetric
 
 enum class MemoryPalette { Coast, Mountain, City }
 
@@ -57,9 +74,15 @@ internal fun memoryPaletteFor(id: String): MemoryPalette = when {
     else -> MemoryPalette.Coast
 }
 
+private fun memoryArtworkRes(palette: MemoryPalette): Int = when (palette) {
+    MemoryPalette.Coast -> R.drawable.drive_coast_night_v1
+    MemoryPalette.Mountain -> R.drawable.drive_mountain_autumn_v1
+    MemoryPalette.City -> R.drawable.drive_city_night_v1
+}
+
 /**
- * Privacy-safe memory artwork made only from normalized route points and theme tokens.
- * It deliberately contains no map tiles, place names, photographs, or raw coordinates.
+ * Privacy-safe memory artwork. Generic editorial backdrops contain no user data, while
+ * the route overlay is derived only from normalized demo points (never raw coordinates).
  */
 @Composable
 fun RouteMemoryArtwork(
@@ -69,6 +92,8 @@ fun RouteMemoryArtwork(
     momentCount: Int = 0,
     selectedMomentIndex: Int? = null,
     compact: Boolean = false,
+    routeSource: RouteSource = RouteSource.DemoPreset,
+    coverImage: EphemeralCoverImage? = null,
 ) {
     val scheme = MaterialTheme.colorScheme
     val routeColors = LocalRouteMemoryColors.current
@@ -78,11 +103,36 @@ fun RouteMemoryArtwork(
         MemoryPalette.City -> listOf(routeColors.brand, scheme.surfaceVariant, scheme.secondaryContainer)
     }
     Box(modifier.background(Brush.linearGradient(gradient))) {
+        val decodedCover = remember(coverImage) { coverImage?.decodeBounded() }
+        if (decodedCover != null) {
+            Image(
+                bitmap = decodedCover.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Image(
+                painter = painterResource(memoryArtworkRes(palette)),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(MemoryArtworkTopScrim, MemoryArtworkMiddleScrim, MemoryArtworkBottomScrim),
+                    ),
+                ),
+        )
         Canvas(
             Modifier
                 .fillMaxSize()
                 .clearAndSetSemantics {
-                    contentDescription = "개인 위치가 제거된 데모 경로와 하이라이트 ${momentCount.coerceAtLeast(0)}개"
+                    contentDescription = routeArtworkDescription(routeSource, momentCount, points.size)
                 },
         ) {
             when (palette) {
@@ -128,6 +178,16 @@ fun RouteMemoryArtwork(
             )
         }
     }
+}
+
+internal fun routeArtworkDescription(source: RouteSource, momentCount: Int, pointCount: Int = 2): String {
+    val route = when {
+        source == RouteSource.LiveAvailable && pointCount < 2 -> "실시간 경로 수집 중인 배경"
+        source == RouteSource.LiveAvailable -> "원본 위치가 제거된 실시간 경로"
+        source == RouteSource.CloudPublished -> "서버에 공개된 정규화 경로"
+        else -> "개인 위치가 제거된 데모 경로"
+    }
+    return "$route · 하이라이트 ${momentCount.coerceAtLeast(0)}개"
 }
 
 @Composable
@@ -186,14 +246,20 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMemoryRoute(
 }
 
 @Composable
-fun DriveSummaryCard(drive: DriveSummary, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun DriveSummaryCard(
+    drive: DriveSummary,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    featured: Boolean = false,
+    cardHeight: Dp? = null,
+) {
     val largeText = LocalDensity.current.fontScale >= 1.2f
     Card(
         modifier = modifier
             // A concrete height lets the artwork Box own the complete grid item.
             // heightIn(min) left fillMaxSize() measuring only the text content,
             // which produced a visually empty lower half in the judge viewport.
-            .height(232.dp)
+            .height(cardHeight ?: if (featured) 344.dp else 276.dp)
             .clickable(role = Role.Button, onClickLabel = "${drive.title} 상세 보기", onClick = onClick),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -204,6 +270,8 @@ fun DriveSummaryCard(drive: DriveSummary, onClick: () -> Unit, modifier: Modifie
                 palette = memoryPaletteFor(drive.id),
                 momentCount = drive.highlights,
                 compact = true,
+                routeSource = drive.routeSource,
+                coverImage = drive.coverImage,
                 modifier = Modifier.fillMaxSize(),
             )
             Column(
@@ -213,16 +281,23 @@ fun DriveSummaryCard(drive: DriveSummary, onClick: () -> Unit, modifier: Modifie
                     .background(
                         Brush.verticalGradient(
                             listOf(
-                                MaterialTheme.colorScheme.surface.copy(alpha = .82f),
-                                MaterialTheme.colorScheme.surface,
+                                Color.Transparent,
+                                MemoryCardMiddleScrim,
+                                MemoryCardBottomScrim,
                             ),
                         ),
                     )
-                    .padding(20.dp),
+                    .padding(horizontal = 24.dp, vertical = 22.dp),
             ) {
-                Text(drive.date, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(drive.title, style = MaterialTheme.typography.titleLarge, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(drive.summary, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(drive.date, style = MaterialTheme.typography.bodyMedium, color = MemoryCardDate)
+                Text(
+                    drive.title,
+                    style = if (featured) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,
+                    color = Color.White,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(drive.summary, style = MaterialTheme.typography.bodyMedium, color = MemoryCardSummary, maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(12.dp))
                 if (largeText) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -241,18 +316,38 @@ fun DriveSummaryCard(drive: DriveSummary, onClick: () -> Unit, modifier: Modifie
     }
 }
 
+private fun EphemeralCoverImage.decodeBounded(): android.graphics.Bitmap? {
+    val bytes = copyBytes()
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0 ||
+        bounds.outWidth > MAX_COVER_DIMENSION || bounds.outHeight > MAX_COVER_DIMENSION ||
+        bounds.outWidth.toLong() * bounds.outHeight > MAX_COVER_PIXELS
+    ) return null
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = generateSequence(1) { it * 2 }
+            .first { bounds.outWidth / it <= TARGET_COVER_DIMENSION && bounds.outHeight / it <= TARGET_COVER_DIMENSION }
+        inPreferredConfig = android.graphics.Bitmap.Config.RGB_565
+    }
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+}
+
+private const val MAX_COVER_DIMENSION = 8_192
+private const val MAX_COVER_PIXELS = 16_777_216L
+private const val TARGET_COVER_DIMENSION = 2_048
+
 @Composable
 private fun Metric(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.tertiary)
-        Text(text, style = MaterialTheme.typography.labelLarge)
+        Text(text, style = MaterialTheme.typography.labelLarge, color = MemoryCardMetric)
     }
 }
 
 @Composable
-fun DemoDataBadge(modifier: Modifier = Modifier) {
+fun DemoDataBadge(modifier: Modifier = Modifier, label: String = "데모 데이터") {
     Surface(modifier, shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = .86f)) {
-        Text("데모 데이터", Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
+        Text(label, Modifier.padding(horizontal = 10.dp, vertical = 6.dp), style = MaterialTheme.typography.labelLarge)
     }
 }
 
@@ -261,7 +356,8 @@ fun RouteSourceBadge(source: RouteSource, modifier: Modifier = Modifier) {
     val label = when (source) {
         RouteSource.DemoPreset -> "데모 데이터"
         is RouteSource.LiveUnavailable -> "실시간 경로 사용 불가"
-        else -> "실시간 경로"
+        RouteSource.LiveAvailable -> "실시간 경로"
+        RouteSource.CloudPublished -> "AWS 공개 경로"
     }
     Surface(modifier, shape = CircleShape, color = MaterialTheme.colorScheme.secondaryContainer) {
         Text(
@@ -296,6 +392,7 @@ fun IntegrationStatusChip(
 
 internal fun integrationStatusLabel(status: CapabilityStatus, contextLabel: String): String = when (status.source) {
     IntegrationSource.Actual -> when {
+        contextLabel == "AWS 클라우드" && status.label.startsWith("AWS · ") -> status.label
         status.capability == com.socialdrive.app.domain.CapabilityState.Available -> "PLEOS 연결됨 · $contextLabel"
         status.label.contains("주차 신호") -> "PLEOS 연결됨 · 주차 신호 미확인"
         status.label.contains("연결 안 됨") -> "$contextLabel 연결 미확인"
@@ -322,7 +419,9 @@ fun UploadStateChip(state: UploadState, modifier: Modifier = Modifier) {
         UploadState.Queued -> "오프라인 대기"
         UploadState.Uploading -> "업로드 중"
         UploadState.Failed -> "재시도 필요"
+        UploadState.Rejected -> "게시 불가"
         UploadState.NeedsConflictReview -> "버전 검토 필요"
+        UploadState.NeedsConsentRenewal -> "경로 동의 갱신 필요"
         UploadState.Published -> "게시 완료"
     }
     Surface(modifier.clip(CircleShape), color = MaterialTheme.colorScheme.secondaryContainer) {

@@ -5,8 +5,10 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.work.Configuration
+import androidx.work.Data
 import androidx.work.WorkManager
 import androidx.work.testing.SynchronousExecutor
+import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.testing.WorkManagerTestInitHelper
 import com.socialdrive.app.data.DraftSnapshot
 import com.socialdrive.app.data.EnqueueResult
@@ -19,16 +21,21 @@ import com.socialdrive.app.data.local.DraftEntity
 import com.socialdrive.app.data.local.PublishConflictEntity
 import com.socialdrive.app.data.local.SocialDriveDatabase
 import com.socialdrive.app.data.local.UploadQueueEntity
+import com.socialdrive.app.data.local.NormalizedRoutePointEntity
 import com.socialdrive.app.data.remote.RemoteDriveApi
 import com.socialdrive.app.data.remote.AssetUploadCommand
 import com.socialdrive.app.data.remote.RemoteDraftRef
 import com.socialdrive.app.data.remote.RemoteDriveException
 import com.socialdrive.app.data.remote.RemoteFailureCode
 import com.socialdrive.app.data.work.PublishScheduler
+import com.socialdrive.app.data.work.CreateDriveWorker
+import com.socialdrive.app.data.work.PublishDriveWorker
 import com.socialdrive.app.data.work.PublishWorkerDependencies
 import com.socialdrive.app.data.work.PublishWorkerFactory
 import com.socialdrive.app.data.work.PublishRescheduler
 import com.socialdrive.app.data.work.PublishWorkChainEnqueuer
+import com.socialdrive.app.data.work.StagedPublishWorker
+import com.socialdrive.app.data.work.UploadAssetsWorker
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.safety.ParkedExecutionGate
 import java.util.concurrent.TimeUnit
@@ -84,6 +91,33 @@ class PublishWorkChainTest {
             .getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id))
             .get(5, TimeUnit.SECONDS)
         assertEquals(3, work.size)
+    }
+
+    @Test
+    fun createWorkerPublishesRecordedDurationAndHighlightCount() = runTest {
+        var now = 1_000L
+        val values = ArrayDeque(listOf("recording-metrics", "draft-metrics", "request-metrics"))
+        val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { now })
+        val recording = recordings.start()
+        recordings.addHighlight(recording.id)
+        recordings.addHighlight(recording.id)
+        now = 3_662_000L
+        val draft = requireNotNull(recordings.finishAsDraft(recording.id))
+        val scheduler = PublishScheduler(
+            WorkManager.getInstance(context),
+            PublishQueueRepository(database, clock = { now }),
+            motion,
+        )
+
+        scheduler.enqueue(draft.id, MotionState.Parked)
+        val manager = WorkManager.getInstance(context)
+        val work = manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id)).get(5, TimeUnit.SECONDS)
+        val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
+        work.forEach { driver.setAllConstraintsMet(it.id) }
+        awaitUniqueWorkFinished(draft.id)
+
+        assertEquals(2, remote.lastCreatedDraft?.highlightCount)
+        assertEquals(3_661, remote.lastCreatedDraft?.durationSeconds)
     }
 
     @Test
@@ -171,6 +205,7 @@ class PublishWorkChainTest {
         val queueRepository = PublishQueueRepository(database, clock = { 1_000L })
         val scheduler = PublishScheduler(WorkManager.getInstance(context), queueRepository, motion)
         remote.publishError = RemoteDriveException(RemoteFailureCode.VERSION_CONFLICT, false)
+        database.routePrivacyDao().insertPoint(NormalizedRoutePointEntity(draft.recordingId, 0, .2f, .3f, "UNPUBLISHED"))
         scheduler.enqueue(draft.id, MotionState.Parked)
         val manager = WorkManager.getInstance(context)
         val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
@@ -187,6 +222,7 @@ class PublishWorkChainTest {
         assertEquals(draft.clientRequestId, conflict.clientRequestId)
         assertEquals(EnqueueResult.NeedsConflictReview, queueRepository.enqueue(draft.id, MotionState.Parked))
         assertEquals("local-recording://${draft.recordingId}", database.draftDao().find(draft.id)?.originalContentRef)
+        assertEquals("UNPUBLISHED", database.routePrivacyDao().pointsForRecording(draft.recordingId).single().publicationState)
     }
 
     @Test
@@ -211,7 +247,6 @@ class PublishWorkChainTest {
                 1_201L, null, null, null,
             ),
         )
-
         val manager = WorkManager.getInstance(context)
         PublishWorkChainEnqueuer(manager).replacePublishOnly("draft-crash")
         val work = manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName("draft-crash"))
@@ -276,6 +311,7 @@ class PublishWorkChainTest {
             PublishConflictEntity(draft.id, draft.clientRequestId, "drive-remote-replay", 4, 5, "DRAFT",
                 "server", "summary", ConflictState.REPLAY_QUEUED, 1, 1, 1_100L, 1_101L, null, null),
         )
+        database.routePrivacyDao().insertPoint(NormalizedRoutePointEntity(draft.recordingId, 0, .2f, .3f, "UNPUBLISHED"))
         val scheduler = PublishScheduler(WorkManager.getInstance(context), queueRepository, motion)
         scheduler.recoverAfterProcessRestart()
         val work = WorkManager.getInstance(context)
@@ -289,6 +325,90 @@ class PublishWorkChainTest {
         assertEquals(1, remote.publishCalls)
         assertEquals(LocalState.COMPLETE, database.uploadQueueDao().find(draft.id)?.stage)
         assertEquals(ConflictState.RESOLVED, database.publishConflictDao().find(draft.id)?.state)
+        assertEquals("PUBLISHED", database.routePrivacyDao().pointsForRecording(draft.recordingId).single().publicationState)
+    }
+
+    @Test
+    fun authenticationFailureResumesOnlyAfterSuccessfulLogin() = runTest {
+        val values = ArrayDeque(listOf("recording-auth", "draft-auth", "request-auth"))
+        val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 1_400L })
+        val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
+        val queueRepository = PublishQueueRepository(database, clock = { 1_400L })
+        val scheduler = PublishScheduler(WorkManager.getInstance(context), queueRepository, motion)
+        remote.createError = RemoteDriveException(RemoteFailureCode.AUTHENTICATION, retryable = false)
+        scheduler.enqueue(draft.id, MotionState.Parked)
+        val manager = WorkManager.getInstance(context)
+        val driver = requireNotNull(WorkManagerTestInitHelper.getTestDriver(context))
+        manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id)).get(5, TimeUnit.SECONDS)
+            .forEach { driver.setAllConstraintsMet(it.id) }
+        awaitUniqueWorkFinished(draft.id)
+
+        assertEquals(1, remote.createCalls)
+        assertEquals(LocalState.FAILED, database.uploadQueueDao().find(draft.id)?.status)
+        assertEquals(RemoteFailureCode.AUTHENTICATION.name, database.uploadQueueDao().find(draft.id)?.lastErrorCode)
+
+        scheduler.recoverAfterProcessRestart()
+        assertEquals(LocalState.FAILED, database.uploadQueueDao().find(draft.id)?.status)
+
+        remote.createError = null
+        scheduler.resumeAfterAuthentication()
+        assertEquals(LocalState.QUEUED, database.uploadQueueDao().find(draft.id)?.status)
+        val resumed = manager.getWorkInfosForUniqueWork(PublishScheduler.uniqueName(draft.id)).get(5, TimeUnit.SECONDS)
+        assertEquals(3, resumed.count { !it.state.isFinished })
+        resumed.forEach { driver.setAllConstraintsMet(it.id) }
+        awaitUniqueWorkFinished(draft.id)
+
+        assertEquals(2, remote.createCalls)
+        assertEquals(1, remote.uploadCalls)
+        assertEquals(1, remote.publishCalls)
+        assertEquals(LocalState.COMPLETE, database.uploadQueueDao().find(draft.id)?.stage)
+        assertEquals(LocalState.PUBLISHED, database.uploadQueueDao().find(draft.id)?.status)
+    }
+
+    @Test
+    fun transientAuthenticationRefreshFailureRetriesAndCompletesWithoutLogin() = runTest {
+        val values = ArrayDeque(listOf("recording-auth-timeout", "draft-auth-timeout", "request-auth-timeout"))
+        val recordings = RecordingRepository(database, IdFactory { values.removeFirst() }, clock = { 1_500L })
+        val draft = requireNotNull(recordings.finishAsDraft(recordings.start().id))
+        val queue = PublishQueueRepository(database, clock = { 1_500L })
+        queue.enqueue(draft.id, MotionState.Parked)
+        val dependencies = PublishWorkerDependencies(database, remote, motion, PublishRescheduler {})
+        val workerFactory = PublishWorkerFactory(dependencies)
+        val input = Data.Builder().putString(StagedPublishWorker.KEY_DRAFT_ID, draft.id).build()
+        remote.createError = RemoteDriveException(RemoteFailureCode.SERVER_BUSY, retryable = true)
+
+        val firstCreate = TestListenableWorkerBuilder<CreateDriveWorker>(context)
+            .setInputData(input)
+            .setWorkerFactory(workerFactory)
+            .setRunAttemptCount(0)
+            .build()
+        assertEquals(androidx.work.ListenableWorker.Result.retry()::class, firstCreate.doWork()::class)
+        assertEquals(LocalState.FAILED, database.uploadQueueDao().find(draft.id)?.status)
+        assertEquals(1, remote.createCalls)
+
+        remote.createError = null
+        val secondCreate = TestListenableWorkerBuilder<CreateDriveWorker>(context)
+            .setInputData(input)
+            .setWorkerFactory(workerFactory)
+            .setRunAttemptCount(1)
+            .build()
+        assertEquals(androidx.work.ListenableWorker.Result.success()::class, secondCreate.doWork()::class)
+        val upload = TestListenableWorkerBuilder<UploadAssetsWorker>(context)
+            .setInputData(input)
+            .setWorkerFactory(workerFactory)
+            .build()
+        assertEquals(androidx.work.ListenableWorker.Result.success()::class, upload.doWork()::class)
+        val publish = TestListenableWorkerBuilder<PublishDriveWorker>(context)
+            .setInputData(input)
+            .setWorkerFactory(workerFactory)
+            .build()
+        assertEquals(androidx.work.ListenableWorker.Result.success()::class, publish.doWork()::class)
+
+        assertEquals(2, remote.createCalls)
+        assertEquals(1, remote.uploadCalls)
+        assertEquals(1, remote.publishCalls)
+        assertEquals(LocalState.COMPLETE, database.uploadQueueDao().find(draft.id)?.stage)
+        assertEquals(LocalState.PUBLISHED, database.uploadQueueDao().find(draft.id)?.status)
     }
 
     private suspend fun awaitUniqueWorkFinished(draftId: String) = withContext(Dispatchers.IO) {
@@ -310,10 +430,14 @@ private class CountingRemoteDriveApi : RemoteDriveApi {
     var uploadCalls = 0
     var publishCalls = 0
     var createResult: RemoteDraftRef? = null
+    var createError: RemoteDriveException? = null
     var publishError: RemoteDriveException? = null
+    var lastCreatedDraft: DraftSnapshot? = null
     override suspend fun createDrive(clientRequestId: String, draft: DraftSnapshot): com.socialdrive.app.data.remote.RemoteDraftRef {
         calls += 1
         createCalls += 1
+        lastCreatedDraft = draft
+        createError?.let { throw it }
         return createResult ?: com.socialdrive.app.data.remote.RemoteDraftRef("remote-${draft.id}", 1)
     }
     override suspend fun uploadAssets(remoteDriveId: String, commands: List<AssetUploadCommand>) { calls += 1; uploadCalls += 1 }

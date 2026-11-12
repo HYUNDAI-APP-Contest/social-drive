@@ -56,7 +56,7 @@ function normalizeAssets(assets) {
   }).sort((left, right) => left.kind.localeCompare(right.kind));
 }
 
-function normalizeDraft(body) {
+function normalizeDraft(body, consentPolicyVersion) {
   const title = typeof body.title === "string" ? body.title.trim() : "";
   const summary = typeof body.summary === "string" ? body.summary.trim() : "";
   const distanceMeters = Number(body.distanceMeters); const durationSeconds = Number(body.durationSeconds); const highlightCount = Number(body.highlightCount);
@@ -69,11 +69,17 @@ function normalizeDraft(body) {
   if (!Number.isSafeInteger(distanceMeters) || distanceMeters < 0 || distanceMeters > 2_000_000) fields.push("distanceMeters");
   if (!Number.isSafeInteger(durationSeconds) || durationSeconds < 0 || durationSeconds > 259_200) fields.push("durationSeconds");
   if (!Number.isSafeInteger(highlightCount) || highlightCount < 0 || highlightCount > 100) fields.push("highlightCount");
-  if (consent.routeShare !== true || consent.coverShare !== true || typeof consent.policyVersion !== "string" || consent.policyVersion.length < 1 || consent.policyVersion.length > 32) fields.push("consent");
+  if (consent.routeShare !== true || consent.coverShare !== true || consent.policyVersion !== consentPolicyVersion) fields.push("consent");
   if (fields.length) throw new ApiError(422, "VALIDATION_ERROR", "입력 내용을 다시 확인해 주세요.", { fields });
   const assets = normalizeAssets(body.assets);
   if (!assets.some((asset) => asset.kind === "COVER") || !assets.some((asset) => asset.kind === "ROUTE")) throw new ApiError(422, "VALIDATION_ERROR", "대표 이미지와 공개용 경로 파일이 필요해요.", { fields: ["assets"] });
   return { clientDraftId: body.clientDraftId, schemaVersion: 1, title, summary, visibility: "PUBLIC", distanceMeters, durationSeconds, highlightCount, consent: { routeShare: true, coverShare: true, policyVersion: consent.policyVersion }, assets };
+}
+
+function requireCurrentConsent(drive, consentPolicyVersion) {
+  if (drive?.consent?.routeShare !== true || drive?.consent?.coverShare !== true || drive?.consent?.policyVersion !== consentPolicyVersion) {
+    throw new ApiError(422, "CONSENT_RENEWAL_REQUIRED", "게시 전에 개인정보 동의를 다시 확인해 주세요.", { fields: ["consent"] });
+  }
 }
 
 function publicDrive(drive) {
@@ -89,7 +95,8 @@ async function uploadResponse(assets, drive, now) {
   return uploads.map(({ expiresInSeconds, ...upload }) => ({ ...upload, expiresAt: new Date(now.getTime() + expiresInSeconds * 1000).toISOString() }));
 }
 
-export function createHandler({ repository, assets, clock = () => new Date(), ids = {}, logger = console }) {
+export function createHandler({ repository, assets, consentPolicyVersion, clock = () => new Date(), ids = {}, logger = console }) {
+  if (!/^[A-Za-z0-9._-]{1,32}$/.test(consentPolicyVersion ?? "")) throw new Error("Invalid consent policy configuration");
   const newDriveId = ids.driveId ?? (() => randomUUID()); const newCursor = ids.cursor ?? (() => randomBytes(32).toString("base64url"));
   return async function apiHandler(event) {
     const requestId = event?.requestContext?.requestId || randomUUID(); const routeKey = event?.requestContext?.routeKey ?? "UNKNOWN";
@@ -104,13 +111,14 @@ export function createHandler({ repository, assets, clock = () => new Date(), id
       } else if (routeKey === "POST /drives") {
         const idempotencyKey = header(event, "idempotency-key");
         if (!safeId(idempotencyKey)) throw new ApiError(400, "IDEMPOTENCY_KEY_REQUIRED", "초안 식별 정보를 확인해 주세요.");
-        const draft = normalizeDraft(parseBody(event)); const payloadHash = sha256(canonical(draft));
+        const draft = normalizeDraft(parseBody(event), consentPolicyVersion); const payloadHash = sha256(canonical(draft));
         const created = await repository.createDraft({ userId, idempotencyKey, payloadHash, driveId: newDriveId(), draft, now: now.toISOString(), expiresAtEpoch: Math.floor(now.getTime() / 1000) + 2_592_000 });
         result = response(created.created ? 201 : 200, { drive: publicDrive(created.drive), uploads: await uploadResponse(assets, created.drive, now) }, requestId);
       } else if (routeKey === "POST /drives/{driveId}/uploads") {
         if (!safeId(driveId)) throw new ApiError(404, "NOT_FOUND", "드라이브를 찾을 수 없어요.");
         const drive = await repository.getDrive(driveId);
         if (!drive || drive.ownerId !== userId || drive.status !== "DRAFT") throw new ApiError(404, "NOT_FOUND", "드라이브를 찾을 수 없어요.");
+        requireCurrentConsent(drive, consentPolicyVersion);
         const requested = normalizeAssets(parseBody(event).assets);
         if (canonical(requested) !== canonical(drive.assets)) throw new ApiError(409, "ASSET_MISMATCH", "파일 정보를 안전하게 확인하지 못했어요.");
         result = response(200, { drive: publicDrive(drive), uploads: await uploadResponse(assets, { ...drive, assets: requested }, now) }, requestId);
@@ -120,6 +128,7 @@ export function createHandler({ repository, assets, clock = () => new Date(), id
         const body = parseBody(event);
         if (!Number.isSafeInteger(body.expectedVersion)) throw new ApiError(422, "VALIDATION_ERROR", "게시 정보를 확인해 주세요.", { fields: ["expectedVersion"] });
         if (drive.status !== "PUBLISHED") {
+          requireCurrentConsent(drive, consentPolicyVersion);
           const verified = await assets.verifyUploads(drive);
           if (verified.invalid?.length) throw new ApiError(422, "ROUTE_ASSET_INVALID", "공개용 경로 파일에서 공유할 수 없는 정보를 발견했어요.", { fields: verified.invalid });
           if (!verified.complete) throw new ApiError(409, "UPLOAD_INCOMPLETE", "남은 파일 업로드를 이어서 진행할게요.", { retryable: true, fields: verified.missing ?? [] });
@@ -159,7 +168,9 @@ export function createHandler({ repository, assets, clock = () => new Date(), id
         const updated = await repository.updateDrive({ driveId, userId, expectedVersion: body.expectedVersion, changes, now: now.toISOString() });
         result = response(200, { drive: publicDrive(updated) }, requestId);
       } else if (routeKey === "DELETE /drives/{driveId}") {
-        const deleted = await repository.deleteDrive({ driveId, userId, now: now.toISOString() });
+        const idempotencyKey = header(event, "idempotency-key");
+        if (!/^[a-f0-9]{64}$/.test(idempotencyKey ?? "")) throw new ApiError(400, "IDEMPOTENCY_KEY_REQUIRED", "삭제 요청 식별 정보를 확인해 주세요.");
+        const deleted = await repository.deleteDrive({ driveId, userId, idempotencyKey, now: now.toISOString() });
         if (deleted) {
           try { await assets.deleteAssets(deleted); }
           catch { logger.warn?.({ requestId, routeKey, status: 204, errorCode: "ASSET_CLEANUP_PENDING" }); }
@@ -183,7 +194,7 @@ let productionHandler;
 export async function handler(event) {
   if (!productionHandler) {
     const { createProductionServices } = await import("./production-adapters.mjs");
-    productionHandler = createHandler(createProductionServices());
+    productionHandler = createHandler({ ...createProductionServices(), consentPolicyVersion: process.env.CONSENT_POLICY_VERSION });
   }
   return productionHandler(event);
 }

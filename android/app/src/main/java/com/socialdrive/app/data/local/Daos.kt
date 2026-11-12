@@ -100,6 +100,18 @@ interface DraftDao {
 }
 
 @Dao
+interface CachedFeedDao {
+    @Query("SELECT * FROM cached_feed_drives ORDER BY publishedAt DESC, id DESC")
+    suspend fun findAll(): List<CachedFeedDriveEntity>
+
+    @Query("DELETE FROM cached_feed_drives")
+    suspend fun deleteAll()
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<CachedFeedDriveEntity>)
+}
+
+@Dao
 interface UploadQueueDao {
     @Query("SELECT * FROM upload_queue WHERE draftId = :draftId")
     fun observe(draftId: String): Flow<UploadQueueEntity?>
@@ -114,6 +126,17 @@ interface UploadQueueDao {
         ORDER BY updatedAtEpochMs
     """)
     suspend fun recoverable(): List<UploadQueueEntity>
+
+    @Query("""
+        UPDATE upload_queue SET status = 'QUEUED', nextAttemptAtEpochMs = :now,
+            lastErrorCode = NULL, updatedAtEpochMs = :now
+        WHERE status = 'FAILED' AND lastErrorCode = 'AUTHENTICATION'
+          AND NOT EXISTS (
+              SELECT 1 FROM published_delete_requests d
+              WHERE d.draftId = upload_queue.draftId
+          )
+    """)
+    suspend fun resumeAuthenticationFailures(now: Long): Int
 
     @Upsert
     suspend fun upsert(item: UploadQueueEntity)
@@ -265,6 +288,12 @@ interface RoutePrivacyDao {
     @Query("SELECT COUNT(*) FROM normalized_route_points")
     suspend fun pointCount(): Int
 
+    @Query("SELECT * FROM normalized_route_points WHERE recordingId = :recordingId ORDER BY sequence")
+    suspend fun pointsForRecording(recordingId: String): List<NormalizedRoutePointEntity>
+
+    @Query("UPDATE normalized_route_points SET publicationState = 'PUBLISHED' WHERE recordingId = :recordingId AND publicationState != 'PUBLISHED'")
+    suspend fun markRecordingPublished(recordingId: String): Int
+
     @Query("DELETE FROM normalized_route_points WHERE publicationState != 'PUBLISHED'")
     suspend fun purgeUnpublishedPoints(): Int
 
@@ -287,6 +316,13 @@ interface PublishedDeleteDao {
         ORDER BY requestedAtEpochMs
     """)
     suspend fun recoverable(): List<PublishedDeleteRequestEntity>
+
+    @Query("""
+        UPDATE published_delete_requests SET state = 'DELETE_PENDING', attempts = 0,
+            nextAttemptAtEpochMs = :now, lastErrorCode = NULL, updatedAtEpochMs = :now
+        WHERE state = 'AUTH_REQUIRED'
+    """)
+    suspend fun resumeAuthenticationRequired(now: Long): Int
 
     @Query("""
         UPDATE published_delete_requests SET state = 'RUNNING', attempts = :runningAttempt,

@@ -1,3 +1,5 @@
+import java.net.URI
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -24,6 +26,87 @@ val releaseSigningValues = releaseSigningEnvironment.associateWith { name ->
 val approvedReleaseSigning = releaseSigningValues
     .takeIf { values -> values.values.all { it != null } }
     ?.mapValues { (_, value) -> value!! }
+
+fun quotedBuildConfig(value: String): String = "\"" +
+    value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+
+val cloudApiBaseUrl = providers.gradleProperty("socialDrive.cloud.apiBaseUrl").orElse("")
+val cloudUploadHosts = providers.gradleProperty("socialDrive.cloud.uploadHosts").orElse("")
+val cloudConsentPolicyVersion = providers.gradleProperty("socialDrive.cloud.consentPolicyVersion").orElse("")
+val cloudCognitoRegion = providers.gradleProperty("socialDrive.cloud.cognitoRegion").orElse("")
+val cloudCognitoUserPoolId = providers.gradleProperty("socialDrive.cloud.cognitoUserPoolId").orElse("")
+val cloudCognitoClientId = providers.gradleProperty("socialDrive.cloud.cognitoClientId").orElse("")
+val approvedConsentPolicyVersion = "2026-11-07.v1"
+
+fun isValidCloudHost(value: String): Boolean {
+    if (value.length !in 4..253 || value.startsWith('.') || value.endsWith('.')) return false
+    val labels = value.split('.')
+    if (labels.size < 2 || labels.last().none(Char::isLetter)) return false
+    return labels.all { label ->
+        label.length in 1..63 &&
+            label.first().isLetterOrDigit() &&
+            label.last().isLetterOrDigit() &&
+            label.all { it in 'a'..'z' || it in '0'..'9' || it == '-' }
+    }
+}
+
+fun isValidCloudBasePath(value: String?): Boolean {
+    val path = value.orEmpty()
+    if (path.length > 512 || '\\' in path || '%' in path || path.any(Char::isWhitespace)) return false
+    if (path.isEmpty() || path == "/") return true
+    if (!path.startsWith('/') || "//" in path) return false
+    return path.removePrefix("/").removeSuffix("/").split('/').all { segment ->
+        segment.isNotEmpty() && segment !in setOf(".", "..") &&
+            segment.all { it.isLetterOrDigit() || it in "-._~$" }
+    }
+}
+
+tasks.register("verifyPleosCloudConfiguration") {
+    group = "verification"
+    description = "Validates the public AWS/Cognito configuration without printing its values."
+    doLast {
+        val values = linkedMapOf(
+            "apiBaseUrl" to cloudApiBaseUrl.get(),
+            "uploadHosts" to cloudUploadHosts.get(),
+            "consentPolicyVersion" to cloudConsentPolicyVersion.get(),
+            "cognitoRegion" to cloudCognitoRegion.get(),
+            "cognitoUserPoolId" to cloudCognitoUserPoolId.get(),
+            "cognitoClientId" to cloudCognitoClientId.get(),
+        )
+        val missing = values.filterValues { it.isBlank() }.keys
+        if (missing.isNotEmpty()) {
+            throw GradleException("PLEOS cloud configuration is incomplete: ${missing.joinToString()} are required.")
+        }
+        val apiUri = runCatching { URI(values.getValue("apiBaseUrl")) }.getOrNull()
+        if (apiUri == null || !apiUri.scheme.equals("https", true) || apiUri.host == null ||
+            apiUri.userInfo != null || apiUri.query != null || apiUri.fragment != null ||
+            (apiUri.port != -1 && apiUri.port != 443) || !isValidCloudHost(apiUri.host.lowercase()) ||
+            !isValidCloudBasePath(apiUri.rawPath)
+        ) {
+            throw GradleException(
+                "PLEOS cloud API URL must use a public DNS HTTPS host and a normalized stage path without credentials, query, or fragment."
+            )
+        }
+        val hosts = values.getValue("uploadHosts").split(',').map(String::trim).filter(String::isNotEmpty)
+        if (hosts.isEmpty() || hosts.any { it != it.lowercase() || !isValidCloudHost(it) }) {
+            throw GradleException("PLEOS cloud upload hosts must be lowercase host names without schemes or paths.")
+        }
+        val policy = values.getValue("consentPolicyVersion")
+        if (policy != approvedConsentPolicyVersion) {
+            throw GradleException("PLEOS cloud consent policy version does not match the app policy.")
+        }
+        val region = values.getValue("cognitoRegion").trim().lowercase()
+        val pool = values.getValue("cognitoUserPoolId").trim()
+        val client = values.getValue("cognitoClientId").trim().lowercase()
+        val regionPattern = Regex("[a-z]{2}(?:-gov)?-[a-z]+-\\d")
+        val poolPattern = Regex("(${regionPattern.pattern})_[A-Za-z0-9]{9}")
+        val poolRegion = poolPattern.matchEntire(pool)?.groupValues?.get(1)
+        if (!regionPattern.matches(region) || poolRegion != region || !client.matches(Regex("[a-z0-9]{26}"))) {
+            throw GradleException("PLEOS Cognito region, User Pool ID, or public mobile Client ID has an invalid format.")
+        }
+        logger.lifecycle("PLEOS cloud public configuration verified.")
+    }
+}
 
 // Inspect the resolved graph, not the user-supplied task spelling. This catches Gradle
 // abbreviations and lifecycle tasks whose dependencies create a release artifact.
@@ -84,6 +167,12 @@ android {
         create("pleos") {
             dimension = "integration"
             buildConfigField("String", "INTEGRATION_MODE", "\"pleos\"")
+            buildConfigField("String", "CLOUD_API_BASE_URL", quotedBuildConfig(cloudApiBaseUrl.get()))
+            buildConfigField("String", "CLOUD_UPLOAD_HOSTS", quotedBuildConfig(cloudUploadHosts.get()))
+            buildConfigField("String", "CLOUD_CONSENT_POLICY_VERSION", quotedBuildConfig(cloudConsentPolicyVersion.get()))
+            buildConfigField("String", "CLOUD_COGNITO_REGION", quotedBuildConfig(cloudCognitoRegion.get()))
+            buildConfigField("String", "CLOUD_COGNITO_USER_POOL_ID", quotedBuildConfig(cloudCognitoUserPoolId.get()))
+            buildConfigField("String", "CLOUD_COGNITO_CLIENT_ID", quotedBuildConfig(cloudCognitoClientId.get()))
         }
     }
 
@@ -103,6 +192,12 @@ android {
 
     buildTypes {
         getByName("release") {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
             signingConfig = approvedReleaseSigning?.let { signingConfigs.getByName("approvedRelease") }
         }
     }
@@ -113,6 +208,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -133,8 +229,54 @@ android {
 }
 
 afterEvaluate {
-    tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileDemoDebugScreenshotTestKotlin") {
-        kotlinOptions.freeCompilerArgs += "-Xskip-metadata-version-check"
+    tasks.named("prePleosReleaseBuild") {
+        dependsOn("verifyPleosCloudConfiguration")
+    }
+
+    listOf("Demo", "Pleos").forEach { flavor ->
+        tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compile${flavor}DebugScreenshotTestKotlin") {
+            compilerOptions.freeCompilerArgs.add("-Xskip-metadata-version-check")
+        }
+    }
+
+    tasks.named("connectedPleosDebugAndroidTest") {
+        doFirst {
+            val allowReset = providers.gradleProperty("socialDrive.tests.allowAppDataReset")
+                .map { it.toBooleanStrictOrNull() == true }
+                .getOrElse(false)
+            if (allowReset) return@doFirst
+
+            val adb = android.sdkDirectory.resolve("platform-tools/adb")
+            if (!adb.isFile) return@doFirst
+            val deviceRows = providers.exec {
+                commandLine(adb, "devices")
+            }.standardOutput.asText.get().lineSequence()
+                .map(String::trim)
+                .filter { it.endsWith("\tdevice") }
+                .toList()
+            if (deviceRows.size != 1) {
+                throw GradleException(
+                    "PLEOS instrumentation safety check requires exactly one connected device; " +
+                        "the test runner may uninstall the target app and erase its data."
+                )
+            }
+            val serial = deviceRows.single().substringBefore('\t')
+            val currentUser = providers.exec {
+                commandLine(adb, "-s", serial, "shell", "am", "get-current-user")
+            }.standardOutput.asText.get().trim()
+            val installed = providers.exec {
+                isIgnoreExitValue = true
+                commandLine(adb, "-s", serial, "shell", "pm", "path", "--user", currentUser, "com.socialdrive.app")
+            }.standardOutput.asText.get().trim().startsWith("package:")
+            if (installed) {
+                throw GradleException(
+                    "Refusing connectedPleosDebugAndroidTest because com.socialdrive.app is installed for " +
+                        "user $currentUser. Android instrumentation can uninstall it and erase app data. " +
+                        "Use a disposable AVD, or explicitly pass " +
+                        "-PsocialDrive.tests.allowAppDataReset=true after accepting the reset."
+                )
+            }
+        }
     }
 }
 
@@ -145,6 +287,7 @@ ksp {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
@@ -161,8 +304,17 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     "pleosImplementation"("ai.pleos.playground:Vehicle:2.3.2")
     "pleosImplementation"("ai.pleos.playground:NaviHelper:3.0.5")
+    "pleosImplementation"("ai.pleos.playground:FusedLocation:1.1.3")
+    "pleosImplementation"("ai.pleos.playground:TextToSpeech:3.3.1")
+    "pleosImplementation"("ai.pleos.playground:SpeechToText:3.3.1")
+    "pleosImplementation"("com.amplifyframework:aws-auth-cognito:2.27.4")
+    "pleosImplementation"("androidx.browser:browser:1.8.0") {
+        version { strictly("1.8.0") }
+        because("PLEOS toolchain is pinned to compileSdk 35; Hosted UI is not used by the SRP adapter")
+    }
     ksp("androidx.room:room-compiler:2.6.1")
 
     testImplementation("junit:junit:4.13.2")

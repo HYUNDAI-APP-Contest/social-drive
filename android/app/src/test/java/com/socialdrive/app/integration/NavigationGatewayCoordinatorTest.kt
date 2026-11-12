@@ -106,6 +106,22 @@ class NavigationGatewayCoordinatorTest {
     }
 
     @Test
+    fun `route started alone settles active and cannot later time out`() {
+        val harness = Harness()
+        harness.coordinator.initialize()
+        val port = harness.ports.single()
+        assertEquals(NavigationRequestResult.Accepted, harness.coordinator.requestRoute(request("started", "안내 시작")))
+
+        port.listener!!.onRouteStarted()
+        harness.scheduler.advanceBy(250)
+        assertEquals(NavigationState.Active("안내 시작"), harness.observer.states.last())
+
+        harness.scheduler.advanceBy(20_000)
+        assertEquals(NavigationState.Active("안내 시작"), harness.observer.states.last())
+        assertEquals(1, port.events.count { it == "removeListener" })
+    }
+
+    @Test
     fun `synchronous request callbacks settle once after vendor call returns`() {
         val harness = Harness { port ->
             port.requestAction = { listener ->

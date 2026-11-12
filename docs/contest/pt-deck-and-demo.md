@@ -292,7 +292,7 @@ No-Go 대응:
 
 ### 위치정보는 언제 서버로 가는가?
 
-현재 HEAD `4f2b559`은 consent/withdraw·route source 안전 경계와 published-delete network lifecycle을 포함하지만 실제 위치·경로점 수집은 미구현이고 preset reference만 사용한다. delete는 demo transport에서 계측됐으며 actual cloud와 실제 위치 source는 후속 Go 조건이다.
+현재 앱은 consent/withdraw·route source 안전 경계와 published-delete network lifecycle을 포함한다. PLEOS AVD에서는 FusedLocation callback을 기록 중에만 받아 원본 좌표를 메모리에서 정규화하고 비정밀 경로·거리만 보존하는 흐름을 검증했다. preset은 별도 `데모 데이터`로 유지한다. delete actual cloud와 실차 GNSS 품질은 후속 Go 조건이다.
 
 ### 실제 SDK와 데모 기능은 무엇인가?
 

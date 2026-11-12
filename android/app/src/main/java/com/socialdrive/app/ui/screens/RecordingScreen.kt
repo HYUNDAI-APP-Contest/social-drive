@@ -60,6 +60,7 @@ fun RecordingScreen(snapshot: RecordingSnapshot, onHighlight: () -> Unit, onRequ
             palette = memoryPaletteFor(snapshot.storyId),
             momentCount = snapshot.highlights,
             selectedMomentIndex = (snapshot.highlights - 1).takeIf { it >= 0 },
+            routeSource = snapshot.routeSource,
             modifier = Modifier.fillMaxSize().padding(start = 350.dp, top = 92.dp, end = 20.dp, bottom = 104.dp),
         )
         capturedFeedbackCount?.let { count ->
@@ -107,14 +108,18 @@ fun RecordingScreen(snapshot: RecordingSnapshot, onHighlight: () -> Unit, onRequ
                     Modifier.padding(horizontal = 22.dp, vertical = 18.dp),
                     verticalArrangement = Arrangement.Center,
                 ) {
-                    Text("데모 경로를 기록하고 있어요", style = MaterialTheme.typography.titleLarge)
+                    Text(recordingRouteTitle(snapshot.routeSource), style = MaterialTheme.typography.titleLarge)
                     Text("경과 시간", Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(snapshot.elapsed, style = MaterialTheme.typography.displayLarge)
                     Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(44.dp)) {
-                        RecordingMetric("주행 거리", snapshot.distance)
+                        RecordingMetric("경로 상태", snapshot.distance)
                         RecordingMetric("하이라이트", "${snapshot.highlights}개")
                     }
-                    Text("정밀 위치는 수집하지 않습니다.", Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        recordingRoutePrivacyLabel(snapshot.routeSource),
+                        Modifier.padding(top = 12.dp),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -146,6 +151,14 @@ fun RecordingScreen(snapshot: RecordingSnapshot, onHighlight: () -> Unit, onRequ
         }
     }
 }
+
+internal fun recordingRouteTitle(source: com.socialdrive.app.domain.RouteSource): String =
+    if (source == com.socialdrive.app.domain.RouteSource.LiveAvailable) "실시간 경로를 안전하게 기록하고 있어요"
+    else "데모 경로를 기록하고 있어요"
+
+internal fun recordingRoutePrivacyLabel(source: com.socialdrive.app.domain.RouteSource): String =
+    if (source == com.socialdrive.app.domain.RouteSource.LiveAvailable) "원본 위치는 저장하지 않고 경로 형태와 총 거리만 보존합니다."
+    else "정밀 위치는 수집하지 않습니다."
 
 @Composable
 private fun RecordingBadge(highlight: androidx.compose.ui.graphics.Color) {

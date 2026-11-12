@@ -112,17 +112,23 @@ export class DynamoRepository {
     }
   }
 
-  async deleteDrive({ driveId, userId, now }) {
+  async deleteDrive({ driveId, userId, idempotencyKey, now }) {
     const current = await this.getDrive(driveId);
     if (!current || current.ownerId !== userId) throw new ApiError(404, "NOT_FOUND", "드라이브를 찾을 수 없어요.");
-    if (current.status === "DELETED") return current;
+    if (current.status === "DELETED") {
+      if (current.deleteIdempotencyKey !== idempotencyKey) throw new ApiError(409, "IDEMPOTENCY_CONFLICT", "삭제 요청 식별 정보가 기존 요청과 다릅니다.");
+      return current;
+    }
     try {
-      const result = await this.client.send(this.command("Update", { TableName: this.tableName, Key: driveKey(driveId), ReturnValues: "ALL_OLD", ConditionExpression: "ownerId = :owner AND #status <> :deleted", UpdateExpression: "SET #status = :deleted, #version = #version + :one, updatedAt = :now REMOVE FeedPK, FeedSK", ExpressionAttributeNames: { "#status": "status", "#version": "version" }, ExpressionAttributeValues: { ":owner": userId, ":deleted": "DELETED", ":one": 1, ":now": now } }));
+      const result = await this.client.send(this.command("Update", { TableName: this.tableName, Key: driveKey(driveId), ReturnValues: "ALL_OLD", ConditionExpression: "ownerId = :owner AND #status <> :deleted", UpdateExpression: "SET #status = :deleted, #version = #version + :one, updatedAt = :now, deleteIdempotencyKey = :idempotencyKey REMOVE FeedPK, FeedSK", ExpressionAttributeNames: { "#status": "status", "#version": "version" }, ExpressionAttributeValues: { ":owner": userId, ":deleted": "DELETED", ":one": 1, ":now": now, ":idempotencyKey": idempotencyKey } }));
       return cleanDrive(result.Attributes);
     } catch (error) {
       if (error?.name !== "ConditionalCheckFailedException") throw error;
       const latest = await this.getDrive(driveId);
-      if (latest?.ownerId === userId && latest.status === "DELETED") return latest;
+      if (latest?.ownerId === userId && latest.status === "DELETED") {
+        if (latest.deleteIdempotencyKey !== idempotencyKey) throw new ApiError(409, "IDEMPOTENCY_CONFLICT", "삭제 요청 식별 정보가 기존 요청과 다릅니다.");
+        return latest;
+      }
       throw new ApiError(409, "VERSION_CONFLICT", "다른 변경이 있어 최신 내용을 확인해 주세요.");
     }
   }

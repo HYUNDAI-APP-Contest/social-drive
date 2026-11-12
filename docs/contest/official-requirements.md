@@ -91,15 +91,15 @@ Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-o
 
 | 기능 | 공식 상태 | 2026-11-02 저장소 등급 | 승격 조건/금지 사항 |
 |---|---|---|---|
-| Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | `앱 구현` | PR #2 병합 소스의 Pleos flavor에 초기화·release와 fail-closed Unknown 경계가 있다. 실제 permissioned P/D/R/N callback 증거 후에만 `실제 SDK` |
-| NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | `실제 SDK`(제한적) | production adapter가 Pleos Connect Emulator 2.1.0/API 34에서 공개 목적지 1건의 initialize/request/terminal callback/listener removal/release를 application boundary로 완료했다. 실제 UI 전체 여정·물리 차량·경유지 실행 증거로 확대 금지 |
-| FusedLocation | Coming Soon | `향후 기능` | 실제 위치·경로점 수집 기능으로 주장하거나 MVP 필수 의존성으로 사용 금지 |
-| SpeechToText | Coming Soon | `향후 기능` | 실제 음성 인식 기능으로 주장 금지 |
-| TextToSpeech | Coming Soon | `향후 기능` | 실제 음성 합성 기능으로 주장 금지 |
+| Vehicle State / Vehicle SDK 2.3.2 | Ready to Use, 별도 신청 없이 사용 가능 | `실제 SDK (PLEOS AVD PARK callback)` | 초기화·release와 fail-closed Unknown 경계가 있고 PARK callback이 앱 상태까지 도달했다. D/R/N과 실차는 미검증 |
+| NaviHelper 3.0.5 | Ready to Use, 별도 신청 없이 사용 가능 | `앱 구현` | PR #2 병합 소스에 coordinator·lifecycle·route request 계약이 있다. 실제 route/event callback 실기 증거 후에만 `실제 SDK` |
+| FusedLocation | 2026-11-02 가이드에는 Coming Soon | `실제 SDK`(AVD 한정) | 현재 Maven artifact·권한·callback 실행 증거가 있다. 실차 GNSS·production 로그 통제 확인 전 범위를 확대해 주장 금지 |
+| SpeechToText | 2026-11-02 가이드에는 Coming Soon | `실제 SDK`(AVD 한정) | 권한·초기화·request·timeout·stop 실행 증거가 있다. 실차 마이크 정확도 주장 금지 |
+| TextToSpeech | 2026-11-02 가이드에는 Coming Soon | `실제 SDK`(AVD 초기화) | 권한·초기화와 앱 호출 경로가 있다. 실차 오디오 출력 품질 주장 금지 |
 | Vehicle Control | Coming Soon | `향후 기능` | 차량 제어를 구현·시연했다고 주장 금지 |
 | preset route / motion simulator | 앱 내부 데모 데이터 | 항상 `데모 데이터` 배지 표시 | 실제 센서·위치·Vehicle callback처럼 연출 금지 |
 
-출처: [Pleos 프로젝트 생성 및 SDK 상태 가이드](https://document.pleos.ai/en/docs/pleos-only/create-my-project), [Vehicle SDK 2.3.2 설정](https://document.pleos.ai/en/docs/pleos-only/connect-sdk-pleos/Vehicle/project-setup), [NaviHelper 3.0.5 설정](https://document.pleos.ai/en/docs/pleos-only/connect-sdk-pleos/NaviHelper/importing-sdk)
+출처: [Pleos 프로젝트 생성 및 SDK 상태 가이드](https://document.pleos.ai/en/docs/pleos-only/create-my-project), [Vehicle SDK 2.3.2 설정](https://document.pleos.ai/en/docs/pleos-only/connect-sdk-pleos/Vehicle/project-setup), [NaviHelper 3.0.5 설정](https://document.pleos.ai/en/docs/pleos-only/connect-sdk-pleos/NaviHelper/importing-sdk). 저장소 등급의 최신 근거는 [2026-11-07 PLEOS 실행 증거](../pleos-runtime-evidence-2026-11-07.md)를 우선한다.
 
 ## 6. 기능 표기 규칙
 
@@ -120,10 +120,10 @@ Pleos SDK 출처: [Vehicle SDK 소개](https://document.pleos.ai/en/docs/pleos-o
 |---|---|---|
 | 기본 소스 | PR #2 병합 커밋 `dcffaad`를 포함 | Android 앱 소스 통합. signed submission artifact와 actual cloud 완료 주장은 별도 증거 필요 |
 | Android local/consent 기반 | PR #2 병합 소스 | `앱 구현`. 기존 PLEOS UI 8/8, 비UI 43/43, Room v6 migration/persistence, WorkManager 계약 실행 증거가 있으나 실제 SDK callback 증거는 아님 |
-| 실제 경로점·위치 수집 | 확인된 구현 증거 없음 | `미구현`. consent 안전 경계가 있어도 실제 위치 샘플·route point를 수집한다고 주장 금지 |
+| 실제 경로점·위치 수집 | PLEOS AVD FusedLocation callback, 정책 버전 동의·철회, 정규화 경로 Room 저장 실행 증거 | `실제 SDK`는 AVD 범위로 한정. 원본 좌표 미저장·미업로드. 실차 GNSS·장시간 주행은 미검증 |
 | Android cloud·409 conflict contract | PR #2 병합 소스 + backend 계약 `ddbd61f` | `앱 구현`. concrete Cognito/API 설정이 없어 actual cloud는 fail closed |
 | 409 crash-window 안전 경계 | PR #2 병합 소스 | `FAILED/VERSION_CONFLICT`는 일반 worker/recovery가 claim하지 않으며 명시적 adopt만 publish queue로 전환. 자동 GET·overwrite·재게시 금지 |
-| Vehicle/NaviHelper adapter | Issue #28 production NaviHelper adapter와 PLEOS 기반 코드 | Vehicle은 `앱 구현`이며 실제 P/D/R/N callback 미검증. NaviHelper만 `실제 SDK`(제한적): API 34 emulator에서 공개 목적지 1건의 application-boundary terminal callback·cleanup·release 확인. UI 전체 여정·물리 차량 증거 아님 |
+| Vehicle/NaviHelper adapter | PR #2 병합 소스가 PLEOS 기반 코드 포함 | PLEOS AVD에서 Vehicle PARK와 NaviHelper `onRouteStarted` 실제 callback 확인. D/R/N·실차는 미검증 |
 | PLEOS system Back | PR #2 병합 소스 | `UNRESOLVED`. MainActivity dispatcher 이후 Compose stop dialog만 자동 검증. physical/vendor 수용 시험이 필요 |
 | P0-3A bootstrap/doctor | 역사적 commit `88b4938` | 재현 가능한 bootstrap/doctor와 offline zero-network fail-fast의 역사적 증거. 최신 앱 HEAD 또는 build/runtime 성공 증거가 아님 |
 | root `readme.md` | 앱 소개·실행 방법·테스트 환경/설정·APK 목표 경로를 문서화 | Android 통합과 제출용 signed release 미완료를 구분 |

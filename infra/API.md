@@ -26,7 +26,7 @@ Concurrent create requests classify DynamoDB transaction cancellation reasons. A
 - `PATCH /drives/{driveId}`
 - `DELETE /drives/{driveId}`
 
-Create, refresh, publish, update, and delete are owner-scoped. Non-owner draft access returns `404` to avoid existence disclosure. Delete is idempotent and removes the item from the public feed before best-effort media cleanup.
+Create, refresh, publish, update, and delete are owner-scoped. Non-owner draft access returns `404` to avoid existence disclosure. Delete requires the Android client's stable lowercase SHA-256 `Idempotency-Key`; the first key is stored with the tombstone, same-key replay is accepted, and a different-key replay returns `409 IDEMPOTENCY_CONFLICT`. A successful delete removes the item from the public feed before best-effort media cleanup, and same-key replay retries that cleanup safely.
 
 ## Build and test
 

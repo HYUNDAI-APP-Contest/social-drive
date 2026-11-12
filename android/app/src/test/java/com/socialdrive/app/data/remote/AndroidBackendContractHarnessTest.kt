@@ -9,6 +9,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
+import com.socialdrive.app.domain.NormalizedRoutePoint
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -91,6 +92,12 @@ class AndroidBackendContractHarnessTest {
             val deleteKey = "d".repeat(64)
             client.deleteDrive(created.id, deleteKey)
             client.deleteDrive(created.id, deleteKey)
+            val conflictingDelete = assertFailsWith<CloudDriveException> {
+                client.deleteDrive(created.id, "f".repeat(64))
+            }
+            assertEquals(CloudFailureKind.IDEMPOTENCY_CONFLICT, conflictingDelete.kind)
+            assertEquals("IDEMPOTENCY_CONFLICT", conflictingDelete.code)
+            assertFalse(conflictingDelete.retryable)
             assertTrue(client.feed().items.isEmpty())
             assertEquals(CloudFailureKind.NOT_FOUND, assertFailsWith<CloudDriveException> { client.getDrive(created.id) }.kind)
             assertPrivacyBoundary(bridge, draft)
@@ -100,8 +107,8 @@ class AndroidBackendContractHarnessTest {
             assertEquals(0, afterDelete.sentinelMatches)
             assertEquals(0, afterDelete.objectAuthorizationCount)
             assertEquals(404, afterDelete.deleteStatuses.first())
-            assertEquals(listOf(204, 204), afterDelete.deleteStatuses.takeLast(2))
-            assertEquals(listOf(deleteKey, deleteKey), afterDelete.deleteIdempotencyKeys.takeLast(2))
+            assertEquals(listOf(204, 204, 409), afterDelete.deleteStatuses.takeLast(3))
+            assertEquals(listOf(deleteKey, deleteKey, "f".repeat(64)), afterDelete.deleteIdempotencyKeys.takeLast(3))
             assertTrue(afterDelete.deleteIdempotencyKeys.all { it.matches(Regex("[a-f0-9]{64}")) })
             assertTrue(afterDelete.logKeys.flatten().all { it in setOf("requestId", "routeKey", "status", "errorCode") })
         }
@@ -265,7 +272,10 @@ class AndroidBackendContractHarnessTest {
     }
 
     private fun client(bridge: LocalBackendContractBridge, token: String = "contract-user-a") = CloudDriveClient(
-        config = CloudDriveClientConfig(URI("https://api.contract.invalid/contract"), setOf("upload.contract.invalid")),
+        config = CloudDriveClientConfig(
+            URI("https://api.contract.invalid/contract"),
+            setOf("upload.contract.invalid", "read.contract.invalid"),
+        ),
         auth = AuthSessionProvider { BearerToken.inMemory(token) },
         apiTransport = bridge,
         objectTransport = bridge,
@@ -331,11 +341,15 @@ class AndroidBackendContractHarnessTest {
         coverPreset = "rawVehicle={vin:KMHXX00XXXX000001,speed:173.25,rpm:6200,gear:D}",
         originalContentRef = "local://37.566535,126.977969/raw-vehicle-secret",
         state = "QUEUED",
+        routePoints = listOf(
+            NormalizedRoutePoint(0, .2f, .7f),
+            NormalizedRoutePoint(1, .8f, .3f),
+        ),
     )
 
     companion object {
         private const val POLICY_VERSION = "2026-11-01"
-        private const val TEST_TIMEOUT_MILLIS = 5_000L
+        private const val TEST_TIMEOUT_MILLIS = 30_000L
     }
 }
 

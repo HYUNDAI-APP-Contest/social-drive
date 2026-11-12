@@ -22,6 +22,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -71,10 +73,13 @@ fun DetailScreen(
     onRequestNavigation: (NavigationRequest) -> Unit,
     onBack: () -> Unit,
     onPublish: () -> Unit,
+    remoteDetailLoading: Boolean = false,
+    remoteDetailMessage: String? = null,
+    onRetryRemoteDetail: () -> Unit = {},
 ) {
     var showCapabilitySheet by remember { mutableStateOf(false) }
     var feedback by remember { mutableStateOf<String?>(null) }
-    var selectedMomentIndex by rememberSaveable(drive.id) { mutableStateOf(0) }
+    var selectedMomentIndex by rememberSaveable(drive.id) { mutableIntStateOf(0) }
     val selectedMoment = drive.moments.getOrNull(selectedMomentIndex)
     LaunchedEffect(navigationState) {
         feedback = when (navigationState) {
@@ -92,7 +97,7 @@ fun DetailScreen(
                     if (drive.navigationRequest == null) {
                         "이 데모 기록에는 실제 좌표가 포함되지 않아 차량 내비게이션으로 보내지 않아요."
                     } else {
-                        "차량 내비게이션 연결 상태를 확인해 주세요."
+                        "개인 경로가 아닌 공개 데모 목적지를 차량 내비게이션으로 보냅니다."
                     },
                 )
                 Text("서버가 차량을 직접 제어하지 않습니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -118,13 +123,29 @@ fun DetailScreen(
             RouteSourceBadge(drive.routeSource)
             IntegrationStatusChip(navigationCapability, Modifier.padding(start = 8.dp), "차량 내비게이션")
             IconButton(
-                onClick = { feedback = "데모에서는 개인정보 보호를 위해 외부 공유를 실행하지 않아요." },
+                onClick = { feedback = "개인정보 보호를 위해 앱 외부 공유는 실행하지 않아요." },
                 modifier = Modifier.size(48.dp),
             ) {
                 Icon(Icons.Rounded.Share, contentDescription = "드라이브 공유 안내")
             }
         }
         if (feedback != null) SafetyRestrictionBanner(requireNotNull(feedback), Modifier.padding(horizontal = 24.dp, vertical = 4.dp))
+        if (remoteDetailLoading) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 6.dp)) {
+                Text("최신 경로와 대표 장면을 불러오고 있어요.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp))
+            }
+        } else if (remoteDetailMessage != null) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SafetyRestrictionBanner(remoteDetailMessage, Modifier.weight(1f))
+                TextButton(onClick = onRetryRemoteDetail, modifier = Modifier.heightIn(min = 48.dp)) {
+                    Text("다시 시도")
+                }
+            }
+        }
         Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 24.dp)) {
             Card(Modifier.fillMaxSize(), shape = MaterialTheme.shapes.large) {
                 Box(Modifier.fillMaxSize()) {
@@ -133,6 +154,8 @@ fun DetailScreen(
                         palette = memoryPaletteFor(drive.id),
                         momentCount = drive.moments.size,
                         selectedMomentIndex = selectedMomentIndex.takeIf { drive.moments.isNotEmpty() },
+                        routeSource = drive.routeSource,
+                        coverImage = drive.coverImage,
                         modifier = Modifier.fillMaxSize(),
                     )
                     Surface(
@@ -143,7 +166,13 @@ fun DetailScreen(
                         Column(Modifier.padding(16.dp)) {
                             RouteSourceBadge(drive.routeSource)
                             Text(
-                                "개인 위치를 제거한 비정밀 경로 아트워크",
+                                when (drive.routeSource) {
+                                    com.socialdrive.app.domain.RouteSource.LiveAvailable ->
+                                        "원본 위치를 제거한 정규화 경로 아트워크"
+                                    com.socialdrive.app.domain.RouteSource.CloudPublished ->
+                                        "서버에 공개된 정규화 경로 아트워크"
+                                    else -> "개인 위치를 제거한 비정밀 경로 아트워크"
+                                },
                                 Modifier.padding(top = 8.dp),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )

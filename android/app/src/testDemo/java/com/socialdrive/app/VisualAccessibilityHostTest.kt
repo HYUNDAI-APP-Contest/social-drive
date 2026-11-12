@@ -83,7 +83,7 @@ class VisualAccessibilityHostTest {
         val expectations = listOf(
             Triple(VisualScenario.HomeContent, "오늘의 드라이브", "기록 시작"),
             Triple(VisualScenario.RecordingActive, "데모 경로를 기록하고 있어요", "기록 종료"),
-            Triple(VisualScenario.ConsentLiveUnavailable, "경로 데이터 및 동의", "실시간 경로 SDK 준비 중"),
+            Triple(VisualScenario.ConsentLiveUnavailable, "경로 데이터 및 동의", "PLEOS 위치 권한 필요"),
             Triple(VisualScenario.MemoryDetailDemo, "빛나는 해안도로의 저녁", "차량 내비게이션 연결 안내"),
             Triple(VisualScenario.HomeLoading, "드라이브를 불러오고 있어요", "저장된 기록을 확인하는 중입니다."),
             Triple(VisualScenario.HomeEmpty, "아직 남긴 드라이브가 없어요", "첫 드라이브 기록하기"),

@@ -33,9 +33,13 @@ class MemoryStoryPresentationTest {
         assertEquals(publishView.highlights, detailAfterBack.highlights)
     }
 
-    @Test(expected = IllegalArgumentException::class)
-    fun mismatchedRepositoryIdentityFailsClosed() {
+    @Test
+    fun mismatchedRepositoryIdentityReturnsUnmodifiedBaseDuringStateFlowRace() {
         val mountain = requireNotNull(repository.drive("demo-mountain"))
-        MemoryStoryPresentation.browsing(coast).present(mountain)
+        val presented = MemoryStoryPresentation.browsing(coast)
+            .recordingProgress(99)
+            .present(mountain)
+
+        assertEquals(mountain, presented)
     }
 }

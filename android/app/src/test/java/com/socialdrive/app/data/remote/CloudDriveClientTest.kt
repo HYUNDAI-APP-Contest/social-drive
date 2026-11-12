@@ -13,8 +13,125 @@ import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import com.socialdrive.app.domain.DeleteFailureCode
+import com.socialdrive.app.domain.NormalizedRoutePoint
 
 class CloudDriveClientTest {
+    @Test
+    fun `JPEG와 계약에 포함된 WebP 커버 시그니처만 허용한다`() {
+        assertTrue(isSupportedCoverImage(byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0xd9.toByte())))
+        val webp = ByteArray(20).apply {
+            "RIFF".forEachIndexed { index, character -> this[index] = character.code.toByte() }
+            this[4] = 12
+            "WEBP".forEachIndexed { index, character -> this[8 + index] = character.code.toByte() }
+            "VP8L".forEachIndexed { index, character -> this[12 + index] = character.code.toByte() }
+        }
+        assertTrue(isSupportedCoverImage(webp))
+
+        webp[4] = 11
+        assertFalse(isSupportedCoverImage(webp))
+        assertFalse(isSupportedCoverImage("RIFF....WEBPbad!".toByteArray()))
+    }
+
+    @Test
+    fun `메모리에서 변경된 업로드 payload는 세션 요청 전에 거부한다`() = runBlocking {
+        val harness = Harness()
+        val commands = testDraft().assetUploads()
+        commands.first().content[0] = (commands.first().content[0].toInt() xor 0x01).toByte()
+
+        val failure = assertFailsWith<RemoteDriveException> {
+            CloudRemoteDriveApi(harness.client, "2026-11-01").uploadAssets("drive-remote-0001", commands)
+        }
+
+        assertEquals(RemoteFailureCode.REJECTED, failure.code)
+        assertFalse(failure.retryable)
+        assertTrue(harness.api.requests.isEmpty())
+        assertTrue(harness.objects.requests.isEmpty())
+    }
+
+    @Test
+    fun `최종 bearer 공급자는 명시적 검증을 통과하지 못한 토큰을 전송하지 않는다`() = runBlocking {
+        val api = FakeTransport()
+        val client = CloudDriveClient(
+            config = CloudDriveClientConfig(URI("https://api.example.test/dev"), setOf("upload.example.test")),
+            auth = InMemoryCognitoAuthSessionProvider(
+                CognitoSessionSource { "invalid-token" },
+                AccessTokenValidator { false },
+            ),
+            apiTransport = api,
+            objectTransport = FakeObjectTransport(),
+        )
+
+        val failure = assertFailsWith<CloudDriveException> { client.feed() }
+
+        assertEquals(CloudFailureKind.AUTHENTICATION, failure.kind)
+        assertTrue(api.requests.isEmpty())
+    }
+
+    @Test
+    fun `AWS 게시 어댑터는 합성 데모 경로를 생성 전에 거부한다`() = runBlocking {
+        val harness = Harness()
+        val draft = testDraft().copy(routePoints = emptyList())
+
+        val failure = assertFailsWith<RemoteDriveException> {
+            CloudRemoteDriveApi(harness.client, "2026-11-01").createDrive(draft.clientRequestId, draft)
+        }
+
+        assertEquals(RemoteFailureCode.REJECTED, failure.code)
+        assertFalse(failure.retryable)
+        assertTrue(harness.api.requests.isEmpty())
+    }
+
+    @Test
+    fun `동의 철회 경합으로 합성된 경로 명령은 AWS 업로드 전에 거부한다`() = runBlocking {
+        val harness = Harness()
+        val commands = testDraft().copy(routePoints = emptyList()).assetUploads()
+
+        val failure = assertFailsWith<RemoteDriveException> {
+            CloudRemoteDriveApi(harness.client, "2026-11-01").uploadAssets("drive-remote-0001", commands)
+        }
+
+        assertEquals(RemoteFailureCode.REJECTED, failure.code)
+        assertTrue(harness.api.requests.isEmpty())
+        assertTrue(harness.objects.requests.isEmpty())
+    }
+
+    @Test
+    fun `토큰 갱신 시간 초과는 로그인 해제가 아닌 재시도 가능한 장애다`() = runBlocking {
+        val api = FakeTransport()
+        val client = CloudDriveClient(
+            config = CloudDriveClientConfig(URI("https://api.example.test/dev"), setOf("upload.example.test")),
+            auth = AuthSessionProvider { throw AuthSessionTemporarilyUnavailableException() },
+            apiTransport = api,
+            objectTransport = FakeObjectTransport(),
+        )
+
+        val failure = assertFailsWith<CloudDriveException> { client.feed() }
+        assertEquals(CloudFailureKind.RETRYABLE, failure.kind)
+        assertEquals("AUTH_SESSION_TEMPORARILY_UNAVAILABLE", failure.code)
+        assertTrue(failure.retryable)
+        assertTrue(api.requests.isEmpty())
+    }
+
+    @Test
+    fun `토큰 갱신 시간 초과는 게시 작업 어댑터까지 재시도 가능 상태를 유지한다`() = runBlocking {
+        val api = FakeTransport()
+        val client = CloudDriveClient(
+            config = CloudDriveClientConfig(URI("https://api.example.test/dev"), setOf("upload.example.test")),
+            auth = AuthSessionProvider { throw AuthSessionTemporarilyUnavailableException() },
+            apiTransport = api,
+            objectTransport = FakeObjectTransport(),
+        )
+        val draft = testDraft()
+
+        val failure = assertFailsWith<RemoteDriveException> {
+            CloudRemoteDriveApi(client, "2026-11-01").createDrive(draft.clientRequestId, draft)
+        }
+
+        assertEquals(RemoteFailureCode.SERVER_BUSY, failure.code)
+        assertTrue(failure.retryable)
+        assertTrue(api.requests.isEmpty())
+    }
+
     @Test
     fun `SigV4 contract rejects malformed scope expiry signature and unsigned required headers`() = runBlocking {
         val mutations = listOf<(String) -> String>(
@@ -62,6 +179,26 @@ class CloudDriveClientTest {
     }
 
     @Test
+    fun `response contract rejects excessive feed items and duplicate upload instructions`() = runBlocking {
+        val feedHarness = Harness()
+        feedHarness.api.responses += jsonResponse(
+            200,
+            """{"items":[${driveJson(status = "PUBLISHED")},${driveJson(status = "PUBLISHED")}],"nextCursor":null}""",
+        )
+        val excessiveFeed = assertFailsWith<CloudDriveException> { feedHarness.client.feed(limit = 1) }
+        assertEquals("FEED_LIMIT_EXCEEDED", excessiveFeed.code)
+
+        val uploadHarness = Harness()
+        val duplicateManifests = uploadHarness.manifests + uploadHarness.manifests.first()
+        uploadHarness.api.responses += jsonResponse(200, uploadSessionResponse(duplicateManifests))
+        val duplicateUploads = assertFailsWith<CloudDriveException> {
+            uploadHarness.client.refreshUploads("drive-remote-0001", uploadHarness.manifests)
+        }
+        assertEquals("INVALID_UPLOAD_SET", duplicateUploads.code)
+        assertTrue(uploadHarness.objects.requests.isEmpty())
+    }
+
+    @Test
     fun `drive resources reject unsafe ids impossible ranges and unreasonable timestamps`() = runBlocking {
         val invalidDrives = listOf(
             driveJson(status = "PUBLISHED").replace("drive-remote-0001", "bad id"),
@@ -90,11 +227,22 @@ class CloudDriveClientTest {
             coverPreset = "route-memory-default",
             originalContentRef = "local-recording://recording-0001",
             state = "QUEUED",
+            highlightCount = 3,
+            durationSeconds = 3_661,
+            distanceMeters = 128_400,
+            routePoints = listOf(
+                NormalizedRoutePoint(0, .2f, .7f),
+                NormalizedRoutePoint(1, .8f, .3f),
+            ),
         )
         val adapter = CloudRemoteDriveApi(harness.client, "2026-11-01")
         val assets = draft.assetUploads()
         harness.api.responses += jsonResponse(201, createResponse(assets.map(AssetUploadCommand::testManifest)))
         assertEquals(RemoteDraftRef("drive-remote-0001", 1), adapter.createDrive(draft.clientRequestId, draft))
+        val createBody = JsonCodec.parse(harness.api.requests.last().body!!).objectValue()
+        assertEquals(3, createBody.integer("highlightCount"))
+        assertEquals(3_661, createBody.integer("durationSeconds"))
+        assertEquals(128_400, createBody.integer("distanceMeters"))
 
         harness.api.responses += jsonResponse(200, uploadSessionResponse(assets.map(AssetUploadCommand::testManifest)))
         harness.objects.responses += HttpResponse(200)
@@ -164,6 +312,7 @@ class CloudDriveClientTest {
         assertEquals("drive-request-0001", request.headers["Idempotency-Key"])
         assertEquals("drive-request-0001", body.string("clientDraftId"))
         assertEquals("Bearer fresh-token-1", request.headers["Authorization"])
+        assertEquals("/dev/drives", request.uri.path)
         assertEquals(setOf("COVER", "ROUTE"), body.array("assets").map { it.objectValue().string("kind") }.toSet())
         assertTrue(body.array("assets").all { it.objectValue().string("sha256").matches(Regex("[a-f0-9]{64}")) })
         assertEquals("drive-remote-0001", created.drive.id)
@@ -247,7 +396,7 @@ class CloudDriveClientTest {
         val opaque = "opaque_cursor_123456789012345678901234"
         harness.api.responses += jsonResponse(
             200,
-            """{"items":[${driveJson(status = "PUBLISHED", extra = ",\"coverUrl\":\"https://read.example.test/cover?sig=secret\"")}],"nextCursor":"$opaque"}""",
+            """{"items":[${driveJson(status = "PUBLISHED", extra = ",\"coverUrl\":\"https://upload.example.test/cover?sig=secret\"")}],"nextCursor":"$opaque"}""",
         )
         val first = harness.client.feed(limit = 1)
         assertEquals(DriveStatus.PUBLISHED, first.items.single().drive.status)
@@ -261,11 +410,64 @@ class CloudDriveClientTest {
 
         harness.api.responses += jsonResponse(
             200,
-            """{"drive":${driveJson(extra = ",\"coverUrl\":\"https://read.example.test/c\",\"routeUrl\":\"https://read.example.test/r\",\"routeSchemaVersion\":1")}}""",
+            """{"drive":${driveJson(extra = ",\"coverUrl\":\"https://upload.example.test/c\",\"routeUrl\":\"https://upload.example.test/r\",\"routeSchemaVersion\":1")}}""",
         )
         val detail = harness.client.getDrive("drive-remote-0001")
         assertEquals(DriveStatus.DRAFT, detail.drive.status)
         assertEquals(1, detail.routeSchemaVersion)
+
+        harness.objects.responses += jsonResponse(
+            200,
+            """{"schemaVersion":1,"path":[{"horizontal":0.1,"vertical":0.8,"progress":0},{"horizontal":0.9,"vertical":0.2,"progress":1}],"highlights":[{"progress":0.5,"title":"좋은 순간"}]}""",
+        )
+        val route = harness.client.downloadRoute(detail)
+        assertEquals(2, route.points.size)
+        assertEquals(.1f, route.points.first().horizontal)
+        assertEquals(HttpMethod.GET, harness.objects.requests.last().method)
+        assertTrue(harness.objects.requests.last().headers.isEmpty())
+        assertEquals(null, harness.objects.requests.last().body)
+        assertEquals(DEFAULT_CLOUD_RESPONSE_BYTES, harness.objects.requests.last().maxResponseBytes)
+
+        harness.objects.responses += HttpResponse(200, body = byteArrayOf(0xff.toByte(), 0xd8.toByte(), 0xff.toByte(), 0xd9.toByte()))
+        val cover = harness.client.downloadCover(detail)
+        assertEquals(4, cover.size)
+        assertTrue(harness.objects.requests.last().headers.isEmpty())
+        assertEquals(MAX_CLOUD_RESPONSE_BYTES, harness.objects.requests.last().maxResponseBytes)
+
+        harness.objects.responses += HttpResponse(200, body = "not-an-image".toByteArray())
+        val malformedCover = assertFailsWith<CloudDriveException> { harness.client.downloadCover(detail) }
+        assertEquals("INVALID_COVER_IMAGE", malformedCover.code)
+
+        harness.objects.responses += HttpResponse(403)
+        val expiredRoute = assertFailsWith<CloudDriveException> { harness.client.downloadRoute(detail) }
+        assertEquals("READ_LINK_EXPIRED", expiredRoute.code)
+        assertTrue(expiredRoute.retryable)
+
+        harness.objects.responses += jsonResponse(
+            200,
+            """{"schemaVersion":1,"path":[{"horizontal":37.5,"vertical":0.8},{"horizontal":0.9,"vertical":0.2}],"highlights":[]}""",
+        )
+        val rawCoordinate = assertFailsWith<CloudDriveException> { harness.client.downloadRoute(detail) }
+        assertEquals(CloudFailureKind.CONTRACT, rawCoordinate.kind)
+
+        harness.api.responses += jsonResponse(
+            200,
+            """{"items":[${driveJson(status = "PUBLISHED", extra = ",\"coverUrl\":\"https://evil.example.test/cover\"")}],"nextCursor":null}""",
+        )
+        val foreignAsset = assertFailsWith<CloudDriveException> { harness.client.feed(limit = 1) }
+        assertEquals("ASSET_HOST_NOT_ALLOWED", foreignAsset.code)
+
+        harness.api.responses += jsonResponse(
+            200,
+            """{"items":[${driveJson(status = "PUBLISHED", extra = ",\"coverUrl\":\"https://upload.example.test/${"a".repeat(8_193)}\"")}],"nextCursor":null}""",
+        )
+        assertEquals("INVALID_URL", assertFailsWith<CloudDriveException> { harness.client.feed(limit = 1) }.code)
+
+        harness.api.responses += jsonResponse(
+            200,
+            """{"items":[${driveJson(status = "PUBLISHED", extra = ",\"coverUrl\":\"https://upload.example.test?sig=value\"")}],"nextCursor":null}""",
+        )
+        assertEquals("INVALID_URL", assertFailsWith<CloudDriveException> { harness.client.feed(limit = 1) }.code)
     }
 
     @Test
@@ -315,6 +517,104 @@ class CloudDriveClientTest {
             harness.client.publishDrive("drive-remote-0001", 1)
         }
         assertEquals(CloudFailureKind.UPLOAD_INCOMPLETE, incomplete.kind)
+    }
+
+    @Test
+    fun `server error identifiers are bounded before crossing the client boundary`() = runBlocking {
+        val harness = Harness()
+        harness.api.responses += jsonResponse(
+            400,
+            """{"error":{"code":"${"X".repeat(65)}","retryable":false,"requestId":"bad request id"}}""",
+        )
+
+        val failure = assertFailsWith<CloudDriveException> { harness.client.createDrive(harness.input) }
+
+        assertEquals(CloudFailureKind.VALIDATION, failure.kind)
+        assertEquals("HTTP_400", failure.code)
+        assertEquals(null, failure.requestId)
+    }
+
+    @Test
+    fun `server retry hint cannot turn terminal client errors into worker retries`() = runBlocking {
+        val harness = Harness()
+        harness.api.responses += errorResponse(400, "VALIDATION_FAILED", retryable = true)
+        val validation = assertFailsWith<CloudDriveException> { harness.client.createDrive(harness.input) }
+        assertEquals(CloudFailureKind.VALIDATION, validation.kind)
+        assertFalse(validation.retryable)
+
+        harness.api.responses += errorResponse(401, "TOKEN_REJECTED", retryable = true)
+        val authentication = assertFailsWith<CloudDriveException> { harness.client.createDrive(harness.input) }
+        assertEquals(CloudFailureKind.AUTHENTICATION, authentication.kind)
+        assertFalse(authentication.retryable)
+
+        harness.api.responses += errorResponse(503, "SERVER_BUSY", retryable = false)
+        val unavailable = assertFailsWith<CloudDriveException> { harness.client.createDrive(harness.input) }
+        assertEquals(CloudFailureKind.RETRYABLE, unavailable.kind)
+        assertTrue(unavailable.retryable)
+    }
+
+    @Test
+    fun `서버 401은 현재 Cognito 세션을 즉시 무효화한다`() = runBlocking {
+        var invalidated = false
+        val session = object : CognitoSessionSource {
+            override suspend fun freshAccessToken() = "valid-looking-token"
+            override fun onSessionInvalidated() { invalidated = true }
+        }
+        val api = FakeTransport().also {
+            it.responses += errorResponse(401, "TOKEN_REJECTED", retryable = false)
+        }
+        val client = CloudDriveClient(
+            config = CloudDriveClientConfig(URI("https://api.example.test/dev"), setOf("upload.example.test")),
+            auth = InMemoryCognitoAuthSessionProvider(session, AccessTokenValidator { true }),
+            apiTransport = api,
+            objectTransport = FakeObjectTransport(),
+        )
+
+        val failure = assertFailsWith<CloudDriveException> { client.feed() }
+
+        assertEquals(CloudFailureKind.AUTHENTICATION, failure.kind)
+        assertTrue(invalidated)
+    }
+
+    @Test
+    fun `과대하거나 손상된 401 본문도 Cognito 세션 무효화를 우회하지 못한다`() = runBlocking {
+        var invalidated = false
+        val session = object : CognitoSessionSource {
+            override suspend fun freshAccessToken() = "valid-looking-token"
+            override fun onSessionInvalidated() { invalidated = true }
+        }
+        val api = FakeTransport().also {
+            it.responses += HttpResponse(401, body = ByteArray(2 * 1024 * 1024 + 1))
+        }
+        val client = CloudDriveClient(
+            config = CloudDriveClientConfig(URI("https://api.example.test/dev"), setOf("upload.example.test")),
+            auth = InMemoryCognitoAuthSessionProvider(session, AccessTokenValidator { true }),
+            apiTransport = api,
+            objectTransport = FakeObjectTransport(),
+        )
+
+        val failure = assertFailsWith<CloudDriveException> { client.feed() }
+
+        assertEquals(CloudFailureKind.AUTHENTICATION, failure.kind)
+        assertEquals("HTTP_401", failure.code)
+        assertFalse(failure.retryable)
+        assertTrue(invalidated)
+    }
+
+    @Test
+    fun `동의 갱신 요구는 작업 대기열까지 전용 실패로 전달한다`() = runBlocking {
+        val harness = Harness()
+        harness.api.responses += errorResponse(422, "CONSENT_RENEWAL_REQUIRED", retryable = false)
+        val clientFailure = assertFailsWith<CloudDriveException> { harness.client.createDrive(harness.input) }
+        assertEquals(CloudFailureKind.CONSENT_RENEWAL_REQUIRED, clientFailure.kind)
+
+        harness.api.responses += errorResponse(422, "CONSENT_RENEWAL_REQUIRED", retryable = false)
+        val adapter = CloudRemoteDriveApi(harness.client, "2026-11-07.v1")
+        val remoteFailure = assertFailsWith<RemoteDriveException> {
+            adapter.createDrive(testDraft().clientRequestId, testDraft())
+        }
+        assertEquals(RemoteFailureCode.CONSENT_RENEWAL_REQUIRED, remoteFailure.code)
+        assertFalse(remoteFailure.retryable)
     }
 
     @Test
@@ -394,11 +694,11 @@ class CloudDriveClientTest {
         val harness = Harness()
         harness.api.responses += HttpResponse(
             200,
-            body = """{"drive":${driveJson(extra = ",\"coverUrl\":\"https://read.example.test/private-cover\",\"routeUrl\":\"https://read.example.test/private-route\",\"routeSchemaVersion\":1")}}""".toByteArray(),
+            body = """{"drive":${driveJson(extra = ",\"coverUrl\":\"https://upload.example.test/private-cover\",\"routeUrl\":\"https://upload.example.test/private-route\",\"routeSchemaVersion\":1")}}""".toByteArray(),
         )
         val snapshot = CloudRemoteConflictReviewApi(harness.client).getOwnedDrive("drive-remote-0001")
         assertEquals("drive-remote-0001", snapshot.remoteDriveId)
-        assertFalse(snapshot.toString().contains("read.example"))
+        assertFalse(snapshot.toString().contains("upload.example"))
 
         harness.api.responses += errorResponse(404, "NOT_FOUND", retryable = false)
         val missing = assertFailsWith<RemoteDriveException> {
@@ -503,6 +803,10 @@ private fun testDraft() = DraftSnapshot(
     coverPreset = "route-memory-default",
     originalContentRef = "local-recording://recording-0001",
     state = "QUEUED",
+    routePoints = listOf(
+        NormalizedRoutePoint(0, .2f, .7f),
+        NormalizedRoutePoint(1, .8f, .3f),
+    ),
 )
 
 private fun driveJson(status: String = "DRAFT", version: Int = 1, extra: String = ""): String {

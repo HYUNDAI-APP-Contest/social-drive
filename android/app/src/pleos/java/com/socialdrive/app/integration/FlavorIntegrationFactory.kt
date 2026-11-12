@@ -14,7 +14,28 @@ import ai.pleos.playground.vehicle.Vehicle
 import ai.pleos.playground.vehicle.constant.PleosPermission
 import ai.pleos.playground.vehicle.constant.control.VehicleGear
 import ai.pleos.playground.vehicle.listener.GearSelectionListener
+import ai.pleos.playground.location.fused.FusedLocation
+import ai.pleos.playground.location.fused.listener.FusedLocationListener
+import ai.pleos.playground.location.fused.model.LocationData
+import ai.pleos.playground.tts.TextToSpeech
+import ai.pleos.playground.tts.constant.Mode as TtsMode
+import ai.pleos.playground.tts.listener.OnInitializeListener as TtsInitializeListener
+import ai.pleos.playground.tts.listener.EventListener as TtsEventListener
+import ai.pleos.playground.stt.SpeechToText
+import ai.pleos.playground.stt.constant.Mode as SttMode
+import ai.pleos.playground.stt.constant.ErrorType as SttErrorType
+import ai.pleos.playground.stt.listener.OnInitializeListener as SttInitializeListener
+import ai.pleos.playground.stt.listener.ResultListener
+import com.socialdrive.app.domain.AuxiliaryCapabilitySource
+import com.socialdrive.app.domain.CollectedRoute
+import com.socialdrive.app.domain.SpeechRecognitionState
+import com.socialdrive.app.domain.FutureRouteCollector
+import com.socialdrive.app.domain.NormalizedRoutePoint
+import com.socialdrive.app.domain.RawRouteCoordinate
+import com.socialdrive.app.domain.RouteNormalizer
+import com.socialdrive.app.domain.RouteDistance
 import com.socialdrive.app.domain.CapabilityState
+import com.socialdrive.app.domain.BoundedRouteBuffer
 import com.socialdrive.app.domain.CapabilityStatus
 import com.socialdrive.app.domain.IntegrationBundle
 import com.socialdrive.app.domain.IntegrationSource
@@ -30,6 +51,7 @@ import com.socialdrive.app.domain.VehicleMotionSource
 import com.socialdrive.app.domain.VehicleMotionStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,11 +62,773 @@ import java.util.IdentityHashMap
 import java.util.concurrent.CopyOnWriteArraySet
 
 object FlavorIntegrationFactory {
-    fun create(context: Context): IntegrationBundle = IntegrationBundle(
-        vehicleMotionSource = PleosVehicleMotionSource(context.applicationContext),
-        navigationGateway = PleosNavigationGateway(context.applicationContext),
-    )
+    fun create(context: Context): IntegrationBundle {
+        val auxiliary = PleosAuxiliaryCapabilitySource(context.applicationContext)
+        return IntegrationBundle(
+            vehicleMotionSource = PleosVehicleMotionSource(context.applicationContext),
+            navigationGateway = PleosNavigationGateway(context.applicationContext),
+            auxiliaryCapabilitySource = auxiliary,
+            routeCollector = auxiliary,
+        )
+    }
 }
+
+private class PleosAuxiliaryCapabilitySource(private val context: Context) : AuxiliaryCapabilitySource, FutureRouteCollector {
+    private val lifecycleJob = SupervisorJob()
+    private val lifecycleScope = CoroutineScope(lifecycleJob + Dispatchers.Default)
+    private val fusedLocation = FusedLocation(context)
+    private val tts = TextToSpeech(context, TtsMode.ON_DEVICE)
+    private val stt = SpeechToText(context, SttMode.ON_DEVICE)
+    private val checking = CapabilityStatus(CapabilityState.Unavailable, IntegrationSource.Actual, "실차 · 확인 중")
+    private fun available(label: String) = CapabilityStatus(CapabilityState.Available, IntegrationSource.Actual, label)
+    private fun unavailable(label: String) = CapabilityStatus(CapabilityState.Unavailable, IntegrationSource.Actual, label)
+    private val mutableLocation = MutableStateFlow(checking)
+    private val mutableTts = MutableStateFlow(checking)
+    private val mutableStt = MutableStateFlow(checking)
+    private val mutableRecognitionActive = MutableStateFlow(false)
+    private val mutableRecognitionState = MutableStateFlow(SpeechRecognitionState.Idle)
+    private val locationLock = Any()
+    private val locationOperationLock = Any()
+    private val recognitionLock = Any()
+    private val speechOperationLock = Any()
+    private val rawLocations = BoundedRouteBuffer(MAX_ROUTE_POINTS)
+    private var collectionAuthorized = false
+    private var recordingRequested = false
+    private var locationCollecting = false
+    private var lastLocationTimestampMillis: Long? = null
+    private var registeredLocationListener: FusedLocationListener? = null
+    @Volatile private var ttsInitialized = false
+    private var ttsEventListenerRegistered = false
+    @Volatile private var sttInitialized = false
+    @Volatile private var ttsInitializationGeneration = 0L
+    @Volatile private var sttInitializationGeneration = 0L
+    @Volatile private var released = false
+    private var recognitionCallback: ((String, Boolean) -> Unit)? = null
+    private var recognitionTimeoutJob: Job? = null
+    private var recognitionSession = 0L
+    private var recognitionListener: ResultListener? = null
+    private val ttsEventListener = object : TtsEventListener {
+        override fun onStart() = Unit
+        override fun onReady() = Unit
+        override fun onDone() = Unit
+        override fun onStop() = Unit
+        override fun onUpdatedRms(rms: Double) = Unit
+        override fun onError(error: ai.pleos.playground.tts.constant.ErrorType) {
+            synchronized(speechOperationLock) {
+                if (!released) markTtsOperationFailure()
+            }
+        }
+    }
+    private fun createRecognitionListener(session: Long): ResultListener = object : ResultListener {
+        override fun onUpdated(text: String, isFinal: Boolean) {
+            val permissionGranted = hasPermission(STT_PERMISSION)
+            val callback = synchronized(recognitionLock) {
+                recognitionCallback.takeIf {
+                    speechResultAccepted(
+                        sessionMatches = recognitionSession == session,
+                        callbackInstalled = true,
+                        permissionGranted = permissionGranted,
+                    )
+                }
+            }
+            if (!permissionGranted) {
+                rejectRecognitionAfterPermissionLoss(session)
+                return
+            }
+            callback ?: return
+            if (isFinal) {
+                val completed = finishRecognition(
+                    if (text.isBlank()) SpeechRecognitionState.NoResult else SpeechRecognitionState.Applied,
+                    session,
+                )
+                if (completed && runCatching { callback.invoke(text, true) }.isFailure) {
+                    synchronized(recognitionLock) {
+                        if (recognitionSession == session + 1 && recognitionCallback == null) {
+                            mutableRecognitionState.value = SpeechRecognitionState.Failed
+                        }
+                    }
+                }
+            } else if (runCatching { callback.invoke(text, false) }.isFailure) {
+                finishRecognitionAndStop(SpeechRecognitionState.Failed, session)
+            }
+        }
+        override fun onUpdatedEpdData(start: Long, end: Long) = Unit
+        override fun onStartedRecognition() = Unit
+        override fun onEndedRecognition() {
+            finishRecognition(SpeechRecognitionState.NoResult, session)
+        }
+        override fun onError(error: SttErrorType) {
+            val state = speechRecognitionStateAfterError(error)
+            if (sttErrorInvalidatesCapability(error)) {
+                synchronized(speechOperationLock) {
+                    val currentSessionFinished = finishRecognition(state, session)
+                    if (shouldInvalidateSttCapability(currentSessionFinished, error)) {
+                        markSttOperationFailure()
+                    }
+                }
+            } else {
+                finishRecognition(state, session)
+            }
+        }
+        override fun onReady() {
+            synchronized(recognitionLock) {
+                if (recognitionSession == session && recognitionCallback != null) {
+                    mutableRecognitionState.value = SpeechRecognitionState.Listening
+                }
+            }
+        }
+        override fun onUpdatedRms(rms: Double) = Unit
+    }
+
+    private fun rejectRecognitionAfterPermissionLoss(session: Long) {
+        mutableStt.value = permissionDenied("실차 · STT 권한 필요")
+        if (finishRecognition(SpeechRecognitionState.Cancelled, session)) {
+            lifecycleScope.launch {
+                synchronized(speechOperationLock) { runCatching { stt.stop() } }
+            }
+        }
+    }
+    override val location: StateFlow<CapabilityStatus> = mutableLocation.asStateFlow()
+    override val textToSpeech: StateFlow<CapabilityStatus> = mutableTts.asStateFlow()
+    override val speechToText: StateFlow<CapabilityStatus> = mutableStt.asStateFlow()
+    override val speechRecognitionActive: StateFlow<Boolean> = mutableRecognitionActive.asStateFlow()
+    override val speechRecognitionState: StateFlow<SpeechRecognitionState> = mutableRecognitionState.asStateFlow()
+    override val locationPermission: String = FUSED_LOCATION_PERMISSION
+    override val speechPermissions: List<String> = listOf(TTS_PERMISSION, STT_PERMISSION)
+
+    override suspend fun initialize() {
+        if (released) return
+        runCatching {
+            fusedLocation.initialize()
+            fusedLocation.isSupported()
+        }.onSuccess { supported ->
+            mutableLocation.value = when {
+                !supported -> unavailable("실차 · 위치 미지원")
+                !hasLocationPermission() -> CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, "실차 · 권한 필요")
+                else -> available("실차 · 위치 사용 가능")
+            }
+        }.onFailure { mutableLocation.value = unavailable("실차 · 초기화 실패") }
+        initializeSpeechServices()
+    }
+
+    private fun initializeSpeechServices() {
+        if (!hasPermission(TTS_PERMISSION)) {
+            mutableTts.value = permissionDenied("실차 · TTS 권한 필요")
+        } else initializeTts()
+        if (!hasPermission(STT_PERMISSION)) {
+            mutableStt.value = permissionDenied("실차 · STT 권한 필요")
+        } else initializeStt()
+    }
+
+    private fun scheduleInitializationTimeout(
+        timeoutIfCurrent: () -> Unit,
+    ): Job = lifecycleScope.launch {
+        delay(AUXILIARY_INITIALIZATION_TIMEOUT_MILLIS)
+        if (!released) timeoutIfCurrent()
+    }
+
+    override fun speakFeedback(message: String): Boolean {
+        synchronized(speechOperationLock) {
+            if (released) return false
+            if (!hasPermission(TTS_PERMISSION)) {
+                mutableTts.value = permissionDenied("실차 · TTS 권한 필요")
+                return false
+            }
+            if (mutableTts.value.capability != CapabilityState.Available || message.isBlank()) return false
+            return runCatching { tts.speak(message, false) }
+                .onFailure { markTtsOperationFailure() }
+                .isSuccess
+        }
+    }
+
+    override fun startSpeechRecognition(onText: (String, Boolean) -> Unit): Boolean {
+        synchronized(speechOperationLock) {
+            if (released) return false
+            if (!hasPermission(STT_PERMISSION)) {
+                mutableStt.value = permissionDenied("실차 · STT 권한 필요")
+                return false
+            }
+            if (mutableStt.value.capability != CapabilityState.Available) return false
+            val session = synchronized(recognitionLock) {
+                if (recognitionCallback != null) return false
+                recognitionSession += 1
+                recognitionCallback = onText
+                recognitionListener = createRecognitionListener(recognitionSession)
+                recognitionSession
+            }
+            mutableRecognitionActive.value = true
+            mutableRecognitionState.value = SpeechRecognitionState.Listening
+            val listener = synchronized(recognitionLock) { recognitionListener }
+                ?: return false
+            if (runCatching {
+                    stt.addListener(listener)
+                    stt.request()
+                }.isFailure
+            ) {
+                finishRecognition(SpeechRecognitionState.Failed, session)
+                markSttOperationFailure()
+                return false
+            }
+            val timeout = lifecycleScope.launch {
+                delay(SPEECH_RECOGNITION_TIMEOUT_MILLIS)
+                finishRecognitionAndStop(SpeechRecognitionState.NoResult, session)
+            }
+            synchronized(recognitionLock) {
+                if (recognitionSession == session && recognitionCallback != null) {
+                    recognitionTimeoutJob = timeout
+                } else {
+                    timeout.cancel()
+                }
+            }
+            return true
+        }
+    }
+
+    override fun stopSpeechRecognition() {
+        synchronized(speechOperationLock) {
+            val wasActive = synchronized(recognitionLock) { recognitionCallback != null } || mutableRecognitionActive.value
+            if (wasActive) finishRecognition(SpeechRecognitionState.Cancelled)
+            else mutableRecognitionState.value = SpeechRecognitionState.Idle
+            runCatching { stt.stop() }
+        }
+    }
+
+    override fun resetSpeechRecognitionState() {
+        synchronized(speechOperationLock) {
+            synchronized(recognitionLock) {
+                if (recognitionCallback == null) mutableRecognitionState.value = SpeechRecognitionState.Idle
+            }
+        }
+    }
+
+    private fun finishRecognition(state: SpeechRecognitionState, expectedSession: Long? = null): Boolean {
+        val (timeout, listener) = synchronized(recognitionLock) {
+            if (expectedSession != null && recognitionSession != expectedSession) return false
+            if (recognitionCallback == null) return false
+            recognitionCallback = null
+            recognitionSession += 1
+            val timeout = recognitionTimeoutJob.also { recognitionTimeoutJob = null }
+            val listener = recognitionListener.also { recognitionListener = null }
+            mutableRecognitionActive.value = false
+            mutableRecognitionState.value = state
+            timeout to listener
+        }
+        timeout?.cancel()
+        listener?.let { runCatching { stt.removeListener(it) } }
+        return true
+    }
+
+    private fun finishRecognitionAndStop(state: SpeechRecognitionState, expectedSession: Long) {
+        synchronized(speechOperationLock) {
+            if (finishRecognition(state, expectedSession)) runCatching { stt.stop() }
+        }
+    }
+
+    override fun refreshLocationPermission() {
+        if (released) return
+        val permitted = hasLocationPermission()
+        val supported = if (permitted) runCatching { fusedLocation.isSupported() } else null
+        when (locationRefreshDisposition(permitted, supported?.getOrNull())) {
+            LocationRefreshDisposition.PurgeForPermissionLoss -> {
+                val listener = synchronized(locationLock) {
+                    locationCollecting = false
+                    rawLocations.clear()
+                    lastLocationTimestampMillis = null
+                    detachLocationListenerLocked()
+                }
+                unregisterLocationCallback(listener)
+                mutableLocation.value = CapabilityStatus(
+                    CapabilityState.PermissionDenied,
+                    IntegrationSource.Actual,
+                    "실차 · 권한 필요",
+                )
+            }
+            LocationRefreshDisposition.Collect -> {
+                mutableLocation.value = available("실차 · 위치 사용 가능")
+                val shouldRegister = synchronized(locationLock) {
+                    val start = collectionAuthorized && recordingRequested && !locationCollecting
+                    if (start) locationCollecting = true
+                    start
+                }
+                if (shouldRegister) registerLocationCallback()
+            }
+            LocationRefreshDisposition.SuspendAndPreserve -> {
+                val listener = synchronized(locationLock) {
+                    locationCollecting = false
+                    detachLocationListenerLocked()
+                }
+                unregisterLocationCallback(listener)
+                mutableLocation.value = if (supported?.isFailure == true) {
+                    unavailable("실차 · 위치 상태 확인 실패")
+                } else {
+                    unavailable("실차 · 위치 미지원")
+                }
+            }
+        }
+    }
+
+    override fun refreshSpeechPermissions() {
+        if (released) return
+        val ttsGranted = hasPermission(TTS_PERMISSION)
+        val sttGranted = hasPermission(STT_PERMISSION)
+        if (!ttsGranted) {
+            synchronized(speechOperationLock) {
+                ttsInitializationGeneration += 1
+                ttsInitialized = speechInitializedAfterPermissionRefresh(ttsGranted, ttsInitialized)
+                if (ttsEventListenerRegistered) {
+                    runCatching { tts.removeEventListener(ttsEventListener) }
+                    ttsEventListenerRegistered = speechListenerRegisteredAfterPermissionRefresh(
+                        permissionGranted = ttsGranted,
+                        listenerRegistered = ttsEventListenerRegistered,
+                    )
+                }
+                mutableTts.value = permissionDenied("실차 · TTS 권한 필요")
+            }
+        }
+        if (!sttGranted) {
+            synchronized(speechOperationLock) {
+                sttInitializationGeneration += 1
+                sttInitialized = speechInitializedAfterPermissionRefresh(sttGranted, sttInitialized)
+                mutableStt.value = permissionDenied("실차 · STT 권한 필요")
+            }
+            stopSpeechRecognition()
+        }
+        if (ttsGranted && ttsInitialized && mutableTts.value.capability == CapabilityState.PermissionDenied) {
+            mutableTts.value = available("실차 · 온디바이스")
+        } else if (shouldRetrySpeechInitialization(
+                permissionGranted = ttsGranted,
+                initialized = ttsInitialized,
+                initializationPending = mutableTts.value == checking,
+                capability = mutableTts.value.capability,
+            )
+        ) {
+            mutableTts.value = checking
+            initializeTts()
+        }
+        if (sttGranted && sttInitialized && mutableStt.value.capability == CapabilityState.PermissionDenied) {
+            mutableStt.value = available("실차 · 온디바이스")
+        } else if (shouldRetrySpeechInitialization(
+                permissionGranted = sttGranted,
+                initialized = sttInitialized,
+                initializationPending = mutableStt.value == checking,
+                capability = mutableStt.value.capability,
+            )
+        ) {
+            mutableStt.value = checking
+            initializeStt()
+        }
+    }
+
+    private fun initializeTts() {
+        val generation = synchronized(speechOperationLock) { ++ttsInitializationGeneration }
+        runCatching {
+            tts.initialize(object : TtsInitializeListener {
+                override fun onSuccess() {
+                    synchronized(speechOperationLock) {
+                        if (released || generation != ttsInitializationGeneration || !hasPermission(TTS_PERMISSION)) return
+                        if (!ttsEventListenerRegistered) {
+                            if (runCatching { tts.addEventListener(ttsEventListener) }.isFailure) {
+                                ttsInitialized = false
+                                mutableTts.value = unavailable("실차 · 이벤트 연결 실패")
+                                return
+                            }
+                            ttsEventListenerRegistered = true
+                        }
+                        ttsInitialized = true
+                        mutableTts.value = available("실차 · 온디바이스")
+                    }
+                }
+                override fun onFailure(error: ai.pleos.playground.tts.constant.ErrorType) {
+                    synchronized(speechOperationLock) {
+                        if (!released && generation == ttsInitializationGeneration && hasPermission(TTS_PERMISSION)) {
+                            mutableTts.value = unavailable("실차 · 초기화 실패")
+                        }
+                    }
+                }
+            })
+        }.onFailure {
+            synchronized(speechOperationLock) {
+                if (!released && generation == ttsInitializationGeneration && hasPermission(TTS_PERMISSION)) {
+                    mutableTts.value = unavailable("실차 · 초기화 실패")
+                }
+            }
+        }
+        scheduleInitializationTimeout {
+            synchronized(speechOperationLock) {
+                if (generation == ttsInitializationGeneration &&
+                    hasPermission(TTS_PERMISSION) && mutableTts.value == checking
+                ) mutableTts.value = unavailable("실차 · 초기화 시간 초과")
+            }
+        }
+    }
+
+    private fun markTtsOperationFailure() {
+        ttsInitialized = false
+        ttsInitializationGeneration += 1
+        mutableTts.value = speechCapabilityAfterOperationFailure(hasPermission(TTS_PERMISSION))
+    }
+
+    private fun markSttOperationFailure() {
+        sttInitialized = false
+        sttInitializationGeneration += 1
+        mutableStt.value = speechCapabilityAfterOperationFailure(hasPermission(STT_PERMISSION))
+    }
+
+    private fun initializeStt() {
+        val generation = synchronized(speechOperationLock) { ++sttInitializationGeneration }
+        runCatching {
+            stt.initialize(object : SttInitializeListener {
+                override fun onSuccess() {
+                    synchronized(speechOperationLock) {
+                        if (released || generation != sttInitializationGeneration || !hasPermission(STT_PERMISSION)) return
+                        sttInitialized = true
+                        mutableStt.value = available("실차 · 온디바이스")
+                    }
+                }
+                override fun onFailure(error: ai.pleos.playground.stt.constant.ErrorType) {
+                    synchronized(speechOperationLock) {
+                        if (!released && generation == sttInitializationGeneration && hasPermission(STT_PERMISSION)) {
+                            mutableStt.value = unavailable("실차 · 초기화 실패")
+                        }
+                    }
+                }
+            })
+        }.onFailure {
+            synchronized(speechOperationLock) {
+                if (!released && generation == sttInitializationGeneration && hasPermission(STT_PERMISSION)) {
+                    mutableStt.value = unavailable("실차 · 초기화 실패")
+                }
+            }
+        }
+        scheduleInitializationTimeout {
+            synchronized(speechOperationLock) {
+                if (generation == sttInitializationGeneration &&
+                    hasPermission(STT_PERMISSION) && mutableStt.value == checking
+                ) mutableStt.value = unavailable("실차 · 초기화 시간 초과")
+            }
+        }
+    }
+
+    override suspend fun start() {
+        if (released) return
+        check(mutableLocation.value.capability == CapabilityState.Available)
+        val shouldRegister = synchronized(locationLock) {
+            collectionAuthorized = true
+            val start = recordingRequested && !locationCollecting
+            if (start) locationCollecting = true
+            start
+        }
+        if (shouldRegister) registerLocationCallback()
+    }
+
+    override suspend fun beginRecording() {
+        if (released) return
+        val shouldRegister = synchronized(locationLock) {
+            rawLocations.clear()
+            lastLocationTimestampMillis = null
+            recordingRequested = true
+            val start = collectionAuthorized &&
+                mutableLocation.value.capability == CapabilityState.Available &&
+                !locationCollecting
+            if (start) locationCollecting = true
+            start
+        }
+        if (shouldRegister) registerLocationCallback()
+    }
+
+    override suspend fun snapshotAndClear(): CollectedRoute {
+        val (snapshot, listener) = synchronized(locationLock) {
+            val points = rawLocations.snapshotAndClear()
+            recordingRequested = false
+            locationCollecting = false
+            lastLocationTimestampMillis = null
+            points to detachLocationListenerLocked()
+        }
+        unregisterLocationCallback(listener)
+        val plausibleTrack = RouteDistance.plausibleTrack(snapshot)
+        return CollectedRoute(
+            points = RouteNormalizer.normalize(plausibleTrack),
+            distanceMeters = RouteDistance.meters(plausibleTrack),
+        )
+    }
+
+    override suspend fun stopAndAwait() {
+        if (released) return
+        val listener = synchronized(locationLock) {
+            collectionAuthorized = false
+            recordingRequested = false
+            locationCollecting = false
+            rawLocations.clear()
+            lastLocationTimestampMillis = null
+            detachLocationListenerLocked()
+        }
+        unregisterLocationCallback(listener)
+    }
+
+    private fun registerLocationCallback() {
+        if (!hasLocationPermission()) {
+            deactivateLocationCollection(
+                label = "실차 · 권한 필요",
+                status = CapabilityState.PermissionDenied,
+            )
+            return
+        }
+        var attemptedListener: FusedLocationListener? = null
+        val result = synchronized(locationOperationLock) {
+            if (released) return
+            val listener = synchronized(locationLock) {
+                if (!locationCollecting || released) return@synchronized null
+                createLocationListener().also { registeredLocationListener = it }
+            } ?: return
+            attemptedListener = listener
+            runCatching {
+                fusedLocation.registerFusedLocationCallback(listener)
+                val stillOwned = synchronized(locationLock) {
+                    registeredLocationListener === listener && locationCollecting && !released
+                }
+                if (!stillOwned) {
+                    synchronized(locationLock) {
+                        if (registeredLocationListener === listener) registeredLocationListener = null
+                    }
+                    runCatching { fusedLocation.unregisterFusedLocationCallback(listener) }
+                } else {
+                    mutableLocation.value = available("실차 · 위치 사용 가능")
+                }
+            }
+        }
+        result
+            .onFailure {
+                attemptedListener?.let { listener ->
+                    recoverLocationCollection("실차 · 위치 연결 실패", listener)
+                }
+            }
+    }
+
+    private fun unregisterLocationCallback(listener: FusedLocationListener?) {
+        if (listener == null) return
+        synchronized(locationOperationLock) {
+            runCatching { fusedLocation.unregisterFusedLocationCallback(listener) }
+        }
+    }
+
+    private fun detachLocationListenerLocked(): FusedLocationListener? =
+        registeredLocationListener.also { registeredLocationListener = null }
+
+    private fun createLocationListener(): FusedLocationListener {
+        lateinit var listener: FusedLocationListener
+        listener = object : FusedLocationListener {
+            override fun onChanged(location: LocationData?) {
+                location ?: return
+                val coordinate = RawRouteCoordinate.fromOrNull(location.longitude, location.latitude) ?: return
+                val permissionGranted = hasLocationPermission()
+                val accepted = synchronized(locationLock) {
+                    val shouldAccept = locationSampleAccepted(
+                        listenerMatches = registeredLocationListener === listener,
+                        collecting = locationCollecting,
+                        authorized = collectionAuthorized,
+                        recording = recordingRequested,
+                        permissionGranted = permissionGranted,
+                    ) && locationTimestampAccepted(
+                        previousTimestampMillis = lastLocationTimestampMillis,
+                        timestampMillis = location.timestampMillis,
+                    )
+                    if (shouldAccept) {
+                        rawLocations.offer(coordinate)
+                        if (location.timestampMillis > 0L) {
+                            lastLocationTimestampMillis = location.timestampMillis
+                        }
+                    }
+                    shouldAccept
+                }
+                if (!accepted && !permissionGranted) {
+                    deactivateLocationCollection(
+                        label = "실차 · 권한 필요",
+                        status = CapabilityState.PermissionDenied,
+                        expectedListener = listener,
+                    )
+                }
+            }
+
+            override fun onError(error: Exception) {
+                recoverLocationCollection("실차 · 위치 수신 오류", listener)
+            }
+        }
+        return listener
+    }
+
+    private fun recoverLocationCollection(label: String, expectedListener: FusedLocationListener) {
+        val listener = synchronized(locationLock) {
+            if (registeredLocationListener !== expectedListener) return
+            locationCollecting = false
+            detachLocationListenerLocked()
+        }
+        mutableLocation.value = unavailable(label)
+        lifecycleScope.launch {
+            unregisterLocationCallback(listener)
+            delay(LOCATION_RECONNECT_DELAY_MILLIS)
+            val permissionGranted = hasLocationPermission()
+            val shouldReconnect = synchronized(locationLock) {
+                locationReconnectAllowed(
+                    listenerAbsent = registeredLocationListener == null,
+                    authorized = collectionAuthorized,
+                    recording = recordingRequested,
+                    permissionGranted = permissionGranted,
+                    released = released,
+                ).also { if (it) locationCollecting = true }
+            }
+            when {
+                shouldReconnect -> registerLocationCallback()
+                !permissionGranted -> deactivateLocationCollection(
+                    label = "실차 · 권한 필요",
+                    status = CapabilityState.PermissionDenied,
+                )
+                !released -> refreshLocationPermission()
+            }
+        }
+    }
+
+    private fun deactivateLocationCollection(
+        label: String,
+        status: CapabilityState = CapabilityState.Unavailable,
+        unregister: Boolean = true,
+        expectedListener: FusedLocationListener? = null,
+    ) {
+        val listener = synchronized(locationLock) {
+            if (expectedListener != null && registeredLocationListener !== expectedListener) return
+            locationCollecting = false
+            rawLocations.clear()
+            lastLocationTimestampMillis = null
+            detachLocationListenerLocked()
+        }
+        mutableLocation.value = CapabilityStatus(status, IntegrationSource.Actual, label)
+        if (unregister && listener != null) {
+            lifecycleScope.launch { unregisterLocationCallback(listener) }
+        }
+    }
+
+    private fun hasLocationPermission(): Boolean =
+        hasPermission(FUSED_LOCATION_PERMISSION)
+
+    private fun hasPermission(permission: String): Boolean =
+        context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
+
+    private fun permissionDenied(label: String) =
+        CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, label)
+
+    override fun release() {
+        val shouldRelease = synchronized(speechOperationLock) {
+            if (released) false else {
+                released = true
+                ttsInitializationGeneration += 1
+                sttInitializationGeneration += 1
+                true
+            }
+        }
+        if (!shouldRelease) return
+        lifecycleJob.cancel()
+        val listener = synchronized(locationLock) {
+            collectionAuthorized = false
+            recordingRequested = false
+            locationCollecting = false
+            rawLocations.clear()
+            lastLocationTimestampMillis = null
+            detachLocationListenerLocked()
+        }
+        unregisterLocationCallback(listener)
+        synchronized(speechOperationLock) {
+            stopSpeechRecognition()
+            if (ttsEventListenerRegistered) {
+                runCatching { tts.removeEventListener(ttsEventListener) }
+                ttsEventListenerRegistered = false
+            }
+            runCatching { tts.release() }
+            runCatching { stt.release() }
+        }
+        synchronized(locationOperationLock) {
+            runCatching { fusedLocation.release() }
+        }
+    }
+}
+
+internal fun locationSampleAccepted(
+    listenerMatches: Boolean,
+    collecting: Boolean,
+    authorized: Boolean,
+    recording: Boolean,
+    permissionGranted: Boolean,
+): Boolean = listenerMatches && collecting && authorized && recording && permissionGranted
+
+internal fun locationTimestampAccepted(
+    previousTimestampMillis: Long?,
+    timestampMillis: Long,
+): Boolean = timestampMillis <= 0L || previousTimestampMillis == null || timestampMillis > previousTimestampMillis
+
+internal fun locationReconnectAllowed(
+    listenerAbsent: Boolean,
+    authorized: Boolean,
+    recording: Boolean,
+    permissionGranted: Boolean,
+    released: Boolean,
+): Boolean = listenerAbsent && authorized && recording && permissionGranted && !released
+
+internal enum class LocationRefreshDisposition { PurgeForPermissionLoss, SuspendAndPreserve, Collect }
+
+internal fun locationRefreshDisposition(
+    permissionGranted: Boolean,
+    supported: Boolean?,
+): LocationRefreshDisposition = when {
+    !permissionGranted -> LocationRefreshDisposition.PurgeForPermissionLoss
+    supported == true -> LocationRefreshDisposition.Collect
+    else -> LocationRefreshDisposition.SuspendAndPreserve
+}
+
+internal fun speechResultAccepted(
+    sessionMatches: Boolean,
+    callbackInstalled: Boolean,
+    permissionGranted: Boolean,
+): Boolean = sessionMatches && callbackInstalled && permissionGranted
+
+internal fun shouldRetrySpeechInitialization(
+    permissionGranted: Boolean,
+    initialized: Boolean,
+    initializationPending: Boolean,
+    capability: CapabilityState,
+): Boolean = permissionGranted && !initialized && !initializationPending &&
+    capability in setOf(CapabilityState.PermissionDenied, CapabilityState.Unavailable)
+
+internal fun speechInitializedAfterPermissionRefresh(permissionGranted: Boolean, initialized: Boolean): Boolean =
+    permissionGranted && initialized
+
+internal fun speechListenerRegisteredAfterPermissionRefresh(
+    permissionGranted: Boolean,
+    listenerRegistered: Boolean,
+): Boolean = permissionGranted && listenerRegistered
+
+internal fun speechCapabilityAfterOperationFailure(permissionGranted: Boolean): CapabilityStatus =
+    if (permissionGranted) {
+        CapabilityStatus(CapabilityState.Unavailable, IntegrationSource.Actual, "실차 · 서비스 연결 끊김")
+    } else {
+        CapabilityStatus(CapabilityState.PermissionDenied, IntegrationSource.Actual, "실차 · 권한 필요")
+    }
+
+internal fun speechRecognitionStateAfterError(error: SttErrorType): SpeechRecognitionState =
+    if (error == SttErrorType.TIMEOUT) SpeechRecognitionState.NoResult else SpeechRecognitionState.Failed
+
+internal fun sttErrorInvalidatesCapability(error: SttErrorType): Boolean =
+    error != SttErrorType.TIMEOUT && error != SttErrorType.INVALID_REQUEST_ERROR
+
+internal fun shouldInvalidateSttCapability(
+    currentSessionFinished: Boolean,
+    error: SttErrorType,
+): Boolean = currentSessionFinished && sttErrorInvalidatesCapability(error)
+
+private const val FUSED_LOCATION_PERMISSION = "pleos.car.permission.FUSED_LOCATION"
+private const val TTS_PERMISSION = "pleos.car.permission.TTS_SERVICE"
+private const val STT_PERMISSION = "pleos.car.permission.STT_SERVICE"
+private const val MAX_ROUTE_POINTS = 5_000
+internal const val AUXILIARY_INITIALIZATION_TIMEOUT_MILLIS = 10_000L
+internal const val SPEECH_RECOGNITION_TIMEOUT_MILLIS = 30_000L
+internal const val LOCATION_RECONNECT_DELAY_MILLIS = 2_000L
 
 private class PleosVehicleMotionSource(context: Context) : VehicleMotionSource {
     private val actualUnavailable = CapabilityStatus(

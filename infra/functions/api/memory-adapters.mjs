@@ -35,11 +35,14 @@ export class MemoryRepository {
     return copy(drive);
   }
 
-  async deleteDrive({ driveId, userId, now }) {
+  async deleteDrive({ driveId, userId, idempotencyKey, now }) {
     const drive = this.drives.get(driveId);
     if (!drive || drive.ownerId !== userId) throw new ApiError(404, "NOT_FOUND", "드라이브를 찾을 수 없어요.");
-    if (drive.status === "DELETED") return copy(drive);
-    drive.status = "DELETED"; drive.version += 1; drive.updatedAt = now;
+    if (drive.status === "DELETED") {
+      if (drive.deleteIdempotencyKey !== idempotencyKey) throw new ApiError(409, "IDEMPOTENCY_CONFLICT", "삭제 요청 식별 정보가 기존 요청과 다릅니다.");
+      return copy(drive);
+    }
+    drive.status = "DELETED"; drive.version += 1; drive.updatedAt = now; drive.deleteIdempotencyKey = idempotencyKey;
     return copy(drive);
   }
 

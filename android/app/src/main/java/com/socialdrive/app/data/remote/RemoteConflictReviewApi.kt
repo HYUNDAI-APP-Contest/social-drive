@@ -19,7 +19,7 @@ class CloudRemoteConflictReviewApi(private val client: CloudDriveClient) : Remot
             val code = when (error.kind) {
                 CloudFailureKind.NOT_FOUND -> RemoteFailureCode.NOT_FOUND
                 CloudFailureKind.AUTHENTICATION -> RemoteFailureCode.AUTHENTICATION
-                CloudFailureKind.FORBIDDEN -> RemoteFailureCode.REJECTED
+                CloudFailureKind.FORBIDDEN, CloudFailureKind.CONSENT_RENEWAL_REQUIRED -> RemoteFailureCode.REJECTED
                 CloudFailureKind.RETRYABLE -> RemoteFailureCode.SERVER_BUSY
                 else -> RemoteFailureCode.REJECTED
             }
@@ -37,7 +37,10 @@ class CloudRemoteConflictReviewApi(private val client: CloudDriveClient) : Remot
     }
 }
 
-class UnavailableRemoteConflictReviewApi : RemoteConflictReviewApi {
+class UnavailableRemoteConflictReviewApi(
+    private val code: RemoteFailureCode = RemoteFailureCode.CONFIGURATION,
+    private val retryable: Boolean = false,
+) : RemoteConflictReviewApi {
     override suspend fun getOwnedDrive(remoteDriveId: String): OwnedDriveConflictSnapshot =
-        throw RemoteDriveException(RemoteFailureCode.CONFIGURATION, retryable = false)
+        throw RemoteDriveException(code, retryable)
 }

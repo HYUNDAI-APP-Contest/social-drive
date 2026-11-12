@@ -105,13 +105,15 @@ class CloudDriveClient(
             cursor?.let { append("&cursor=").append(percentEncode(it.rawValue())) }
         }
         val root = api(HttpMethod.GET, "/feed$query", expectedStatuses = setOf(200)).objectValue()
-        val items = root.array("items").map { itemValue ->
+        val itemValues = root.array("items")
+        if (itemValues.size > limit) throw CloudContractException("FEED_LIMIT_EXCEEDED")
+        val items = itemValues.map { itemValue ->
             val item = itemValue.objectValue()
             val drive = parseDrive(item)
             if (drive.status != DriveStatus.PUBLISHED) throw CloudContractException("INVALID_FEED_STATUS")
             FeedItem(
                 drive = drive,
-                links = EphemeralAssetLinks(secureEphemeralUri(item.string("coverUrl")), routeUri = null),
+                links = EphemeralAssetLinks(secureAssetUri(item.string("coverUrl")), routeUri = null),
             )
         }
         val cursorValue = root.optionalString("nextCursor")
@@ -125,13 +127,75 @@ class CloudDriveClient(
         return DriveDetail(
             drive = parseDrive(drive),
             links = EphemeralAssetLinks(
-                coverUri = secureEphemeralUri(drive.string("coverUrl")),
-                routeUri = secureEphemeralUri(drive.string("routeUrl")),
+                coverUri = secureAssetUri(drive.string("coverUrl")),
+                routeUri = secureAssetUri(drive.string("routeUrl")),
             ),
             routeSchemaVersion = drive.integer("routeSchemaVersion").also {
                 if (it != 1) throw CloudContractException("INVALID_ROUTE_SCHEMA")
             },
         )
+    }
+
+    /** Downloads a short-lived public route without forwarding Cognito authorization. */
+    suspend fun downloadRoute(detail: DriveDetail): PublishedRoute {
+        if (detail.routeSchemaVersion != 1) throw CloudContractException("INVALID_ROUTE_SCHEMA")
+        val uri = detail.links.routeUri ?: throw CloudContractException("MISSING_ROUTE_URL")
+        val response = try {
+            objectTransport.execute(HttpRequest(HttpMethod.GET, uri, emptyMap(), null))
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            throw CloudDriveException(CloudFailureKind.RETRYABLE, "ROUTE_TRANSPORT", retryable = true)
+        }
+        if (response.body.size > MAX_RESPONSE_BYTES) {
+            throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
+        }
+        if (response.status == 403) {
+            throw CloudDriveException(CloudFailureKind.RETRYABLE, "READ_LINK_EXPIRED", retryable = true)
+        }
+        if (response.status != 200) {
+            throw CloudDriveException(
+                if (response.status == 408 || response.status == 429 || response.status >= 500) CloudFailureKind.RETRYABLE else CloudFailureKind.UNKNOWN,
+                "ROUTE_READ_REJECTED",
+                retryable = response.status == 408 || response.status == 429 || response.status >= 500,
+            )
+        }
+        return parsePublishedRoute(response.body)
+    }
+
+    /** Downloads a short-lived JPEG/WebP cover without forwarding Cognito authorization. */
+    suspend fun downloadCover(detail: DriveDetail): ByteArray {
+        val response = try {
+            objectTransport.execute(
+                HttpRequest(
+                    HttpMethod.GET,
+                    detail.links.coverUri,
+                    emptyMap(),
+                    null,
+                    maxResponseBytes = MAX_COVER_BYTES,
+                ),
+            )
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            throw CloudDriveException(CloudFailureKind.RETRYABLE, "COVER_TRANSPORT", retryable = true)
+        }
+        if (response.body.size > MAX_COVER_BYTES) {
+            throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
+        }
+        if (response.status == 403) {
+            throw CloudDriveException(CloudFailureKind.RETRYABLE, "READ_LINK_EXPIRED", retryable = true)
+        }
+        if (response.status != 200) {
+            throw CloudDriveException(
+                if (response.status == 408 || response.status == 429 || response.status >= 500) CloudFailureKind.RETRYABLE else CloudFailureKind.UNKNOWN,
+                "COVER_READ_REJECTED",
+                retryable = response.status == 408 || response.status == 429 || response.status >= 500,
+            )
+        }
+        val bytes = response.body
+        if (!isSupportedCoverImage(bytes)) throw CloudContractException("INVALID_COVER_IMAGE")
+        return bytes.copyOf()
     }
 
     suspend fun updateDrive(driveId: String, patch: DrivePatch): DriveResource {
@@ -176,6 +240,12 @@ class CloudDriveClient(
             auth.freshBearerToken()
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (_: AuthSessionTemporarilyUnavailableException) {
+            throw CloudDriveException(
+                CloudFailureKind.RETRYABLE,
+                "AUTH_SESSION_TEMPORARILY_UNAVAILABLE",
+                retryable = true,
+            )
         } catch (_: Throwable) {
             throw CloudDriveException(CloudFailureKind.AUTHENTICATION, "AUTH_SESSION_UNAVAILABLE", retryable = false)
         }
@@ -191,6 +261,12 @@ class CloudDriveClient(
         } catch (_: Throwable) {
             throw CloudDriveException(CloudFailureKind.RETRYABLE, "API_TRANSPORT", retryable = true)
         }
+        if (response.status == 401) {
+            runCatching { auth.onAuthenticationRejected() }
+            if (response.body.size > MAX_RESPONSE_BYTES) {
+                throw CloudDriveException(CloudFailureKind.AUTHENTICATION, "HTTP_401", retryable = false)
+            }
+        }
         if (response.body.size > MAX_RESPONSE_BYTES) throw CloudDriveException(CloudFailureKind.CONTRACT, "RESPONSE_TOO_LARGE", false)
         if (response.status !in expectedStatuses) throw parseApiError(response, terminalDeleteConflict)
         if (response.status == 204) return JsonValue.NullValue
@@ -204,11 +280,21 @@ class CloudDriveClient(
     }
 
     private fun parseApiError(response: HttpResponse, terminalDeleteConflict: Boolean): CloudDriveException {
-        val fallbackRetry = response.status == 408 || response.status == 429 || response.status >= 500
+        val transportRetry = response.status == 408 || response.status == 429 || response.status >= 500
         val envelope = runCatching { JsonCodec.parse(response.body).objectValue().requiredObject("error") }.getOrNull()
-        val code = envelope?.get("code")?.let { (it as? JsonValue.StringValue)?.value } ?: "HTTP_${response.status}"
-        val retryable = envelope?.get("retryable")?.let { (it as? JsonValue.BooleanValue)?.value } ?: fallbackRetry
-        val requestId = envelope?.get("requestId")?.let { (it as? JsonValue.StringValue)?.value }
+        val code = envelope?.get("code")
+            ?.let { (it as? JsonValue.StringValue)?.value }
+            ?.takeIf(ERROR_CODE_PATTERN::matches)
+            ?: "HTTP_${response.status}"
+        val declaredRetry = envelope?.get("retryable")?.let { (it as? JsonValue.BooleanValue)?.value } == true
+        val retryable = transportRetry || (
+            response.status == 409 &&
+                code in setOf("UPLOAD_INCOMPLETE", "RESOURCE_CONFLICT") &&
+                declaredRetry
+            )
+        val requestId = envelope?.get("requestId")
+            ?.let { (it as? JsonValue.StringValue)?.value }
+            ?.takeIf(REQUEST_ID_PATTERN::matches)
         if (terminalDeleteConflict && response.status == 409) {
             val kind = if (code == "IDEMPOTENCY_CONFLICT") {
                 CloudFailureKind.IDEMPOTENCY_CONFLICT
@@ -218,6 +304,7 @@ class CloudDriveClient(
             return CloudDriveException(kind, code, retryable = false, requestId = requestId)
         }
         val kind = when {
+            code == "CONSENT_RENEWAL_REQUIRED" -> CloudFailureKind.CONSENT_RENEWAL_REQUIRED
             response.status == 401 -> CloudFailureKind.AUTHENTICATION
             response.status == 403 -> CloudFailureKind.FORBIDDEN
             response.status == 404 -> CloudFailureKind.NOT_FOUND
@@ -254,7 +341,9 @@ class CloudDriveClient(
             validateInstructionMetadata(instruction, manifest)
             instruction
         }
-        if (parsed.map { it.kind }.toSet() != byKind.keys) throw CloudContractException("MISSING_UPLOAD")
+        if (parsed.size != byKind.size || parsed.map { it.kind }.toSet() != byKind.keys) {
+            throw CloudContractException("INVALID_UPLOAD_SET")
+        }
         return parsed
     }
 
@@ -308,7 +397,7 @@ class CloudDriveClient(
         if (requireBothKinds) require(assets.map(AssetManifest::kind).toSet() == AssetKind.entries.toSet())
         assets.forEach { asset ->
             when (asset.kind) {
-                AssetKind.COVER -> require(asset.contentType in setOf("image/jpeg", "image/webp") && asset.sizeBytes <= 10L * 1024 * 1024)
+                AssetKind.COVER -> require(asset.contentType in setOf("image/jpeg", "image/webp") && asset.sizeBytes <= MAX_COVER_BYTES.toLong())
                 AssetKind.ROUTE -> require(asset.contentType == "application/json" && asset.sizeBytes <= 1024L * 1024)
             }
         }
@@ -413,11 +502,20 @@ class CloudDriveClient(
         return uri
     }
 
-    private fun secureEphemeralUri(value: String): URI = secureUri(value)
+    private fun secureAssetUri(value: String): URI {
+        val uri = secureUri(value)
+        if (uri.host.lowercase() !in config.allowedUploadHosts) throw CloudContractException("ASSET_HOST_NOT_ALLOWED")
+        return uri
+    }
 
     private fun secureUri(value: String): URI {
+        if (value.length !in 1..MAX_CLOUD_URL_LENGTH || '\\' in value || value.any(Char::isWhitespace)) {
+            throw CloudContractException("INVALID_URL")
+        }
         val uri = runCatching { URI(value) }.getOrElse { throw CloudContractException("INVALID_URL") }
-        if (!uri.scheme.equals("https", true) || uri.host == null || uri.userInfo != null || uri.fragment != null || (uri.port != -1 && uri.port != 443)) {
+        if (!uri.scheme.equals("https", true) || uri.host == null || uri.userInfo != null || uri.fragment != null ||
+            uri.rawPath.isNullOrEmpty() || !uri.rawPath.startsWith('/') || (uri.port != -1 && uri.port != 443)
+        ) {
             throw CloudContractException("INVALID_URL")
         }
         return uri
@@ -484,9 +582,13 @@ class CloudDriveClient(
 
     companion object {
         private const val MAX_RESPONSE_BYTES = 2 * 1024 * 1024
+        private const val MAX_COVER_BYTES = 10 * 1024 * 1024
+        private const val MAX_CLOUD_URL_LENGTH = 8_192
         private const val MAX_PRESIGNED_SECONDS = 900L
         private const val CLOCK_SKEW_SECONDS = 30L
         private const val HEX = "0123456789ABCDEF"
+        private val ERROR_CODE_PATTERN = Regex("[A-Z][A-Z0-9_]{0,63}")
+        private val REQUEST_ID_PATTERN = Regex("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")
         private val REQUIRED_UPLOAD_HEADERS = setOf("content-type", "x-amz-checksum-sha256")
         private val SIGNED_UPLOAD_HEADER_ORDER = listOf("content-type", "host", "x-amz-checksum-sha256")
         private val SIGV4_DATE: DateTimeFormatter = DateTimeFormatter
@@ -494,3 +596,76 @@ class CloudDriveClient(
             .withZone(ZoneOffset.UTC)
     }
 }
+
+internal fun isSupportedCoverImage(bytes: ByteArray): Boolean {
+    val jpeg = bytes.size >= 4 &&
+        bytes[0] == 0xff.toByte() && bytes[1] == 0xd8.toByte() &&
+        bytes[bytes.lastIndex - 1] == 0xff.toByte() && bytes.last() == 0xd9.toByte()
+    if (jpeg) return true
+    if (bytes.size < 20 || !bytes.matchesAscii(0, "RIFF") || !bytes.matchesAscii(8, "WEBP")) return false
+    val declaredRiffBytes = bytes.littleEndianUInt32(4) ?: return false
+    if (declaredRiffBytes != bytes.size.toLong() - 8L) return false
+    return bytes.matchesAscii(12, "VP8 ") ||
+        bytes.matchesAscii(12, "VP8L") ||
+        bytes.matchesAscii(12, "VP8X")
+}
+
+private fun ByteArray.matchesAscii(offset: Int, value: String): Boolean =
+    offset >= 0 && offset + value.length <= size && value.indices.all { this[offset + it] == value[it].code.toByte() }
+
+private fun ByteArray.littleEndianUInt32(offset: Int): Long? {
+    if (offset < 0 || offset + 4 > size) return null
+    return (this[offset].toLong() and 0xff) or
+        ((this[offset + 1].toLong() and 0xff) shl 8) or
+        ((this[offset + 2].toLong() and 0xff) shl 16) or
+        ((this[offset + 3].toLong() and 0xff) shl 24)
+}
+
+private fun parsePublishedRoute(bytes: ByteArray): PublishedRoute = try {
+    val root = JsonCodec.parse(bytes).objectValue()
+    if (root.keys != setOf("schemaVersion", "path", "highlights") || root.integer("schemaVersion") != 1) {
+        throw CloudContractException("INVALID_ROUTE_SCHEMA")
+    }
+    val path = root.array("path")
+    if (path.size !in 2..500) throw CloudContractException("INVALID_ROUTE_PATH")
+    val highlights = root.array("highlights")
+    if (highlights.size > 100) throw CloudContractException("INVALID_ROUTE_HIGHLIGHTS")
+    highlights.forEach { value ->
+        val highlight = value.objectValue()
+        if (highlight.keys.any { it !in setOf("progress", "title") } || "progress" !in highlight) {
+            throw CloudContractException("INVALID_ROUTE_HIGHLIGHT")
+        }
+        highlight.unitFloat("progress")
+        val title = highlight["title"]
+        if (title != null && ((title as? JsonValue.StringValue)?.value?.codePointLength() ?: 41) > 40) {
+            throw CloudContractException("INVALID_ROUTE_HIGHLIGHT")
+        }
+    }
+    PublishedRoute(path.map { value ->
+        val point = value.objectValue()
+        if (point.keys.any { it !in setOf("horizontal", "vertical", "progress") } ||
+            !point.keys.containsAll(setOf("horizontal", "vertical"))
+        ) throw CloudContractException("INVALID_ROUTE_POINT")
+        PublishedRoutePoint(
+            horizontal = point.unitFloat("horizontal"),
+            vertical = point.unitFloat("vertical"),
+            progress = point.optionalUnitFloat("progress"),
+        )
+    })
+} catch (known: CloudDriveException) {
+    throw known
+} catch (_: Throwable) {
+    throw CloudContractException("INVALID_ROUTE_DOCUMENT")
+}
+
+private fun Map<String, JsonValue>.unitFloat(name: String): Float =
+    ((get(name) as? JsonValue.NumberValue)?.value?.toDoubleOrNull()
+        ?.takeIf { it.isFinite() && it in 0.0..1.0 }
+        ?: throw CloudContractException("INVALID_ROUTE_POINT")).toFloat()
+
+private fun Map<String, JsonValue>.optionalUnitFloat(name: String): Float? = when (get(name)) {
+    null -> null
+    else -> unitFloat(name)
+}
+
+private fun String.codePointLength(): Int = codePoints().count().toInt()

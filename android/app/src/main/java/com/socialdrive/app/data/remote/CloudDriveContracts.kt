@@ -1,6 +1,7 @@
 package com.socialdrive.app.data.remote
 
 import java.net.URI
+import kotlinx.coroutines.CancellationException
 
 enum class HttpMethod { GET, POST, PUT, PATCH, DELETE }
 
@@ -10,7 +11,12 @@ class HttpRequest(
     val uri: URI,
     val headers: Map<String, String>,
     val body: ByteArray?,
+    val maxResponseBytes: Int = DEFAULT_CLOUD_RESPONSE_BYTES,
 ) {
+    init {
+        require(maxResponseBytes in 0..MAX_CLOUD_RESPONSE_BYTES)
+    }
+
     override fun toString(): String = "HttpRequest(method=$method, sensitiveFields=[REDACTED])"
 }
 
@@ -25,7 +31,7 @@ class HttpResponse(
 
 /**
  * Cancellation-cooperative transport. Implementations must disable redirects and logging, stream
- * with a hard 2 MiB response cap, and cancel the underlying call when the coroutine is cancelled.
+ * with the request's bounded response cap, and cancel the underlying call when cancelled.
  */
 fun interface ApiHttpTransport {
     suspend fun execute(request: HttpRequest): HttpResponse
@@ -33,7 +39,7 @@ fun interface ApiHttpTransport {
 
 /**
  * Cancellation-cooperative, no-redirect/no-log transport dedicated to presigned object requests.
- * It must never buffer more than 2 MiB of a response body or add ambient authentication headers.
+ * It must never exceed the request's response cap or add ambient authentication headers.
  */
 fun interface ObjectUploadTransport {
     suspend fun execute(request: HttpRequest): HttpResponse
@@ -54,17 +60,92 @@ class BearerToken private constructor(private val value: String) {
 /** Must obtain a current session for every API operation; implementations must not persist tokens. */
 fun interface AuthSessionProvider {
     suspend fun freshBearerToken(): BearerToken
+    fun onAuthenticationRejected() = Unit
 }
+
+/** A network/service interruption while refreshing an otherwise installed authentication session. */
+class AuthSessionTemporarilyUnavailableException(cause: Throwable? = null) :
+    RuntimeException("Authentication session is temporarily unavailable", cause)
 
 /** SDK boundary for a future configured Cognito client. No Cognito SDK or client secret is embedded here. */
 fun interface CognitoSessionSource {
     suspend fun freshAccessToken(): String
+    fun onSessionInvalidated() = Unit
+}
+
+internal class ValidatingCognitoSessionSource(
+    private val delegate: CognitoSessionSource,
+    private val validator: AccessTokenValidator,
+    private val onValidation: (Boolean) -> Unit,
+    private val isCurrent: () -> Boolean = { true },
+) : CognitoSessionSource {
+    override suspend fun freshAccessToken(): String {
+        requireCurrentSession()
+        val token = try {
+            delegate.freshAccessToken()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (temporary: AuthSessionTemporarilyUnavailableException) {
+            // Keep the installed lease: a later worker attempt may refresh it after connectivity returns.
+            requireCurrentSession()
+            throw temporary
+        } catch (error: Throwable) {
+            // A replaced/logged-out lease must not invalidate the newly installed SDK session.
+            requireCurrentSession()
+            onValidation(false)
+            runCatching { delegate.onSessionInvalidated() }
+            throw error
+        }
+        requireCurrentSession()
+        val valid = runCatching { validator.isValid(token) }.getOrDefault(false)
+        // Validation may be non-trivial; close the replacement/logout race before publishing state.
+        requireCurrentSession()
+        onValidation(valid)
+        if (!valid) runCatching { delegate.onSessionInvalidated() }
+        require(valid) { "Invalid Cognito access token" }
+        requireCurrentSession()
+        return token
+    }
+
+    private fun requireCurrentSession() {
+        if (!isCurrent()) {
+            throw IllegalStateException("Cognito session lease expired")
+        }
+    }
+
+    override fun onSessionInvalidated() {
+        if (!isCurrent()) return
+        runCatching { delegate.onSessionInvalidated() }
+        if (isCurrent()) onValidation(false)
+    }
+}
+
+fun interface AccessTokenValidator {
+    fun isValid(token: String): Boolean
+}
+
+internal suspend fun validateCognitoSession(
+    source: CognitoSessionSource,
+    validator: AccessTokenValidator,
+): Boolean = try {
+    validator.isValid(source.freshAccessToken())
+} catch (cancelled: CancellationException) {
+    throw cancelled
+} catch (_: Throwable) {
+    false
 }
 
 class InMemoryCognitoAuthSessionProvider(
     private val source: CognitoSessionSource,
+    private val validator: AccessTokenValidator,
 ) : AuthSessionProvider {
-    override suspend fun freshBearerToken(): BearerToken = BearerToken.inMemory(source.freshAccessToken())
+    override suspend fun freshBearerToken(): BearerToken {
+        val token = source.freshAccessToken()
+        require(validator.isValid(token)) { "Invalid Cognito access token" }
+        return BearerToken.inMemory(token)
+    }
+
+    override fun onAuthenticationRejected() = source.onSessionInvalidated()
 }
 
 enum class DriveStatus { DRAFT, PUBLISHED }
@@ -130,6 +211,8 @@ class EphemeralAssetLinks internal constructor(
 data class FeedItem(val drive: DriveResource, val links: EphemeralAssetLinks)
 data class FeedPage(val items: List<FeedItem>, val nextCursor: OpaqueFeedCursor?)
 data class DriveDetail(val drive: DriveResource, val links: EphemeralAssetLinks, val routeSchemaVersion: Int)
+data class PublishedRoutePoint(val horizontal: Float, val vertical: Float, val progress: Float?)
+data class PublishedRoute(val points: List<PublishedRoutePoint>)
 data class DrivePatch(val expectedVersion: Int, val title: String? = null, val summary: String? = null)
 
 class UploadInstruction internal constructor(
@@ -154,6 +237,7 @@ enum class CloudFailureKind {
     VERSION_CONFLICT,
     UPLOAD_INCOMPLETE,
     UPLOAD_EXPIRED,
+    CONSENT_RENEWAL_REQUIRED,
     VALIDATION,
     RETRYABLE,
     CONTRACT,
@@ -180,7 +264,35 @@ data class CloudDriveClientConfig(
         require(apiBaseUri.scheme.equals("https", ignoreCase = true))
         require(apiBaseUri.userInfo == null && apiBaseUri.query == null && apiBaseUri.fragment == null)
         require(apiBaseUri.host != null && (apiBaseUri.port == -1 || apiBaseUri.port == 443))
+        require(apiBaseUri.host.lowercase().isValidCloudHost())
+        require(apiBaseUri.rawPath.isValidCloudBasePath())
         require(allowedUploadHosts.isNotEmpty())
-        require(allowedUploadHosts.all { it.isNotBlank() && it == it.lowercase() })
+        require(allowedUploadHosts.all { it == it.lowercase() && it.isValidCloudHost() })
+    }
+}
+
+internal const val DEFAULT_CLOUD_RESPONSE_BYTES = 2 * 1024 * 1024
+internal const val MAX_CLOUD_RESPONSE_BYTES = 10 * 1024 * 1024
+
+internal fun String.isValidCloudHost(): Boolean {
+    if (length !in 4..253 || startsWith('.') || endsWith('.')) return false
+    val labels = split('.')
+    if (labels.size < 2 || labels.last().none(Char::isLetter)) return false
+    return labels.all { label ->
+        label.length in 1..63 &&
+            label.first().isLetterOrDigit() &&
+            label.last().isLetterOrDigit() &&
+            label.all { it in 'a'..'z' || it in '0'..'9' || it == '-' }
+    }
+}
+
+internal fun String?.isValidCloudBasePath(): Boolean {
+    val path = this.orEmpty()
+    if (path.length > 512 || '\\' in path || '%' in path || path.any(Char::isWhitespace)) return false
+    if (path.isEmpty() || path == "/") return true
+    if (!path.startsWith('/') || "//" in path) return false
+    return path.removePrefix("/").removeSuffix("/").split('/').all { segment ->
+        segment.isNotEmpty() && segment !in setOf(".", "..") &&
+            segment.all { it.isLetterOrDigit() || it in "-._~$" }
     }
 }

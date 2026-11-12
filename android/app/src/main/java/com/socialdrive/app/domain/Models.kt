@@ -22,7 +22,7 @@ sealed interface ContentState<out T> {
     data class Retry(val message: String) : ContentState<Nothing>
 }
 
-enum class UploadState { Draft, Queued, Uploading, Failed, NeedsConflictReview, Published }
+enum class UploadState { Draft, Queued, Uploading, Failed, Rejected, NeedsConflictReview, NeedsConsentRenewal, Published }
 
 data class RoutePoint(val horizontal: Float, val vertical: Float)
 
@@ -32,6 +32,19 @@ data class DriveMoment(
     val title: String,
     val description: String,
 )
+
+/** In-memory only public cover bytes. Diagnostics never expose content and callers receive copies. */
+class EphemeralCoverImage private constructor(private val content: ByteArray) {
+    internal fun copyBytes(): ByteArray = content.copyOf()
+    override fun toString(): String = "EphemeralCoverImage([REDACTED])"
+
+    companion object {
+        fun inMemory(content: ByteArray): EphemeralCoverImage {
+            require(content.isNotEmpty() && content.size <= 2 * 1024 * 1024)
+            return EphemeralCoverImage(content.copyOf())
+        }
+    }
+}
 
 data class DriveSummary(
     val id: String,
@@ -46,6 +59,8 @@ data class DriveSummary(
     val routeSource: RouteSource,
     /** Null unless the source supplied a privacy-reviewed destination. Demo fixtures keep this null. */
     val navigationRequest: NavigationRequest? = null,
+    /** Short-lived public artwork bytes; never persisted or included in saved presentation state. */
+    val coverImage: EphemeralCoverImage? = null,
 )
 
 data class RecordingSnapshot(

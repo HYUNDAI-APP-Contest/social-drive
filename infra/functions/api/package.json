@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "test": "node --test '*.test.mjs'"
+  },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "3.1161.0",
     "@aws-sdk/client-s3": "3.1161.0",

@@ -43,13 +43,19 @@ test("WorkManager uses target-only on-demand initialization without a test APK p
   assert.doesNotMatch(build, /lint\s*\{[\s\S]*(?:disable|baseline)/);
 });
 
+test("WorkManager does not emit informational queue identifiers", () => {
+  const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
+  assert.match(application, /setMinimumLoggingLevel\(android\.util\.Log\.WARN\)/);
+  assert.doesNotMatch(application, /setMinimumLoggingLevel\(android\.util\.Log\.(?:VERBOSE|DEBUG|INFO)\)/);
+});
+
 test("Room owns durable recordings drafts and a non-destructive migration path", () => {
   const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
   const daos = read("app/src/main/java/com/socialdrive/app/data/local/Daos.kt");
   const database = read("app/src/main/java/com/socialdrive/app/data/local/SocialDriveDatabase.kt");
   for (const table of ["recording_sessions", "drive_drafts", "upload_queue"]) assert.match(entities, new RegExp(table));
   assert.match(database, /exportSchema\s*=\s*true/);
-  assert.match(database, /version\s*=\s*6/);
+  assert.match(database, /version\s*=\s*8/);
   assert.match(database, /Migration\(1, 2\)/);
   assert.match(database, /Migration\(2, 3\)/);
   assert.match(database, /Migration\(3, 4\)/);
@@ -68,12 +74,16 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   const schema4 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/4.json"));
   const schema5 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/5.json"));
   const schema6 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/6.json"));
+  const schema7 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/7.json"));
+  const schema8 = JSON.parse(read("app/schemas/com.socialdrive.app.data.local.SocialDriveDatabase/8.json"));
   assert.equal(schema1.database.version, 1);
   assert.equal(schema2.database.version, 2);
   assert.equal(schema3.database.version, 3);
   assert.equal(schema4.database.version, 4);
   assert.equal(schema5.database.version, 5);
   assert.equal(schema6.database.version, 6);
+  assert.equal(schema7.database.version, 7);
+  assert.equal(schema8.database.version, 8);
   const queue1 = schema1.database.entities.find((entity) => entity.tableName === "upload_queue");
   const queue2 = schema2.database.entities.find((entity) => entity.tableName === "upload_queue");
   assert.equal(queue1.fields.some((field) => field.columnName === "lastErrorCode"), false);
@@ -108,6 +118,17 @@ test("Room owns durable recordings drafts and a non-destructive migration path",
   }
   assert.match(database, /Migration\(5, 6\)/);
   assert.match(migrationTest, /migrateFiveToSixMakesLegacyDeletePendingFailClosed/);
+  const recording7 = schema7.database.entities.find((entity) => entity.tableName === "recording_sessions");
+  const distance = recording7.fields.find((field) => field.columnName === "distanceMeters");
+  assert.equal(distance.notNull, true);
+  assert.equal(distance.defaultValue, "0");
+  assert.match(database, /Migration\(6, 7\)/);
+  assert.match(migrationTest, /migrateSixToSevenAddsPrivacySafeAggregateDistance/);
+  const privacy8 = schema8.database.entities.find((entity) => entity.tableName === "route_privacy_state");
+  assert.ok(privacy8.fields.some((field) => field.columnName === "consentPolicyVersion"));
+  assert.match(database, /Migration\(7, 8\)/);
+  assert.match(database, /SET consentState = 'NotAsked', routeSource = 'DemoPreset'/);
+  assert.match(migrationTest, /migrateSevenToEightInvalidatesUnversionedLocationConsent/);
 });
 
 test("publish queue is stable restart-safe and keeps ephemeral credentials out of Room", () => {
@@ -206,7 +227,7 @@ test("recording stop is confirmed and non-parked drafts cannot auto-publish", ()
   assert.match(app, /BackHandler[\s\S]*destination == AppDestination\.Recording\) stopConfirmationRequested = true/);
   assert.match(app, /onRequestStop = \{ stopConfirmationRequested = true \}/);
   assert.match(app, /onConfirm = ::completeRecording/);
-  assert.match(app, /memoryStory = memoryStory\.finishDraft\(draft\.highlightCount\)/);
+  assert.match(app, /memoryStory = MemoryStoryPresentation\.browsing\(draft\.toLocalDriveSummary\(fallback\)\)[\s\S]*\.finishDraft\(draft\.highlightCount\)/);
   assert.match(app, /if \(motion == MotionState\.Parked\)[\s\S]*AppDestination\.Publish[\s\S]*초안으로 안전하게 보존/);
 });
 
@@ -248,7 +269,7 @@ test("instrumented safety suite covers lock back confirmation and parked publish
   assert.match(contract, /BackHandler\(destination != AppDestination\.Home\)[\s\S]*destination == AppDestination\.Recording\) stopConfirmationRequested = true/);
   assert.match(ui, /host\.setContent \{ NavigationContractContent\(\) \}[\s\S]*compose\.waitForIdle\(\)/);
   assert.doesNotMatch(ui, /(?:Thread|SystemClock)\.sleep|waitUntil|@Ignore/);
-  assert.match(app, /onDetail = \{ id ->[\s\S]*memoryStory = memoryStory\.select\(it\)[\s\S]*navigate\(AppDestination\.Detail\)/);
+  assert.match(app, /onDetail = \{ id ->[\s\S]*memoryStory = memoryStory\.select\(drive\)[\s\S]*navigate\(AppDestination\.Detail\)/);
   assert.match(app, /onRecord = \{[\s\S]*?navigate\(AppDestination\.Recording\)/);
   assert.match(app, /AppDestination\.Detail -> DetailScreen\([\s\S]*?onPublish = \{ navigate\(AppDestination\.Publish\) \}/);
   assert.match(app, /BackHandler\(destination != AppDestination\.Home\)[\s\S]*destination == AppDestination\.Recording\) stopConfirmationRequested = true/);
@@ -375,12 +396,78 @@ test("Pleos dependencies permissions and flavors are least-privilege isolated", 
   assert.doesNotMatch(mainManifest, /uses-permission/);
   const permissions = [...pleosManifest.matchAll(/uses-permission android:name="([^"]+)"/g)].map((match) => match[1]);
   assert.deepEqual(permissions, [
+    "android.permission.INTERNET",
+    "android.permission.ACCESS_NETWORK_STATE",
     "pleos.car.permission.CAR_DRIVE",
     "pleos.car.permission.NAVI_ROUTE_SEARCH",
+    "pleos.car.permission.FUSED_LOCATION",
+    "pleos.car.permission.TTS_SERVICE",
+    "pleos.car.permission.STT_SERVICE",
   ]);
-  for (const forbidden of ["FusedLocation", "TextToSpeech", "SpeechToText", "CONTROL_CAR_", "PRIVATE_CAR_"]) {
+  for (const forbidden of ["CONTROL_CAR_", "PRIVATE_CAR_"]) {
     assert.doesNotMatch(build + pleosManifest, new RegExp(forbidden));
   }
+});
+
+test("PLEOS TTS and STT permissions fail closed and remain recoverable", () => {
+  const contracts = read("app/src/main/java/com/socialdrive/app/domain/IntegrationContracts.kt");
+  const app = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
+  const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
+  const pleos = read("app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
+  assert.match(contracts, /val speechPermissions: List<String>/);
+  assert.match(contracts, /fun refreshSpeechPermissions\(\)/);
+  assert.match(app, /RequestMultiplePermissions\(\)/);
+  assert.match(app, /Lifecycle\.Event\.ON_RESUME[\s\S]*refreshSpeechPermissions\(\)/);
+  assert.match(settings, /음성 권한 다시 확인/);
+  assert.match(pleos, /TTS_PERMISSION[\s\S]*STT_PERMISSION/);
+  assert.match(pleos, /if \(!hasPermission\(TTS_PERMISSION\)\)[\s\S]*permissionDenied/);
+  assert.match(pleos, /if \(!hasPermission\(STT_PERMISSION\)\)[\s\S]*permissionDenied/);
+  assert.match(pleos, /ttsInitialized[\s\S]*sttInitialized/);
+  assert.match(pleos, /ttsInitializationGeneration[\s\S]*initializeTts\(\)[\s\S]*generation != ttsInitializationGeneration[\s\S]*hasPermission\(TTS_PERMISSION\)/);
+  assert.match(pleos, /sttInitializationGeneration[\s\S]*initializeStt\(\)[\s\S]*generation != sttInitializationGeneration[\s\S]*hasPermission\(STT_PERMISSION\)/);
+  assert.match(pleos, /TtsInitializeListener[\s\S]*onSuccess\(\)[\s\S]*synchronized\(speechOperationLock\)[\s\S]*generation != ttsInitializationGeneration[\s\S]*mutableTts\.value = available/);
+  assert.match(pleos, /SttInitializeListener[\s\S]*onSuccess\(\)[\s\S]*synchronized\(speechOperationLock\)[\s\S]*generation != sttInitializationGeneration[\s\S]*mutableStt\.value = available/);
+  assert.match(pleos, /scheduleInitializationTimeout[\s\S]*generation == ttsInitializationGeneration[\s\S]*mutableTts\.value == checking[\s\S]*generation == sttInitializationGeneration[\s\S]*mutableStt\.value == checking/);
+  assert.match(pleos, /override fun speakFeedback\([\s\S]*if \(released\) return false/);
+  assert.match(pleos, /override fun startSpeechRecognition\([\s\S]*if \(released\) return false/);
+  assert.match(pleos, /if \(isFinal\)[\s\S]*finishRecognition\([\s\S]*session,[\s\S]*runCatching \{ callback\.invoke\(text, true\) \}/);
+  assert.match(pleos, /synchronized\(recognitionLock\)[\s\S]*recognitionSession == session \+ 1 && recognitionCallback == null[\s\S]*mutableRecognitionState\.value = SpeechRecognitionState\.Failed/);
+  assert.match(pleos, /createRecognitionListener\(session: Long\)[\s\S]*recognitionSession == session/);
+  assert.match(pleos, /callback\.invoke\(text, false\)[\s\S]*finishRecognition\(SpeechRecognitionState\.Failed, session\)/);
+  assert.match(pleos, /stt\.addListener\(listener\)[\s\S]*stt\.request\(\)/);
+  assert.match(pleos, /recognitionListener\.also \{ recognitionListener = null \}[\s\S]*stt\.removeListener\(it\)/);
+  assert.match(pleos, /recognitionListener\.also \{ recognitionListener = null \}[\s\S]*mutableRecognitionActive\.value = false[\s\S]*mutableRecognitionState\.value = state[\s\S]*timeout to listener/);
+  assert.match(pleos, /override fun stopSpeechRecognition\(\) \{[\s\S]*synchronized\(speechOperationLock\)[\s\S]*stt\.stop\(\)/);
+  assert.match(pleos, /finishRecognitionAndStop[\s\S]*synchronized\(speechOperationLock\)[\s\S]*finishRecognition\(state, expectedSession\)[\s\S]*stt\.stop\(\)/);
+  assert.match(pleos, /locationOperationLock[\s\S]*registerLocationCallback\([\s\S]*synchronized\(locationOperationLock\)/);
+  assert.match(pleos, /createLocationListener\(\)\.also \{ registeredLocationListener = it \}[\s\S]*registerFusedLocationCallback\(listener\)[\s\S]*registeredLocationListener === listener && locationCollecting && !released[\s\S]*unregisterFusedLocationCallback\(listener\)/);
+  assert.match(pleos, /if \(registeredLocationListener === listener && locationCollecting\) rawLocations\.offer\(coordinate\)/);
+  assert.match(pleos, /deactivateLocationCollection\("실차 · 위치 수신 오류", expectedListener = listener\)/);
+  assert.match(pleos, /expectedListener != null && registeredLocationListener !== expectedListener\) return/);
+  assert.match(pleos, /val shouldRelease = synchronized\(speechOperationLock\)[\s\S]*if \(!shouldRelease\) return/);
+  assert.match(pleos, /RawRouteCoordinate\.fromOrNull\(location\.longitude, location\.latitude\) \?: return/);
+  assert.match(pleos, /BoundedRouteBuffer\(MAX_ROUTE_POINTS\)/);
+});
+
+test("a new publish session clears stale speech recognition feedback", () => {
+  const contracts = read("app/src/main/java/com/socialdrive/app/domain/IntegrationContracts.kt");
+  const pleos = read("app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
+  const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");
+  const app = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
+  assert.match(contracts, /fun resetSpeechRecognitionState\(\)/);
+  assert.match(pleos, /override fun resetSpeechRecognitionState\(\)[\s\S]*synchronized\(speechOperationLock\)[\s\S]*synchronized\(recognitionLock\)[\s\S]*recognitionCallback == null[\s\S]*SpeechRecognitionState\.Idle/);
+  assert.match(viewModel, /fun resetDictationFeedback\(\)[\s\S]*resetSpeechRecognitionState\(\)/);
+  assert.match(app, /target == AppDestination\.Publish[\s\S]*resetDictationFeedback\(\)/);
+});
+
+test("speech recognition stops whenever the publish surface loses ownership", () => {
+  const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");
+  const app = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
+  assert.match(viewModel, /fun cancelDictationIfActive\(\)[\s\S]*speechRecognitionActive\.value[\s\S]*stopSpeechRecognition\(\)/);
+  assert.match(app, /Lifecycle\.Event\.ON_STOP[\s\S]*cancelDictationIfActive\(\)/);
+  assert.match(app, /destination == AppDestination\.Publish && target != AppDestination\.Publish[\s\S]*cancelDictationIfActive\(\)/);
+  assert.match(app, /LaunchedEffect\(motion\)[\s\S]*destination == AppDestination\.Publish[\s\S]*cancelDictationIfActive\(\)/);
+  assert.match(app, /BackHandler[\s\S]*destination == AppDestination\.Publish[\s\S]*cancelDictationIfActive\(\)/);
 });
 
 test("actual adapters fail closed and never fall back to demo state", () => {
@@ -404,7 +491,10 @@ test("actual adapters fail closed and never fall back to demo state", () => {
   assert.match(demo, /requestSimulation[\s\S]*mutableStatus\.value/);
   assert.match(viewModel, /vehicleMotion\.value\.motion != MotionState\.Parked[\s\S]*NavigationRequestResult\.Rejected/);
   assert.match(app, /LaunchedEffect\(motion\)[\s\S]*motion != MotionState\.Parked[\s\S]*destination = AppDestination\.Home/);
-  assert.match(gearSmoke, /assumeTrue\([\s\S]*InstrumentationRegistry\.getArguments\(\)\.getString\(REQUIRE_PLEOS_GEAR_ARGUMENT\) == "true"[\s\S]*val host = PleosComposeHost\(\)/);
+  assert.match(gearSmoke, /val arguments = InstrumentationRegistry\.getArguments\(\)[\s\S]*assumeTrue\([\s\S]*arguments\.getString\(REQUIRE_PLEOS_GEAR_ARGUMENT\) == "true"[\s\S]*val host = PleosComposeHost\(\)/);
+  assert.match(gearSmoke, /expectedPleosMotion/);
+  assert.match(gearSmoke, /"parked"[\s\S]*MotionState\.Parked/);
+  assert.match(gearSmoke, /"driving" -> MotionState\.Driving/);
   assert.match(gearSmoke, /withTimeoutOrNull\(PARK_CALLBACK_TIMEOUT_MILLIS\)/);
   assert.match(gearSmoke, /IntegrationSource\.Actual/);
   assert.match(gearSmoke, /CapabilityState\.Available/);
@@ -413,7 +503,7 @@ test("actual adapters fail closed and never fall back to demo state", () => {
   assert.match(gearSmoke, /completed\.await\(CLOSE_TIMEOUT_SECONDS, TimeUnit\.SECONDS\)/);
   assert.match(gearSmoke, /AtomicReference<Throwable\?>/);
   assert.match(gearSmoke, /CLOSE_TIMEOUT_SECONDS = 30L/);
-  for (const stage of ["start", "host_launched", "source_acquired", "park_observed", "asserted", "close_start", "close_done"]) {
+  for (const stage of ["start", "host_launched", "source_acquired", "motion_observed", "asserted", "close_start", "close_done"]) {
     assert.ok(gearSmoke.includes(`stage=${stage}`), stage);
   }
   assert.doesNotMatch(gearSmoke, /source\.release\(|source\.initialize\(|println\(|printStackTrace|VehicleGear|status\.motion.*Log/);
@@ -510,7 +600,7 @@ test("Kotlin controller tests cover callback order timeout release reinitialize 
   assert.equal(fs.existsSync(path.join(root, relative)), true);
   const suite = read(relative);
   for (const marker of [
-    "route started then completed", "double callbacks", "timeout", "late callback",
+    "route started is successful terminal evidence", "double callbacks", "timeout", "late callback",
     "release", "old initialize callback", "invocation exception", "new lifecycle can recover",
   ]) assert.ok(suite.includes(marker), marker);
   assert.match(suite, /controller\.routingCompleted\(old\)[\s\S]*ControllerUpdate\.Ignored/);
@@ -534,8 +624,8 @@ test("production coordinator fake-port tests execute synchronous callbacks races
     assert.ok(coreScript.includes(source), source);
   }
   assert.doesNotMatch(coreScript, /app\/src\/pleos|gradlew|curl|https?:\/\//);
-  assert.match(coreRunner, /expectedTests = 94/);
-  assert.match(readme, /does not compile Android framework code,[\s\S]*the Pleos vendor adapter,[\s\S]*assemble an APK,[\s\S]*replace a Pleos emulator run/);
+  assert.match(coreRunner, /expectedTests = 97/);
+  assert.match(readme, /does not compile Android framework code,[\s\S]*the PLEOS vendor adapters,[\s\S]*assemble an APK,[\s\S]*replace a PLEOS emulator run/);
 });
 
 test("cloud API core isolates auth from presigned uploads and actual flavor never falls back to fake", () => {
@@ -545,9 +635,14 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   const workers = read("app/src/main/java/com/socialdrive/app/data/work/PublishWorkers.kt");
   const remote = read("app/src/main/java/com/socialdrive/app/data/remote/RemoteDriveApi.kt");
   const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
+  const appUi = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveApp.kt");
+  const publishScreen = read("app/src/main/java/com/socialdrive/app/ui/screens/PublishScreen.kt");
   const demoFactory = read("app/src/demo/java/com/socialdrive/app/data/remote/FlavorRemoteDriveApiFactory.kt");
   const demoFake = read("app/src/demo/java/com/socialdrive/app/data/remote/FakeRemoteDriveApi.kt");
   const actualFactory = read("app/src/pleos/java/com/socialdrive/app/data/remote/FlavorRemoteDriveApiFactory.kt");
+  const actualDeleteFactory = read("app/src/pleos/java/com/socialdrive/app/data/remote/FlavorRemoteDeleteApiFactory.kt");
+  const actualConflictFactory = read("app/src/pleos/java/com/socialdrive/app/data/remote/FlavorRemoteConflictReviewApiFactory.kt");
+  const cloudRuntime = read("app/src/pleos/java/com/socialdrive/app/data/remote/PleosCloudRuntime.kt");
   const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
   const coreScript = read("scripts/test-kotlin-core.sh");
   const suite = read("app/src/test/java/com/socialdrive/app/data/remote/CloudDriveClientTest.kt");
@@ -559,8 +654,10 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   assert.match(contracts, /fun interface ApiHttpTransport/);
   assert.match(contracts, /fun interface ObjectUploadTransport/);
   assert.match(client, /"Authorization" to token\.authorizationHeader\(\)/);
+  assert.match(client, /code == "CONSENT_RENEWAL_REQUIRED" -> CloudFailureKind\.CONSENT_RENEWAL_REQUIRED/);
   assert.match(client, /check\(request\.headers\.keys\.none \{ it\.equals\("authorization"/);
   assert.match(client, /allowedUploadHosts/);
+  assert.match(client, /ASSET_HOST_NOT_ALLOWED/);
   assert.match(client, /"content-type"/);
   assert.match(client, /"x-amz-checksum-sha256"/);
   for (const marker of ["AWS4-HMAC-SHA256", "X-Amz-Credential", "X-Amz-Date", "X-Amz-Expires", "X-Amz-Signature"]) {
@@ -575,6 +672,9 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   assert.match(client, /fun updateDrive/);
   assert.match(client, /fun deleteDrive/);
   assert.match(adapter, /clientRequestId = clientRequestId/);
+  assert.match(adapter, /CloudFailureKind\.CONSENT_RENEWAL_REQUIRED -> RemoteFailureCode\.CONSENT_RENEWAL_REQUIRED/);
+  assert.match(appUi, /onRenewRouteConsent = \{ navigate\(AppDestination\.Settings\) \}/);
+  assert.match(publishScreen, /UploadState\.NeedsConsentRenewal -> Button\(onClick = onRenewRouteConsent, enabled = canAct/);
   assert.match(adapter, /client\.refreshUploads/);
   assert.match(adapter, /override suspend fun uploadAssets/);
   assert.match(adapter, /MAX_UPLOAD_SESSION_ATTEMPTS = 2/);
@@ -586,22 +686,105 @@ test("cloud API core isolates auth from presigned uploads and actual flavor neve
   assert.match(remote, /AssetKind\.COVER/);
   assert.match(remote, /AssetKind\.ROUTE/);
   assert.match(application, /FlavorRemoteDriveApiFactory\.create\(\)/);
+  assert.match(application, /CloudAuthPhase\.SIGNED_IN[\s\S]*resumeAfterAuthentication\(\)[\s\S]*publishScheduler\.recoverAfterProcessRestart\(\)/);
   assert.match(demoFactory, /FakeRemoteDriveApi/);
   assert.match(demoFake, /class FakeRemoteDriveApi/);
   assert.doesNotMatch(remote, /class FakeRemoteDriveApi/);
   assert.doesNotMatch(actualFactory, /FakeRemoteDriveApi/);
-  assert.match(actualFactory, /UnavailableRemoteDriveApi/);
+  assert.match(actualFactory, /SessionAwareRemoteDriveApi/);
+  assert.match(cloudRuntime, /AtomicReference<InstalledCognitoSession\?>\(null\)/);
+  assert.match(cloudRuntime, /InstalledCognitoSession\(source\)/);
+  assert.match(cloudRuntime, /isCurrent = \{ sessionSource\.get\(\) === installedSession \}/);
+  assert.match(contracts, /requireCurrentSession\(\)[\s\S]*delegate\.freshAccessToken\(\)[\s\S]*requireCurrentSession\(\)/);
+  assert.match(cloudRuntime, /AtomicBoolean\(false\)/);
+  assert.match(cloudRuntime, /CloudRuntimeAvailability\.INITIALIZING/);
+  assert.match(cloudRuntime, /sessionSource\.compareAndSet\(installedSession, null\)/);
+  for (const factory of [actualFactory, actualDeleteFactory, actualConflictFactory]) {
+    assert.match(factory, /CloudRuntimeAvailability\.INITIALIZING[\s\S]*SERVER_BUSY/);
+    assert.match(factory, /CloudRuntimeAvailability\.AUTHENTICATION_REQUIRED[\s\S]*AUTHENTICATION/);
+  }
+  assert.match(remote, /current\(\) \?: UnavailableRemoteDriveApi\(\)/);
   assert.doesNotMatch(entities, /bearer|token|presigned|uploadUrl|authorization/i);
   assert.doesNotMatch(client + contracts + adapter, /android\.util\.Log|println\(|printStackTrace/);
-  assert.match(readme, /highlightCount = 0/);
-  assert.match(readme, /must remain unavailable until approved derived publication metadata/);
-  for (const source of ["CloudDriveClient.kt", "CloudDriveClientTest.kt", "CloudRemoteDriveApi.kt"]) {
+  assert.match(adapter, /distanceMeters = draft\.distanceMeters/);
+  assert.match(adapter, /durationSeconds = draft\.durationSeconds/);
+  assert.match(adapter, /highlightCount = draft\.highlightCount/);
+  assert.match(readme, /freezes actual duration, normalized route distance, and highlight count/);
+  assert.doesNotMatch(readme, /highlightCount = 0|must remain unavailable until approved derived publication metadata/);
+  for (const source of ["CloudDriveClient.kt", "CloudDriveClientTest.kt", "CloudRemoteDriveApi.kt", "PublicationCover.kt"]) {
     assert.ok(coreScript.includes(source), source);
   }
   for (const marker of [
     "fresh bearer token", "stable request id", "exact manifest", "only signed headers",
     "foreign host", "opaque cursor", "typed conflicts", "indistinguishable",
   ]) assert.ok(suite.includes(marker), marker);
+});
+
+test("PLEOS cloud build gate validates all public deployment outputs without secret fields", () => {
+  const build = read("app/build.gradle.kts");
+  const runtimeConfig = read("app/src/main/java/com/socialdrive/app/data/remote/CloudRuntimeConfiguration.kt");
+  const handoff = read("../docs/aws-app-connection.md");
+  const auth = read("app/src/pleos/java/com/socialdrive/app/data/remote/AmplifyCognitoAuth.kt");
+  const inputPolicy = read("app/src/main/java/com/socialdrive/app/data/remote/CloudAuthInputPolicy.kt");
+  const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
+  assert.match(build, /tasks\.register\("verifyPleosCloudConfiguration"\)/);
+  assert.match(build, /tasks\.named\("prePleosReleaseBuild"\)[\s\S]*dependsOn\("verifyPleosCloudConfiguration"\)/);
+  assert.match(build, /"pleosImplementation"\("com\.amplifyframework:aws-auth-cognito:2\.27\.4"\)/);
+  for (const marker of [
+    "apiBaseUrl", "uploadHosts", "consentPolicyVersion", "cognitoRegion", "cognitoUserPoolId", "cognitoClientId",
+  ]) assert.ok(build.includes(`\"${marker}\"`), marker);
+  assert.match(build, /PLEOS cloud public configuration verified/);
+  assert.match(build, /approvedConsentPolicyVersion = "2026-11-07\.v1"/);
+  assert.match(build, /policy != approvedConsentPolicyVersion/);
+  assert.match(runtimeConfig, /consentPolicyVersion != RouteLocationConsentPolicy\.VERSION/);
+  assert.match(build, /!isValidCloudHost\(apiUri\.host\.lowercase\(\)\)/);
+  assert.doesNotMatch(build, /cloud.*(?:secret|password|accessKey)/i);
+  assert.match(auth, /CloudAuthInputPolicy\.acceptsCredentials/);
+  assert.match(auth, /CloudAuthInputPolicy\.acceptsChallenge/);
+  assert.match(inputPolicy, /MAX_PASSWORD_CHARS = 256/);
+  assert.match(inputPolicy, /MAX_CHALLENGE_CHARS = 2_048/);
+  assert.match(settings, /CloudAuthInputPolicy\.limitUsername/);
+  assert.match(settings, /CloudAuthInputPolicy\.limitPassword/);
+  assert.match(settings, /CloudAuthInputPolicy\.limitChallenge/);
+  assert.match(handoff, /\.\/gradlew verifyPleosCloudConfiguration/);
+  assert.match(auth, /authenticationFlowType", "USER_SRP_AUTH"/);
+  assert.match(auth, /Amplify\.Auth\.fetchAuthSession/);
+  assert.match(auth, /userPoolTokensResult\?\.value\?\.accessToken/);
+  assert.match(auth, /challengeLabel\(\)[\s\S]*clearAmplifySession\(\)/);
+  assert.doesNotMatch(auth, /clientSecret|android\.util\.Log|println\(|printStackTrace/);
+});
+
+test("Cognito sign-out distinguishes complete partial and failed SDK results", () => {
+  const auth = read("app/src/pleos/java/com/socialdrive/app/data/remote/AmplifyCognitoAuth.kt");
+  assert.match(auth, /AWSCognitoAuthSignOutResult\.CompleteSignOut[\s\S]*resume\(true\)/);
+  assert.match(auth, /AWSCognitoAuthSignOutResult\.PartialSignOut[\s\S]*resume\(false\)/);
+  assert.match(auth, /AWSCognitoAuthSignOutResult\.FailedSignOut[\s\S]*resumeWithException/);
+  assert.match(auth, /val globallyComplete = withCognitoOperationTimeout[\s\S]*clearSessionSource\(\)/);
+  assert.match(auth, /stateBeforeSignOut[\s\S]*failedCognitoSignOutState\(stateBeforeSignOut\)/);
+  assert.match(auth, /failedCognitoSignOutState[\s\S]*CloudAuthPhase\.REAUTH_REQUIRED -> previous\.copy/);
+  assert.match(auth, /CloudAuthPhase\.SIGNED_OUT[\s\S]*전체 로그아웃 상태/);
+});
+
+test("invalid Cognito tokens synchronize runtime and account reauthentication state", () => {
+  const contracts = read("app/src/main/java/com/socialdrive/app/data/remote/CloudDriveContracts.kt");
+  const auth = read("app/src/pleos/java/com/socialdrive/app/data/remote/AmplifyCognitoAuth.kt");
+  const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
+  assert.match(contracts, /fun onSessionInvalidated\(\)/);
+  assert.match(contracts, /!valid[\s\S]*delegate\.onSessionInvalidated\(\)/);
+  assert.match(auth, /override fun onSessionInvalidated\(\)[\s\S]*CloudAuthPhase\.REAUTH_REQUIRED/);
+  assert.match(auth, /mutableState\.update\(::invalidatedCognitoSessionState\)/);
+  assert.match(auth, /invalidatedCognitoSessionState[\s\S]*current\.phase == CloudAuthPhase\.SIGNED_IN/);
+  assert.match(settings, /CloudAuthPhase\.REAUTH_REQUIRED[\s\S]*세션 정리/);
+});
+
+test("cloud auth secrets are cleared at both UI and ViewModel ownership boundaries", () => {
+  const settings = read("app/src/main/java/com/socialdrive/app/ui/screens/SettingsScreen.kt");
+  const viewModel = read("app/src/main/java/com/socialdrive/app/ui/SocialDriveViewModel.kt");
+  assert.match(settings, /val password = secret\.toCharArray\(\)[\s\S]*secret = ""[\s\S]*onSignIn\(username, password\)/);
+  assert.match(settings, /val response = secret\.toCharArray\(\)[\s\S]*secret = ""[\s\S]*onConfirm\(response\)/);
+  assert.match(settings, /LaunchedEffect\(motion, authState\.phase\)[\s\S]*motion != MotionState\.Parked[\s\S]*username = ""[\s\S]*secret = ""/);
+  assert.match(viewModel, /signInToCloud[\s\S]*CoroutineStart\.UNDISPATCHED[\s\S]*finally[\s\S]*password\.fill\('\\u0000'\)/);
+  assert.match(viewModel, /confirmCloudSignIn[\s\S]*CoroutineStart\.UNDISPATCHED[\s\S]*finally[\s\S]*response\.fill\('\\u0000'\)/);
 });
 
 test("publish concurrency and upload recovery retain frozen versions and bounded durable rewinds", () => {
@@ -655,14 +838,13 @@ test("integration UI is explicit about actual demo and unavailable features", ()
   for (const marker of ["IntegrationSource.Actual", "IntegrationSource.Demo", "IntegrationSource.Unavailable"]) {
     assert.ok(components.includes(marker), marker);
   }
-  for (const marker of ["위치 연동", "음성 안내·인식", "차량 제어", "준비 중 · 사용 불가", "Icons.Rounded.Schedule"]) {
+  for (const marker of ["위치 연동", "음성 안내", "음성 인식", "차량 제어", "안전 정책 · 읽기 전용"]) {
     assert.ok(settings.includes(marker), marker);
   }
   assert.ok(!settings.includes("Icons.Rounded.CheckCircle"), "unavailable rows must not use a success icon");
   assert.match(components, /"데모 \$contextLabel"/);
   assert.match(home, /"차량 상태"/);
-  assert.match(settings, /실시간 경로 SDK 준비 중/);
-  assert.match(settings, /향후 제공 예정/);
+  assert.match(settings, /IntegrationRow\("AWS 클라우드"/);
   assert.doesNotMatch(settings, /Coming Soon/);
   assert.doesNotMatch(settings, /차량 상태 시뮬레이션/);
   assert.doesNotMatch(contentState, /progress\s*=/, "loading must not invent a determinate percentage");
@@ -672,6 +854,21 @@ test("preview matrix includes day night driving recording and failed upload", ()
   const previews = read("app/src/main/java/com/socialdrive/app/ui/SocialDrivePreview.kt");
   assert.ok((previews.match(/@Preview/g) ?? []).length >= 5);
   for (const marker of ["ThemeMode.Day", "ThemeMode.Night", "MotionState.Driving", "RecordingScreen", "UploadState.Failed"]) assert.match(previews, new RegExp(marker.replace(".", "\\.")));
+});
+
+test("Demo and PLEOS screenshot variants keep the same complete baseline matrix", () => {
+  const baselineNames = (variant) => {
+    const directory = path.join(
+      root,
+      `app/src/screenshotTest${variant}Debug/reference/com/socialdrive/app/VisualScreenshotTestKt`,
+    );
+    assert.equal(fs.existsSync(directory), true, directory);
+    return fs.readdirSync(directory).filter((name) => name.endsWith(".png")).sort();
+  };
+  const demo = baselineNames("Demo");
+  const pleos = baselineNames("Pleos");
+  assert.equal(demo.length, 27);
+  assert.deepEqual(pleos, demo);
 });
 
 test("all required product boundaries and screens exist", () => {
@@ -711,6 +908,7 @@ test("unknown vehicle motion fails closed for parked-only actions", () => {
 test("route source consent withdrawal and delete pending stay privacy safe", () => {
   const domain = read("app/src/main/java/com/socialdrive/app/domain/RoutePrivacy.kt");
   const repository = read("app/src/main/java/com/socialdrive/app/data/RoutePrivacyRepository.kt");
+  const offline = read("app/src/main/java/com/socialdrive/app/data/OfflineRepositories.kt");
   const application = read("app/src/main/java/com/socialdrive/app/SocialDriveApplication.kt");
   const routeFake = read("app/src/main/java/com/socialdrive/app/data/fake/FakeDriveRepository.kt");
   const entities = read("app/src/main/java/com/socialdrive/app/data/local/Entities.kt");
@@ -720,21 +918,22 @@ test("route source consent withdrawal and delete pending stay privacy safe", () 
   const suite = read("app/src/test/java/com/socialdrive/app/domain/RoutePrivacyTest.kt");
   const mainManifest = read("app/src/main/AndroidManifest.xml");
   const build = read("app/build.gradle.kts");
+  const pleos = read("app/src/pleos/java/com/socialdrive/app/integration/FlavorIntegrationFactory.kt");
 
   for (const marker of [
     "RouteSource", "DemoPreset", "LiveUnavailable", "SDK_COMING_SOON", "PERMISSION_DENIED",
-    "CAPABILITY_MISSING", "TestOnlyLiveRouteCapability", "RouteConsentState", "NotAsked", "Granted", "Withdrawn",
+    "CAPABILITY_MISSING", "LiveAvailable", "RouteConsentState", "NotAsked", "Granted", "Withdrawn",
   ]) assert.ok(domain.includes(marker), marker);
-  assert.match(
-    domain,
-    /@RequiresOptIn\([\s\S]*?@Retention\(AnnotationRetention\.BINARY\)\s*annotation class TestOnlyLiveRouteCapability/,
-  );
-  assert.match(domain, /class LiveAvailable internal constructor/);
-  const productionKotlin = kotlinFiles(path.join(root, "app/src/main"))
-    .map((file) => fs.readFileSync(file, "utf8")).join("\n");
-  assert.doesNotMatch(productionKotlin, /LiveAvailable\s*\(/);
+  assert.match(domain, /data object LiveAvailable : RouteSource/);
+  assert.match(pleos, /collectionAuthorized && recordingRequested && !locationCollecting/);
+  assert.match(pleos, /registeredLocationListener === listener && locationCollecting/);
+  assert.match(domain, /class BoundedRouteBuffer[\s\S]*if \(points\.size >= maximumSize\) compact\(\)/);
+  assert.match(domain, /if \(compacted\.last\(\) != latest\) compacted \+= latest/);
   assert.match(domain, /stopAndAwait\(\)[\s\S]*withdrawAndPurge\(\)[\s\S]*pendingUploads\.cancel/);
+  assert.match(offline, /database\.withTransaction[\s\S]*effectiveRouteConsentState\([\s\S]*RouteConsentState\.Granted[\s\S]*collectedRoute\.points\.takeIf/);
   assert.match(repository, /RoomRoutePrivacyMutationStore/);
+  assert.match(repository, /remoteCleanupDraftIds[\s\S]*onDeletePending/);
+  assert.match(repository, /draft\.state == LocalState\.PUBLISHED \|\| draft\.remoteDriveId == null[\s\S]*remoteDeleteRequest/);
   assert.match(repository, /currentMotion = currentMotion/);
   assert.match(application, /currentMotion = \{ vehicleMotionSource\.status\.value\.motion \}/);
   assert.match(domain, /motion != MotionState\.Parked[\s\S]*MotionRejected/);
@@ -745,11 +944,12 @@ test("route source consent withdrawal and delete pending stay privacy safe", () 
   assert.match(daos, /status = 'PRIVACY_WITHDRAWN'/);
   assert.match(daos, /stage NOT IN \('COMPLETE', 'CANCELLED'\)/);
   assert.match(scheduler, /ROUTE_UPLOAD_TAG/);
-  assert.match(remote, /\{"schemaVersion":1,"path":\[/);
-  assert.match(remote, /"highlights":\[\]\}/);
+  assert.ok(remote.includes('return "{\\"schemaVersion\\":1,\\"path\\":[$path],\\"highlights\\":[]}"'));
   assert.doesNotMatch(remote, /latitude|longitude/);
   assert.doesNotMatch(build, /play-services-location|FusedLocationProvider|androidx\.core\.location/);
   assert.doesNotMatch(mainManifest, /ACCESS_(?:FINE|COARSE|BACKGROUND)_LOCATION/);
+  assert.match(mainManifest, /android:allowBackup="false"/);
+  assert.match(mainManifest, /android:usesCleartextTraffic="false"/);
   assert.equal((routeFake.match(/routeSource = RouteSource\.DemoPreset/g) ?? []).length, 3);
   for (const marker of [
     "zero points before explicit consent", "atomically purges and tombstones", "late fake point",
@@ -796,6 +996,7 @@ test("published delete is parked durable idempotent bounded and fail closed", ()
   assert.match(entity, /idempotencyKeyHash/);
   assert.doesNotMatch(entity, /deleteReceipt|bearer|token|presigned|authorization/i);
   assert.match(dao, /state = 'RUNNING'.*attempts = :runningAttempt/s);
+  assert.match(dao, /state = 'DELETE_PENDING', attempts = 0[\s\S]*WHERE state = 'AUTH_REQUIRED'/);
   assert.match(dao, /NOT EXISTS \([\s\S]*published_delete_requests/);
   assert.match(worker, /executionGate\.execute/);
   assert.match(worker, /DeleteCancellationGuard\.run[\s\S]*handoffInterruptedLease = \{ persistInterruptedLease/);
@@ -804,6 +1005,7 @@ test("published delete is parked durable idempotent bounded and fail closed", ()
   assert.match(cancellationSuite, /cancellation while persisting terminal 409 hands off running lease/);
   assert.match(coreScript, /DeleteCancellationGuardTest\.kt/);
   assert.match(worker, /persistInterruptedLease[\s\S]*"INTERRUPTED"/);
+  assert.match(worker, /resumeAfterAuthentication\(\)[\s\S]*resumeAuthenticationRequired/);
   assert.match(worker, /RemoteDeleteConfirmed|confirmCas/);
   assert.match(worker, /local original draft is deliberately retained/);
   assert.match(client, /"Idempotency-Key" to stableKeyHash/);
@@ -829,11 +1031,12 @@ test("published delete is parked durable idempotent bounded and fail closed", ()
   ]) assert.ok(androidTest.includes(marker), marker);
 });
 
-test("fake data fixtures contain no precise geographic coordinates or credentials", () => {
+test("fake data fixtures contain no credentials and navigation uses an explicit public destination", () => {
   const sourceRoot = path.join(root, "app/src/main/java/com/socialdrive/app/data/fake");
   const source = kotlinFiles(sourceRoot).map((file) => fs.readFileSync(file, "utf8")).join("\n");
-  assert.doesNotMatch(source, /\b(?:latitude|longitude|access[_-]?key|secret[_-]?key)\b/i);
+  assert.doesNotMatch(source, /\b(?:access[_-]?key|secret[_-]?key)\b/i);
   assert.doesNotMatch(source, /\b(?:AKIA|ASIA)[A-Z0-9]{16}\b/);
+  assert.match(source, /name = "공개 데모 목적지"/);
 });
 
 test("hex colors stay inside the theme color source", () => {
@@ -857,11 +1060,11 @@ test("memory story reuses privacy-safe artwork from recording through publish", 
 
   assert.match(components, /fun RouteMemoryArtwork/);
   assert.match(components, /MemoryPalette\.Coast[\s\S]*MemoryPalette\.Mountain[\s\S]*MemoryPalette\.City/);
-  assert.match(components, /개인 위치가 제거된 데모 경로와 하이라이트/);
+  assert.match(components, /개인 위치가 제거된 데모 경로/);
   assert.doesNotMatch(components, /latitude|longitude/i);
   assert.match(repository, /coastRoute[\s\S]*mountainRoute[\s\S]*cityRoute/);
   assert.doesNotMatch(home, /카드 태그 · 바다 · 산 · 도심/);
-  assert.match(home, /OfflineCacheBanner[\s\S]*DriveGrid\(state\.cached, onDetail, Modifier\.weight\(1f\)\)/);
+  assert.match(home, /OfflineCacheBanner[\s\S]*DriveGrid\(filterDrives\(state\.cached, selectedFilter\), onDetail, Modifier\.weight\(1f\)\)/);
   assert.match(recording, /순간 \$count 저장됨 · 주차 후 이야기에서 확인/);
   assert.match(recording, /points = snapshot\.route/);
   assert.doesNotMatch(recording, /val demoRoute/);
@@ -869,8 +1072,8 @@ test("memory story reuses privacy-safe artwork from recording through publish", 
   assert.match(publish, /RouteMemoryArtwork/);
   assert.doesNotMatch(publish, /ROUTE ARTWORK/);
   assert.match(presentation, /fun beginRecording[\s\S]*fun recordingProgress[\s\S]*fun finishDraft[\s\S]*fun present/);
-  assert.match(app, /RecordingSnapshot\([\s\S]*storyId = presentedStory\.id[\s\S]*route = presentedStory\.route[\s\S]*highlights = presentedStory\.highlights/);
-  assert.match(app, /AppDestination\.Publish[\s\S]*route = presentedStory\.route[\s\S]*highlightCount = presentedStory\.highlights/);
+  assert.match(app, /RecordingSnapshot\([\s\S]*storyId = presentedStory\.id[\s\S]*route = recordingArtworkRoute\(routePrivacy\.displayedSource, displayedRoute\)[\s\S]*highlights = presentedStory\.highlights/);
+  assert.match(app, /AppDestination\.Publish[\s\S]*route = localDraftDrive\?\.route \?: displayedRoute[\s\S]*highlightCount = displayedDraft\?\.highlightCount \?: presentedStory\.highlights/);
   assert.match(app, /AppDestination\.Detail -> DetailScreen\([\s\S]*drive = presentedStory/);
   for (const marker of ["PublishDraftDay", "PublishDraftNight", "PublishDraftLargeText"]) {
     assert.ok(screenshots.includes(marker), marker);

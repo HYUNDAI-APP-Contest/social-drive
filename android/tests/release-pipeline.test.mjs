@@ -6,6 +6,10 @@ import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
+process.env.LC_ALL = "C";
+process.env.LC_CTYPE = "C";
+process.env.LANG = "C";
+
 const androidRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = path.dirname(androidRoot);
 const buildScript = fs.readFileSync(path.join(androidRoot, "scripts/build-submission-release.sh"), "utf8");
@@ -60,11 +64,35 @@ set -euo pipefail
 if [[ "$1" == "-Z1" ]]; then
   if [[ -n "${"${MOCK_SENSITIVE_ENTRY:-}"}" ]]; then printf '.env\n'; else printf 'AndroidManifest.xml\nclasses.dex\n'; fi
 else
-  if [[ -n "${"${MOCK_SENSITIVE_CONTENT:-}"}" ]]; then printf 'http://127.0.0.1/debug\n'; else printf 'safe fixture content\n'; fi
+  if [[ -n "${"${MOCK_SENSITIVE_CONTENT:-}"}" ]]; then
+    printf 'http://127.0.0.1/debug\n'
+  elif [[ -n "${"${MOCK_AWS_SECRET_VALUE:-}"}" ]]; then
+    printf 'aws_secret_access_key=0123456789012345678901234567890123456789\n'
+  elif [[ -n "${"${MOCK_AWS_KEY_NAME:-}"}" ]]; then
+    printf 'missing aws_secret_access_key\nAWS_SECRET_ACCESS_KEY\n'
+  else
+    printf 'safe fixture content\n'
+  fi
 fi
 `);
   writeExecutable(path.join(bin, "aapt2"), `#!/usr/bin/env bash
 set -euo pipefail
+if [[ "$1" == "dump" && "$2" == "xmltree" ]]; then
+  printf 'E: manifest\\n  E: application\\n'
+  if [[ -n "${"${MOCK_DEBUGGABLE:-}"}" ]]; then printf '    A: android:debuggable(0x0101000f)=true\\n'; fi
+  if [[ -n "${"${MOCK_BACKUP_ENABLED:-}"}" ]]; then
+    printf '    A: android:allowBackup(0x01010280)=true\\n'
+  else
+    printf '    A: android:allowBackup(0x01010280)=false\\n'
+  fi
+  if [[ -n "${"${MOCK_CLEARTEXT_ENABLED:-}"}" ]]; then
+    printf '    A: android:usesCleartextTraffic(0x010104ec)=true\\n'
+  else
+    printf '    A: android:usesCleartextTraffic(0x010104ec)=false\\n'
+  fi
+  if [[ -n "${"${MOCK_TEST_COMPONENT:-}"}" ]]; then printf '    A: android:name="androidx.compose.ui.tooling.PreviewActivity"\\n'; fi
+  exit 0
+fi
 case "\${*: -1}" in
   *demo*) package="\${MOCK_DEMO_PACKAGE:-com.socialdrive.app.demo}" ;;
   *pleos*) package="\${MOCK_PLEOS_PACKAGE:-com.socialdrive.app}" ;;
@@ -81,6 +109,8 @@ printf "package: name='%s' versionCode='1' versionName='0.1.0'\\n" "$package"
   fs.writeFileSync(keystore, "not-a-real-keystore");
   const env = {
     ...process.env,
+    LC_ALL: "C",
+    LANG: "C",
     PATH: `${bin}:${process.env.PATH}`,
     SOCIAL_DRIVE_RELEASE_STORE_FILE: keystore,
     SOCIAL_DRIVE_RELEASE_STORE_PASSWORD: "fixture-store-password",
@@ -172,6 +202,8 @@ esac
 `);
   const env = {
     ...process.env,
+    LC_ALL: "C",
+    LANG: "C",
     PATH: `${bin}:${process.env.PATH}`,
     SOCIAL_DRIVE_RELEASE_CERT_SHA256: fingerprint,
   };
@@ -199,6 +231,8 @@ test("resolved Gradle abbreviations cannot bypass missing release signing", () =
   const env = Object.fromEntries(
     Object.entries(process.env).filter(([key]) => !key.startsWith("SOCIAL_DRIVE_RELEASE_")),
   );
+  env.LC_ALL = "C";
+  env.LANG = "C";
   const result = spawnSync("bash", [
     path.join(androidRoot, "scripts/gradle-local.sh"), "--offline", "--dry-run", ":app:aDR",
   ], { cwd: androidRoot, env, encoding: "utf8" });
@@ -282,13 +316,20 @@ test("release rejects identical artifacts and APKs from the wrong product flavor
 });
 
 test("credential-like APK entries and content are rejected", (t) => {
-  for (const marker of ["MOCK_SENSITIVE_ENTRY", "MOCK_SENSITIVE_CONTENT"]) {
+  for (const marker of ["MOCK_SENSITIVE_ENTRY", "MOCK_SENSITIVE_CONTENT", "MOCK_AWS_SECRET_VALUE"]) {
     const fixture = makeFixture();
     t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
     const result = run(fixture, { ...fixture.env, [marker]: "1" });
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /APK contains/);
   }
+});
+
+test("AWS SDK의 자격 증명 키 이름만으로 APK를 거짓 양성 처리하지 않는다", (t) => {
+  const fixture = makeFixture();
+  t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+  const result = run(fixture, { ...fixture.env, MOCK_AWS_KEY_NAME: "1" });
+  assert.equal(result.status, 0, result.stderr);
 });
 
 test("successful dual release writes ordered metadata with final APK checksums", (t) => {
@@ -348,6 +389,24 @@ test("clean-install verifier encodes strict device, metadata, install, signer, a
   assert.match(installScript, /ln "\$evidence_temp" "\$evidence_file"/);
   assert.doesNotMatch(installScript, /logcat|screencap|screenrecord/);
   assert.match(buildScript, /inspect_apk_for_sensitive_material/);
+  assert.match(buildScript, /inspect_apk_manifest_policy/);
+});
+
+test("release pipeline rejects debuggable, backup, cleartext, and test-component APKs", (t) => {
+  for (const [flag, message] of [
+    ["MOCK_DEBUGGABLE", /debuggable/],
+    ["MOCK_BACKUP_ENABLED", /disable Android backup/],
+    ["MOCK_CLEARTEXT_ENABLED", /disable cleartext traffic/],
+    ["MOCK_TEST_COMPONENT", /debug or test component/],
+  ]) {
+    const fixture = makeFixture();
+    t.after(() => fs.rmSync(fixture.root, { recursive: true, force: true }));
+    const result = run(fixture, { ...fixture.env, [flag]: "1" });
+    assert.notEqual(result.status, 0, `${flag} unexpectedly passed`);
+    assert.match(result.stderr, message);
+    const submission = path.join(fixture.android, "build/submission");
+    assert.deepEqual(fs.existsSync(submission) ? fs.readdirSync(submission) : [], []);
+  }
 });
 
 test("clean-install rejects an offline second device and recorded launch crashes", (t) => {

@@ -3,6 +3,13 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 
 const template = fs.readFileSync(new URL("../template.yaml", import.meta.url), "utf8");
+const packageManifest = JSON.parse(fs.readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+
+test("propagates SAM validation failures when the CLI is installed", () => {
+  const command = packageManifest.scripts.validate;
+  assert.match(command, /if command -v sam[^;]*; then sam validate[^;]*; else/);
+  assert.doesNotMatch(command, /sam validate[^)]*\|\|\s*echo/);
+});
 
 test("keeps storage private, encrypted, on-demand, and retained", () => {
   for (const expected of ["BlockPublicAcls: true", "RestrictPublicBuckets: true", "SSEEnabled: true", "BillingMode: PAY_PER_REQUEST", "PointInTimeRecoveryEnabled: true", "TimeToLiveSpecification:", "AttributeName: expiresAtEpoch", "DeletionPolicy: Retain"]) assert.match(template, new RegExp(expected));
@@ -24,5 +31,14 @@ test("protects API routes with Cognito JWT", () => {
 
 test("contains no account id or credentials", () => {
   assert.doesNotMatch(template, /\b\d{12}\b|AKIA[0-9A-Z]{16}|aws_secret_access_key/i);
+});
+
+test("exports every non-secret Android cloud build input", () => {
+  for (const output of ["CloudRegion:", "ApiUrl:", "UserPoolId:", "UserPoolClientId:", "UploadHost:", "ConsentPolicyVersion:"]) {
+    assert.ok(template.includes(output), `missing ${output}`);
+  }
+  assert.match(template, /Value: !Sub \$\{MediaBucket\}\.s3\.\$\{AWS::Region\}\.\$\{AWS::URLSuffix\}/);
+  assert.match(template, /Default: '2026-11-07\.v1'[\s\S]*AllowedValues: \['2026-11-07\.v1'\]/);
+  assert.match(template, /CONSENT_POLICY_VERSION: !Ref ConsentPolicyVersion/);
 });
 

@@ -5,7 +5,6 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlinx.coroutines.runBlocking
 
-@OptIn(TestOnlyLiveRouteCapability::class)
 class RoutePrivacyTest {
     @Test
     fun `unavailable source never persists or displays granted consent`() = runBlocking {
@@ -42,12 +41,112 @@ class RoutePrivacyTest {
     }
 
     @Test
+    fun `raw coordinates become bounded normalized artwork points`() {
+        val normalized = RouteNormalizer.normalize(
+            listOf(
+                RawRouteCoordinate(126.9, 37.4),
+                RawRouteCoordinate(127.0, 37.5),
+                RawRouteCoordinate(127.1, 37.6),
+            ),
+        )
+        assertEquals(listOf(0f, .5f, 1f), normalized.map { it.horizontal })
+        assertEquals(listOf(1f, .5f, 0f), normalized.map { it.vertical })
+        assertEquals(listOf(0, 1, 2), normalized.map { it.sequence })
+    }
+
+    @Test
+    fun `연속 중복 위치 콜백은 경로점 하나로 축약한다`() {
+        val start = RawRouteCoordinate(126.9, 37.4)
+        val end = RawRouteCoordinate(127.1, 37.6)
+
+        val normalized = RouteNormalizer.normalize(listOf(start, start, start, end, end))
+
+        assertEquals(2, normalized.size)
+        assertEquals(listOf(0, 1), normalized.map { it.sequence })
+        assertEquals(listOf(0f, 1f), normalized.map { it.horizontal })
+    }
+
+    @Test
+    fun `원시 위치는 저장하지 않고 실제 이동 거리만 미터로 집계한다`() {
+        val distance = RouteDistance.meters(
+            listOf(
+                RawRouteCoordinate(126.9780, 37.5665),
+                RawRouteCoordinate(126.9790, 37.5665),
+            ),
+        )
+
+        assertEquals(true, distance in 87..90)
+        assertEquals(0, RouteDistance.meters(emptyList()))
+    }
+
+    @Test
+    fun `위경도 범위를 벗어난 원시 위치는 거부한다`() {
+        assertFailsWith<IllegalArgumentException> { RawRouteCoordinate(181.0, 37.0) }
+        assertFailsWith<IllegalArgumentException> { RawRouteCoordinate(127.0, 91.0) }
+        assertEquals(null, RawRouteCoordinate.fromOrNull(Double.NaN, 37.0))
+        assertEquals(null, RawRouteCoordinate.fromOrNull(181.0, 37.0))
+        assertEquals(null, RawRouteCoordinate.fromOrNull(127.0, -91.0))
+        assertEquals(RawRouteCoordinate(127.0, 37.0), RawRouteCoordinate.fromOrNull(127.0, 37.0))
+    }
+
+    @Test
+    fun `오래된 첫 위치의 비현실적인 점프는 실제 연속 경로에서 제외한다`() {
+        val stale = RawRouteCoordinate(127.20, 37.40)
+        val current = listOf(
+            RawRouteCoordinate(126.9780, 37.5665),
+            RawRouteCoordinate(126.9790, 37.5665),
+            RawRouteCoordinate(126.9800, 37.5665),
+        )
+
+        val track = RouteDistance.plausibleTrack(listOf(stale) + current)
+
+        assertEquals(current, track)
+        assertEquals(true, RouteDistance.meters(track) in 175..178)
+    }
+
+    @Test
+    fun `반복된 오래된 정지 좌표는 실제 주행 구간 선택을 왜곡하지 않는다`() {
+        val stale = RawRouteCoordinate(127.20, 37.40)
+        val current = listOf(
+            RawRouteCoordinate(126.9780, 37.5665),
+            RawRouteCoordinate(126.9790, 37.5665),
+            RawRouteCoordinate(126.9800, 37.5665),
+        )
+
+        val track = RouteDistance.plausibleTrack(List(20) { stale } + current)
+
+        assertEquals(current, track)
+        assertEquals(true, RouteDistance.meters(track) in 175..178)
+    }
+
+    @Test
+    fun `장시간 위치 버퍼는 상한 안에서 출발점과 최신점을 보존한다`() {
+        val buffer = BoundedRouteBuffer(5)
+        val points = (0..12).map { index -> RawRouteCoordinate(126.0 + index / 100.0, 37.0) }
+
+        points.forEach(buffer::offer)
+
+        val retained = buffer.snapshot()
+        assertEquals(true, retained.size <= 5)
+        assertEquals(points.first(), retained.first())
+        assertEquals(points.last(), retained.last())
+        assertEquals(retained, retained.sortedBy(RawRouteCoordinate::longitude))
+        assertEquals(retained, buffer.snapshotAndClear())
+        assertEquals(emptyList(), buffer.snapshot())
+    }
+
+    @Test
+    fun `위치 버퍼는 의미 있는 최소 상한을 요구한다`() {
+        assertFailsWith<IllegalArgumentException> { BoundedRouteBuffer(2) }
+    }
+
+    @Test
     fun `future fake collector receives zero points before explicit consent`() = runBlocking {
         val harness = Harness()
         harness.collector.offer(NormalizedRoutePoint(0, .2f, .3f))
         assertEquals(0, harness.collector.points.size)
 
-        val source = RouteSource.LiveAvailable(LiveRouteCapabilityToken.issueForTest())
+        val source = RouteSource.LiveAvailable
         harness.coordinator.grant(source)
         harness.collector.offer(NormalizedRoutePoint(0, .2f, .3f))
         assertEquals(1, harness.collector.points.size)
@@ -56,7 +155,7 @@ class RoutePrivacyTest {
     @Test
     fun `withdrawal stops collector then atomically purges and tombstones before cancel`() = runBlocking {
         val harness = Harness()
-        harness.coordinator.grant(RouteSource.LiveAvailable(LiveRouteCapabilityToken.issueForTest()))
+        harness.coordinator.grant(RouteSource.LiveAvailable)
         harness.collector.offer(NormalizedRoutePoint(0, .2f, .3f))
         val receipt = harness.coordinator.withdraw()
 
@@ -69,7 +168,7 @@ class RoutePrivacyTest {
     @Test
     fun `late fake point after withdrawal is ignored`() = runBlocking {
         val harness = Harness()
-        harness.coordinator.grant(RouteSource.LiveAvailable(LiveRouteCapabilityToken.issueForTest()))
+        harness.coordinator.grant(RouteSource.LiveAvailable)
         harness.coordinator.withdraw()
         harness.collector.offer(NormalizedRoutePoint(1, .4f, .6f))
         assertEquals(0, harness.collector.points.size)
@@ -145,6 +244,9 @@ class RoutePrivacyTest {
         var active = false
         val points = mutableListOf<NormalizedRoutePoint>()
         override suspend fun start() { active = true; events += "collector:start" }
+        override suspend fun beginRecording() { points.clear() }
+        override suspend fun snapshotAndClear(): CollectedRoute =
+            CollectedRoute(points.toList().also { points.clear() }, 0)
         override suspend fun stopAndAwait() { active = false; events += "collector:stop" }
         fun offer(point: NormalizedRoutePoint) { if (active) points += point }
     }

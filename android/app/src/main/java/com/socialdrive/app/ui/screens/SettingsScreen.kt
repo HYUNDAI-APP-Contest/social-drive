@@ -21,25 +21,37 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import com.socialdrive.app.domain.MotionState
 import com.socialdrive.app.domain.CapabilityStatus
+import com.socialdrive.app.domain.CapabilityState
 import com.socialdrive.app.domain.ThemeMode
 import com.socialdrive.app.domain.LiveUnavailableReason
 import com.socialdrive.app.domain.RouteConsentState
 import com.socialdrive.app.domain.RoutePrivacyStatus
+import com.socialdrive.app.domain.RouteLocationConsentPolicy
 import com.socialdrive.app.domain.RouteSource
 import com.socialdrive.app.domain.DeleteRequestState
+import com.socialdrive.app.domain.IntegrationSource
+import com.socialdrive.app.data.remote.CloudAuthPhase
+import com.socialdrive.app.data.remote.CloudAuthState
+import com.socialdrive.app.data.remote.CloudAuthInputPolicy
 import com.socialdrive.app.ui.components.IntegrationStatusChip
 import com.socialdrive.app.ui.components.RouteSourceBadge
 import com.socialdrive.app.ui.components.SafetyRestrictionBanner
@@ -50,6 +62,15 @@ fun SettingsScreen(
     theme: ThemeMode,
     vehicleStatus: CapabilityStatus,
     navigationStatus: CapabilityStatus,
+    locationStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "사용 불가"),
+    textToSpeechStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "사용 불가"),
+    speechToTextStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "사용 불가"),
+    cloudConnectionStatus: CapabilityStatus = CapabilityStatus(com.socialdrive.app.domain.CapabilityState.Unavailable, com.socialdrive.app.domain.IntegrationSource.Unavailable, "설정 필요"),
+    cloudAuthState: CloudAuthState = CloudAuthState(CloudAuthPhase.UNAVAILABLE, "AWS 로그인을 사용할 수 없습니다"),
+    onCloudInitializationRetry: () -> Unit = {},
+    onCloudSignIn: (String, CharArray) -> Unit = { _, secret -> secret.fill('\u0000') },
+    onCloudConfirm: (CharArray) -> Unit = { secret -> secret.fill('\u0000') },
+    onCloudSignOut: () -> Unit = {},
     onThemeChange: (ThemeMode) -> Unit,
     onBack: () -> Unit,
     routePrivacy: RoutePrivacyStatus = RoutePrivacyStatus(
@@ -59,6 +80,8 @@ fun SettingsScreen(
     ),
     privacyMessage: String? = null,
     onWithdrawConsent: () -> Unit = {},
+    onEnableLiveRoute: () -> Unit = {},
+    onRequestSpeechPermissions: () -> Unit = {},
     hasPublishedDraft: Boolean = false,
     deleteRequestState: DeleteRequestState? = null,
     onConfirmPublishedDelete: () -> Unit = {},
@@ -106,6 +129,7 @@ fun SettingsScreen(
                         PrivacySection(
                             routePrivacy, motion, privacyMessage, hasPublishedDraft,
                             deleteRequestState, onWithdrawConsent,
+                            onEnableLiveRoute,
                             onDeleteRequest = { showDeleteConfirmation = true },
                         )
                     }
@@ -113,8 +137,9 @@ fun SettingsScreen(
                         Modifier.weight(1f).verticalScroll(rememberScrollState()),
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        IntegrationSection(vehicleStatus, navigationStatus)
-                        DemoBoundaryNotice()
+                        IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus, cloudConnectionStatus, onRequestSpeechPermissions)
+                        CloudAuthSection(motion, cloudAuthState, onCloudInitializationRetry, onCloudSignIn, onCloudConfirm, onCloudSignOut)
+                        IntegrationBoundaryNotice(vehicleStatus.source == IntegrationSource.Actual)
                     }
                 }
             } else {
@@ -126,12 +151,110 @@ fun SettingsScreen(
                     PrivacySection(
                         routePrivacy, motion, privacyMessage, hasPublishedDraft,
                         deleteRequestState, onWithdrawConsent,
+                        onEnableLiveRoute,
                         onDeleteRequest = { showDeleteConfirmation = true },
                     )
-                    IntegrationSection(vehicleStatus, navigationStatus)
-                    DemoBoundaryNotice()
+                    IntegrationSection(vehicleStatus, navigationStatus, locationStatus, textToSpeechStatus, speechToTextStatus, cloudConnectionStatus, onRequestSpeechPermissions)
+                    CloudAuthSection(motion, cloudAuthState, onCloudInitializationRetry, onCloudSignIn, onCloudConfirm, onCloudSignOut)
+                    IntegrationBoundaryNotice(vehicleStatus.source == IntegrationSource.Actual)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun CloudAuthSection(
+    motion: MotionState,
+    authState: CloudAuthState,
+    onInitializationRetry: () -> Unit,
+    onSignIn: (String, CharArray) -> Unit,
+    onConfirm: (CharArray) -> Unit,
+    onSignOut: () -> Unit,
+) {
+    if (authState.phase == CloudAuthPhase.UNAVAILABLE) return
+    var username by remember { mutableStateOf("") }
+    var secret by remember { mutableStateOf("") }
+    LaunchedEffect(motion, authState.phase) {
+        val authenticationSurfaceActive = authState.phase !in setOf(
+            CloudAuthPhase.SIGNED_IN,
+            CloudAuthPhase.REAUTH_REQUIRED,
+            CloudAuthPhase.UNAVAILABLE,
+        )
+        if (motion != MotionState.Parked || !authenticationSurfaceActive) {
+            username = ""
+            secret = ""
+        }
+    }
+    val editable = motion == MotionState.Parked && authState.phase != CloudAuthPhase.WORKING
+    Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
+        Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("AWS 계정", style = MaterialTheme.typography.titleLarge)
+            Text(authState.message, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            when (authState.phase) {
+                CloudAuthPhase.SIGNED_IN, CloudAuthPhase.REAUTH_REQUIRED -> Button(
+                    onClick = onSignOut,
+                    enabled = editable,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text(if (authState.phase == CloudAuthPhase.REAUTH_REQUIRED) "세션 정리" else "로그아웃") }
+                CloudAuthPhase.CHALLENGE -> {
+                    OutlinedTextField(
+                        value = secret,
+                        onValueChange = { secret = CloudAuthInputPolicy.limitChallenge(it) },
+                        label = { Text(authState.challengeLabel ?: "인증 응답") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        enabled = editable,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Button(
+                        onClick = {
+                            val response = secret.toCharArray()
+                            secret = ""
+                            onConfirm(response)
+                        },
+                        enabled = editable && secret.isNotBlank(),
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) { Text("추가 인증") }
+                }
+                CloudAuthPhase.INITIALIZATION_ERROR -> Button(
+                    onClick = onInitializationRetry,
+                    enabled = editable,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("AWS 연결 다시 확인") }
+                CloudAuthPhase.UNAVAILABLE -> Unit
+                else -> {
+                    OutlinedTextField(
+                        value = username,
+                        onValueChange = { username = CloudAuthInputPolicy.limitUsername(it) },
+                        label = { Text("Cognito 아이디") },
+                        enabled = editable,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = secret,
+                        onValueChange = { secret = CloudAuthInputPolicy.limitPassword(it) },
+                        label = { Text("비밀번호") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        enabled = editable,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Button(
+                        onClick = {
+                            val password = secret.toCharArray()
+                            secret = ""
+                            onSignIn(username, password)
+                        },
+                        enabled = editable && username.isNotBlank() && secret.isNotBlank(),
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) { Text(if (authState.phase == CloudAuthPhase.WORKING) "확인 중" else "AWS 로그인") }
+                }
+            }
+            Text("비밀번호와 인증코드는 화면 메모리에서 제출 직후 지웁니다.", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -159,29 +282,97 @@ private fun PrivacySection(
     hasPublishedDraft: Boolean,
     deleteRequestState: DeleteRequestState?,
     onWithdrawConsent: () -> Unit,
+    onEnableLiveRoute: () -> Unit,
     onDeleteRequest: () -> Unit,
 ) {
+    var showLiveRouteConsent by remember { mutableStateOf(false) }
+    var showWithdrawalConfirmation by remember { mutableStateOf(false) }
+    if (showLiveRouteConsent) {
+        AlertDialog(
+            onDismissRequest = { showLiveRouteConsent = false },
+            title = { Text("실시간 경로 수집에 동의할까요?") },
+            text = {
+                Text(
+                    "기록 중에만 PLEOS 위치 SDK로 현재 위치를 처리합니다. " +
+                        "원본 위도·경도는 저장하거나 업로드하지 않고, 정규화된 경로 모양과 거리만 기기에 보관합니다. " +
+                        "설정에서 언제든 동의를 철회하고 미게시 경로를 삭제할 수 있습니다. " +
+                        "동의 정책 ${RouteLocationConsentPolicy.VERSION}",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { showLiveRouteConsent = false; onEnableLiveRoute() },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("동의하고 권한 확인") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showLiveRouteConsent = false },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("동의하지 않음") }
+            },
+        )
+    }
+    if (showWithdrawalConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showWithdrawalConfirmation = false },
+            title = { Text("실시간 경로 동의를 철회할까요?") },
+            text = {
+                Text(
+                    "실시간 위치 수집을 즉시 중지하고 미게시 경로를 기기에서 삭제합니다. " +
+                        "게시 대기 중인 전송도 취소하며, 다시 사용하려면 새로 동의해야 합니다.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { showWithdrawalConfirmation = false; onWithdrawConsent() },
+                    enabled = motion == MotionState.Parked,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("동의 철회 및 삭제", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showWithdrawalConfirmation = false },
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) { Text("유지") }
+            },
+        )
+    }
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("경로 데이터 및 동의", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
                 RouteSourceBadge(routePrivacy.displayedSource)
             }
-            Text("현재 데모 경로만 사용 · 실시간 위치 미사용")
+            Text(if (routePrivacy.displayedSource == RouteSource.LiveAvailable) "실시간 경로 사용 · 원본 좌표 미저장" else "현재 데모 경로만 사용 · 실시간 위치 미사용")
             Text(
-                "실시간 경로: ${routePrivacy.liveSource.reason.userLabel()}",
+                "실시간 경로: ${routePrivacy.liveSource.userLabel()}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surface) {
                 Column(Modifier.fillMaxWidth().padding(14.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("실시간 경로 SDK 준비 중", style = MaterialTheme.typography.titleMedium)
+                    Text(routeCapabilityTitle(routePrivacy.liveSource), style = MaterialTheme.typography.titleMedium)
                     Text(routeConsentStorageLabel(routePrivacy.consentState), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (routePrivacy.consentState == RouteConsentState.Granted) {
+                if (routePrivacy.consentState != RouteConsentState.Granted) {
                     Button(
-                        onClick = onWithdrawConsent,
+                        onClick = { showLiveRouteConsent = true },
+                        enabled = motion == MotionState.Parked,
+                        modifier = Modifier.heightIn(min = 48.dp),
+                    ) { Text("실시간 경로 켜기") }
+                }
+                if (routePrivacy.consentState == RouteConsentState.Granted) {
+                    if (routePermissionRecoveryVisible(routePrivacy.consentState, routePrivacy.liveSource)) {
+                        Button(
+                            onClick = onEnableLiveRoute,
+                            enabled = motion == MotionState.Parked,
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) { Text("위치 권한 다시 확인") }
+                    }
+                    OutlinedButton(
+                        onClick = { showWithdrawalConfirmation = true },
                         enabled = motion == MotionState.Parked,
                         modifier = Modifier.heightIn(min = 48.dp),
                     ) { Text("동의 철회") }
@@ -203,22 +394,65 @@ private fun PrivacySection(
 }
 
 @Composable
-private fun IntegrationSection(vehicleStatus: CapabilityStatus, navigationStatus: CapabilityStatus) {
+private fun IntegrationSection(
+    vehicleStatus: CapabilityStatus,
+    navigationStatus: CapabilityStatus,
+    locationStatus: CapabilityStatus,
+    textToSpeechStatus: CapabilityStatus,
+    speechToTextStatus: CapabilityStatus,
+    cloudConnectionStatus: CapabilityStatus,
+    onRequestSpeechPermissions: () -> Unit,
+) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceVariant) {
         Column(Modifier.fillMaxWidth().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("연동 및 보존 상태", style = MaterialTheme.typography.titleLarge)
             IntegrationRow("차량 상태", vehicleStatus)
             IntegrationRow("차량 내비게이션", navigationStatus)
-            UnavailableStatusRow("위치 연동", "준비 중 · 사용 불가")
-            UnavailableStatusRow("음성 안내·인식", "준비 중 · 사용 불가")
-            UnavailableStatusRow("차량 제어", "준비 중 · 사용 불가")
+            IntegrationRow("위치 연동", locationStatus)
+            IntegrationRow("음성 안내", textToSpeechStatus)
+            IntegrationRow("음성 인식", speechToTextStatus)
+            if (speechRecoveryVisible(textToSpeechStatus, speechToTextStatus)) {
+                TextButton(
+                    onClick = onRequestSpeechPermissions,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text(
+                        if (speechPermissionDenied(textToSpeechStatus, speechToTextStatus)) {
+                            "음성 권한 다시 확인"
+                        } else {
+                            "음성 서비스 다시 연결"
+                        },
+                    )
+                }
+            }
+            IntegrationRow("AWS 클라우드", cloudConnectionStatus)
+            StatusRow("차량 제어", "안전 정책 · 읽기 전용")
             StatusRow("오프라인 초안", "기기에 보존")
         }
     }
 }
 
+internal fun speechPermissionDenied(
+    textToSpeechStatus: CapabilityStatus,
+    speechToTextStatus: CapabilityStatus,
+): Boolean = listOf(textToSpeechStatus, speechToTextStatus).any {
+    it.capability == CapabilityState.PermissionDenied
+}
+
+internal fun speechRecoveryVisible(
+    textToSpeechStatus: CapabilityStatus,
+    speechToTextStatus: CapabilityStatus,
+): Boolean {
+    val statuses = listOf(textToSpeechStatus, speechToTextStatus)
+    return speechPermissionDenied(textToSpeechStatus, speechToTextStatus) || statuses.any {
+        it.source == IntegrationSource.Actual &&
+            it.capability == CapabilityState.Unavailable &&
+            it.label != "실차 · 확인 중"
+    }
+}
+
 @Composable
-private fun DemoBoundaryNotice() {
+private fun IntegrationBoundaryNotice(actualMode: Boolean) {
     Surface(shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.secondaryContainer) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 14.dp),
@@ -227,9 +461,16 @@ private fun DemoBoundaryNotice() {
         ) {
             Icon(Icons.Rounded.Info, contentDescription = null, tint = MaterialTheme.colorScheme.onSecondaryContainer)
             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("데모 데이터 · 외부 연동 없음", style = MaterialTheme.typography.titleMedium)
                 Text(
-                    "AWS 키, 사용자 토큰, 실제 위치는 포함되지 않습니다.",
+                    if (actualMode) "PLEOS 실제 SDK 연동 모드" else "데모 데이터 · 외부 연동 없음",
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    if (actualMode) {
+                        "원본 위치와 사용자 토큰은 화면·Room·로그에 저장하지 않습니다."
+                    } else {
+                        "AWS 키, 사용자 토큰, 실제 위치는 포함되지 않습니다."
+                    },
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
@@ -243,6 +484,21 @@ internal fun routeConsentStorageLabel(consentState: RouteConsentState): String =
     } else {
         "현재 수집하지 않음 · 동의도 저장하지 않음"
     }
+
+internal fun routeCapabilityTitle(source: RouteSource): String = when (source) {
+    RouteSource.LiveAvailable -> "PLEOS 위치 SDK 사용 가능"
+    RouteSource.CloudPublished -> "AWS 공개 경로"
+    RouteSource.DemoPreset -> "데모 경로 모드"
+    is RouteSource.LiveUnavailable -> when (source.reason) {
+        LiveUnavailableReason.PERMISSION_DENIED -> "PLEOS 위치 권한 필요"
+        LiveUnavailableReason.CAPABILITY_MISSING -> "PLEOS 위치 기능 사용 불가"
+        LiveUnavailableReason.SDK_COMING_SOON -> "PLEOS 위치 기능 준비 중"
+    }
+}
+
+internal fun routePermissionRecoveryVisible(consentState: RouteConsentState, liveSource: RouteSource): Boolean =
+    consentState == RouteConsentState.Granted &&
+        liveSource == RouteSource.LiveUnavailable(LiveUnavailableReason.PERMISSION_DENIED)
 
 @Composable
 private fun IntegrationRow(label: String, status: CapabilityStatus) {
@@ -291,6 +547,13 @@ private fun LiveUnavailableReason.userLabel() = when (this) {
     LiveUnavailableReason.SDK_COMING_SOON -> "SDK 준비 중 · 향후 제공 예정"
     LiveUnavailableReason.PERMISSION_DENIED -> "권한이 거부됨"
     LiveUnavailableReason.CAPABILITY_MISSING -> "차량 기능 미지원"
+}
+
+private fun RouteSource.userLabel() = when (this) {
+    RouteSource.LiveAvailable -> "사용 가능"
+    RouteSource.CloudPublished -> "AWS 공개 경로"
+    is RouteSource.LiveUnavailable -> reason.userLabel()
+    RouteSource.DemoPreset -> "데모 경로"
 }
 
 private fun DeleteRequestState.buttonLabel() = when (this) {

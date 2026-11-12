@@ -12,6 +12,7 @@ data class RecordingEntity(
     val startedAtEpochMs: Long,
     val endedAtEpochMs: Long?,
     val highlightCount: Int,
+    @ColumnInfo(defaultValue = "0") val distanceMeters: Int = 0,
 )
 
 @Entity(
@@ -57,6 +58,7 @@ data class UploadQueueEntity(
 data class RoutePrivacyEntity(
     @PrimaryKey val id: Int = 1,
     val consentState: String,
+    val consentPolicyVersion: String?,
     val routeSource: String,
     val unavailableReason: String?,
     val updatedAtEpochMs: Long,
@@ -105,6 +107,20 @@ data class PublishConflictEntity(
     val lastFetchErrorCode: String?,
 )
 
+/** Public feed metadata only. Short-lived asset URLs and route coordinates are never persisted. */
+@Entity(tableName = "cached_feed_drives")
+data class CachedFeedDriveEntity(
+    @PrimaryKey val id: String,
+    val version: Int,
+    val title: String,
+    val summary: String,
+    val distanceMeters: Int,
+    val durationSeconds: Int,
+    val highlightCount: Int,
+    val publishedAt: String,
+    val cachedAtEpochMs: Long,
+)
+
 object LocalState {
     const val RECORDING = "RECORDING"
     const val DRAFTED = "DRAFTED"
@@ -122,6 +138,7 @@ object LocalState {
     const val PRIVACY_WITHDRAWN = "PRIVACY_WITHDRAWN"
     const val DELETE_PENDING = "DELETE_PENDING"
     const val VERSION_CONFLICT = "VERSION_CONFLICT"
+    const val CONSENT_RENEWAL_REQUIRED = "CONSENT_RENEWAL_REQUIRED"
 }
 
 object ConflictState {

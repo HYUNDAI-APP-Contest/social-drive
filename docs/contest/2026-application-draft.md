@@ -32,14 +32,14 @@
 
 좋은 드라이브 코스를 발견하는 곳과 실제로 주행하는 곳이 분리되어 있다. SNS에서 사진이나 후기를 발견해도 지도에서 장소를 다시 찾고, 차량 내비게이션에 목적지와 경유지를 다시 입력해야 한다. 반대로 운전 중 좋았던 순간을 메모하거나 자세히 기록하려는 행동은 주의 분산과 충돌한다.
 
-Social Drive는 다음 경험을 제출 목표로 한다. PR #2 병합 커밋 `dcffaad`를 포함한 현재 통합 소스에는 PLEOS·cloud·route-consent, Room v6 conflict review와 published-delete lifecycle이 있다. 기존 PLEOS Connect Android 14(user 10) UI 8/8과 비UI 43/43, Kotlin core 74/74, static 29/29 및 Gradle 179 tasks 증거가 있다. Issue #28에서는 production NaviHelper adapter의 공개 목적지 1건을 API 34 emulator application boundary에서 검증했다. actual cloud·AWS E2E·제출용 signed release·실제 Vehicle callback은 미검증이고, PLEOS system Back 전달도 `UNRESOLVED`다.
+Social Drive는 다음 경험을 제출 목표로 한다. PR #2 병합 커밋 `dcffaad`를 포함한 현재 통합 소스에는 PLEOS·cloud·route-consent, Room conflict review와 published-delete lifecycle이 있다. PLEOS Connect Android 14(user 10)에서 Vehicle PARK와 NaviHelper `onRouteStarted` 실제 callback을 확인했다. actual cloud·AWS E2E·제출용 signed release·Vehicle D/R/N·실차 검증은 남아 있다.
 
 1. 주행 중에는 기록 시작·종료와 `방금 좋았어` 한 번의 터치만 제공한다.
 2. recording session, `highlightCount`, draft, pending queue와 preset reference를 로컬 DB에 보존한다.
 3. 제목·설명·공개 범위 확인은 주차 후에만 허용한다.
 4. 통합된 NaviHelper adapter는 검증된 공개 목적지 1건을 차량 Navigation 앱으로 전달하고 terminal callback·cleanup·release를 application boundary에서 확인했다. 경유지 실행과 UI 전체 여정은 별도 검증 대상이다.
 
-위치 동의·철회와 route source 안전 경계는 `앱 구현`이지만 실제 위치 샘플·경로점 수집은 미구현이다. preset 경로는 실제 위치가 아니라 `데모 데이터`다. 게시물 삭제는 Room v6 tombstone, network `DELETE`, bounded retry 계약까지 구현·계측됐지만 actual cloud 설정이 없어 demo transport 증거다.
+위치 수집은 별도 고지와 정책 버전 동의, PLEOS `FUSED_LOCATION` 권한을 모두 통과한 기록 세션에서만 동작한다. AVD에서 실제 SDK callback을 받아 원본 위·경도를 메모리에서 정규화하고 거리와 비정밀 경로만 Room에 보존하는 흐름을 검증했다. preset 경로는 계속 `데모 데이터`로 구분한다. 실제 차량 GNSS 품질과 장시간 주행은 아직 미검증이다. 게시물 삭제는 Room tombstone, network `DELETE`, bounded retry 계약까지 구현·계측됐지만 actual cloud 설정이 없어 demo transport 증거다.
 
 ### 핵심 타깃
 
@@ -69,7 +69,7 @@ Social Drive는 모바일 SNS를 차량 화면으로 옮긴 앱이 아니다.
 
 ### 차량 상태가 UX를 결정하는 구조를 구현한다
 
-Vehicle adapter의 목표는 Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unknown`을 판정하는 것이다. 서비스 오류, 권한 부족, 오래된 값처럼 안전을 증명할 수 없는 경우는 `Unknown`으로 처리해 편집과 게시를 차단한다. HEAD `4f2b559`은 Pleos AVD에서 fail-closed Unknown과 Driving/Unknown 잠금 UI를 실행 검증했지만 실제 permissioned P/D/R/N callback은 확인하지 않았으므로 `실제 SDK`로 표현하지 않는다.
+Vehicle adapter는 Vehicle State와 공식 주행 제한 상태를 통해 `Parked / Driving / Unknown`을 판정한다. 서비스 오류, 권한 부족, 오래된 값처럼 안전을 증명할 수 없는 경우는 `Unknown`으로 처리해 편집과 게시를 차단한다. PLEOS AVD에서 실제 `GEAR_PARK`가 앱의 `Parked`까지 도달한 계측 테스트가 통과했다. D/R/N과 실차는 아직 검증하지 않았으므로 PARK 외 상태까지 검증한 것으로 표현하지 않는다.
 
 ### 콘텐츠가 실제 주행으로 완결된다
 
@@ -131,28 +131,29 @@ Social Drive가 목표로 하는 콘텐츠 단위는 장소 후기가 아니라 
 | Compose 피드·상세·기록·게시 UI | 핵심 흐름 제공 | PR #2 통합, 기존 PLEOS UI 8/8 통과 | `앱 구현` |
 | Room recording/draft/queue | 오프라인/재시작 복구 | PR #2 통합, persistence·migration·WorkManager 포함 비UI 43/43 통과 | `앱 구현` |
 | motion 재검증 Worker | 주행 중 원격 게시 차단 | PR #2 통합, WorkManager 계약 계측 통과. 실제 Vehicle motion callback은 미검증 | `앱 구현` |
-| route source·동의·철회 | 개인정보 통제와 demo/live 분리 | PR #2 통합 코드와 계측 증거 존재. 실제 위치 source는 unavailable | `앱 구현` |
-| 실제 경로점·위치 수집 | 실제 코스 생성 | 확인된 구현 증거 없음 | `미구현` |
+| route source·동의·철회 | 개인정보 통제와 demo/live 분리 | 정책 버전 동의·철회·권한 재확인과 미게시 경로 삭제를 AVD에서 검증 | `앱 구현` |
+| 실제 경로점·위치 수집 | 실제 코스 생성 | PLEOS FusedLocation callback→메모리 정규화→비정밀 Room 저장을 AVD에서 검증. 실차 GNSS는 미검증 | `실제 SDK` |
 | 게시물 삭제 | parked-only 삭제 요청 | PR #2 통합. Room v6 tombstone·network `DELETE`·bounded retry 계약을 demo transport에서 계측. actual cloud 미검증 | `앱 구현` |
 | Cognito/DynamoDB/S3 API | 사용자·피드·비공개 업로드 | PR #2 통합. backend `ddbd61f` 계약 기반 코드 존재. concrete cloud 설정 부재로 actual cloud unavailable | `앱 구현` |
 | 409 conflict review | stale publish의 명시적 사용자 해결 | PR #2 통합. durable FAILED, explicit fetch/adopt, publish-only replay. 일반 worker 자동 claim·GET·overwrite 금지. Room 계측 통과 | `앱 구현` |
-| Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | PR #2 통합. Pleos build/AVD 안전 UI 실행, 실제 P/D/R/N callback 미검증 | `앱 구현` |
-| NaviHelper 3.0.5 | 목적지·경유지 전달 | Issue #28 production adapter로 API 34 emulator에서 공개 목적지 1건의 request·terminal callback·cleanup·release 확인. 경유지 실행·UI 전체 여정·물리 차량은 미검증 | `실제 SDK`(제한적) |
+| Vehicle SDK 2.3.2 | Parked/Driving/Unknown 판정 | PLEOS AVD PARK callback 통과. D/R/N·실차 미검증 | `실제 SDK (PARK 한정)` |
+| NaviHelper 3.0.5 | 목적지·경유지 전달 | PR #2 통합. lifecycle/coordinator build·core 검증, 실제 route callback 미검증 | `앱 구현` |
 | PLEOS system Back | 기록 중 종료 확인 | Activity dispatcher 이후 dialog 계약은 검증. TaskView의 실제 system Back 전달은 `UNRESOLVED` | `미구현` |
 | preset route/motion | 전체 흐름 시연 보조 | 데모 전용 | `데모 데이터` |
-| FusedLocation/STT/TTS/Vehicle Control | 향후 자연스러운 입력·안내 | 공식 Coming Soon | `향후 기능` |
+| FusedLocation/STT/TTS | 위치·음성 입력·안내 | pinned PLEOS SDK로 AVD 권한·초기화·location callback·STT timeout/cancel 검증. 실차 품질은 미검증 | `실제 SDK` |
+| Vehicle Control | 차량 제어 | 안전 정책상 사용하지 않음 | `향후 기능` |
 
 역사적 commit `88b4938`의 P0-3A bootstrap/doctor는 offline에서 네트워크 요청 0건으로 fail-fast한다. project-required wrapper 8.9 cache와 exact Android platform 35가 없고 `services.gradle.org` DNS가 막혀 tasks/variants/assemble은 시작되지 않았다. 최신 앱 HEAD나 APK·AVD·vendor compile 성공 증거로 사용하지 않는다.
 
-Vehicle State와 NaviHelper는 현재 Ready to Use지만, FusedLocation·STT·TTS·Vehicle Control은 Coming Soon이다. Coming Soon 기능은 이번 MVP의 실제 기능이나 필수 의존성으로 사용하지 않는다. [공식 SDK 상태](https://document.pleos.ai/en/docs/pleos-only/create-my-project)
+Vehicle Control은 이번 MVP에서 사용하지 않는다. FusedLocation·STT·TTS는 저장소에 고정된 PLEOS SDK와 AVD 실행 증거 범위에서만 실제 SDK로 표현하며, production 이미지 승인과 실차 품질을 주장하지 않는다. [실행 증거](../pleos-runtime-evidence-2026-11-07.md)
 
 ## 9. 안전·개인정보 보호
 
 ### 현재 확인된 코드 증거
 
 - PR #2 통합 Android 소스에 recording session, `highlightCount`, draft, pending queue와 preset reference 코드가 존재한다.
-- 병합 커밋 `dcffaad`를 포함한 소스에는 motion gate, cloud, consent/withdraw, Room v6 conflict review와 published-delete lifecycle이 있다. Issue #28은 NaviHelper 공개 목적지 1건의 emulator application-boundary callback·cleanup·release를 확인했다. 실제 Vehicle callback·UI 전체 여정·actual cloud·AWS E2E·signed release는 미완료다.
-- 실제 경로점·위치 샘플 수집은 미구현이며 published delete는 actual cloud에서 검증되지 않았다.
+- 병합 커밋 `dcffaad`를 포함한 소스에는 motion gate, cloud, consent/withdraw, Room v6 conflict review와 published-delete lifecycle이 있다. 기존 PLEOS instrumentation 51/51, Kotlin 74/74, static 29/29, Gradle build/lint 증거가 있으며 actual cloud·AWS E2E·signed release·실 SDK callback은 미완료다.
+- 실제 경로점·위치 샘플 수집은 PLEOS AVD에서 검증됐으며 원본 좌표는 저장·업로드하지 않는다. 실차 GNSS와 published delete actual cloud는 검증되지 않았다.
 
 ### 구현·검증해야 할 요구사항
 

@@ -25,8 +25,10 @@ classpath="$kotlin_home/lib/kotlin-test.jar:$kotlin_home/lib/kotlin-test-junit.j
   "$android_root/app/src/main/java/com/socialdrive/app/data/DraftSnapshot.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/remote/JsonCodec.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/remote/CloudDriveContracts.kt" \
+  "$android_root/app/src/main/java/com/socialdrive/app/data/remote/CloudAuthInputPolicy.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/remote/CloudDriveClient.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/remote/RemoteDriveApi.kt" \
+  "$android_root/app/src/main/java/com/socialdrive/app/data/remote/PublicationCover.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/remote/RemoteDeleteApi.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/remote/RemoteConflictReviewApi.kt" \
   "$android_root/app/src/main/java/com/socialdrive/app/data/remote/CloudRemoteDriveApi.kt" \
@@ -44,6 +46,7 @@ classpath="$kotlin_home/lib/kotlin-test.jar:$kotlin_home/lib/kotlin-test-junit.j
   "$android_root/app/src/test/java/com/socialdrive/app/domain/ConflictReviewTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/domain/DeleteLifecycleTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/data/remote/CloudDriveClientTest.kt" \
+  "$android_root/app/src/test/java/com/socialdrive/app/data/remote/CloudAuthInputPolicyTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/data/work/PublishRecoveryPolicyTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/data/work/DeleteCancellationGuardTest.kt" \
   "$android_root/app/src/test/java/com/socialdrive/app/integration/GearMotionControllerTest.kt" \

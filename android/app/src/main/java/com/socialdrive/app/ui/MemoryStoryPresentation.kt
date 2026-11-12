@@ -38,7 +38,9 @@ internal data class MemoryStoryPresentation(
     )
 
     fun present(base: DriveSummary): DriveSummary {
-        require(base.id == driveId) { "memory story identity mismatch" }
+        // Room and Compose state flows can publish on adjacent frames after a recording is saved.
+        // Never project one story's transient state onto another story or crash during that frame.
+        if (base.id != driveId) return base
         if (phase == MemoryStoryPhase.Browsing) return base
         val count = highlightCount.coerceIn(0, MAX_PRESENTATION_HIGHLIGHTS)
         return base.copy(
